@@ -1640,6 +1640,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "216080ab382b992234dda86873c18d4c48358f5cfcb70fd693d7f6f2131b628b"
 
 [[package]]
+name = "rosu-pp"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40f365961f000e9506345a6c57071c23ff983587f24187c0d624bf56a66c1e91"
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2400,6 +2406,7 @@ dependencies = [
  "egui_demo_lib",
  "futures",
  "raw-window-handle 0.6.0",
+ "rosu-pp",
  "tracy-client",
  "wgpu",
  "winit",

@@ -1,4 +1,7 @@
+use std::path::Path;
+
 use egui::{Slider, style::HandleShape};
+use rosu_pp::Beatmap;
 use winit::window::Window;
 
 use crate::{state::Graphics, egui_state::EguiState};
@@ -7,6 +10,9 @@ pub struct OsuState {
     pub window: Window,
     pub state: Graphics,
     pub egui: EguiState,
+
+
+    current_beatmap: Option<Beatmap>,
 
     current_time: f64
 }
@@ -21,10 +27,24 @@ impl OsuState {
         
         Self {
             window,
+            current_beatmap: None,
             egui,
             state: graphics,
             current_time: 0.0,
         }
+    }
+
+    pub fn open_beatmap<P: AsRef<Path>>(&mut self, path: P) {
+        let map = match Beatmap::from_path(path) {
+            Ok(m) => m,
+            Err(_) => {
+                println!("Failed to parse beatmap");
+                return;
+            },
+        };
+        
+
+        self.current_beatmap = Some(map);
     }
 
     pub fn update_egui(&mut self) {
@@ -33,13 +53,16 @@ impl OsuState {
         self.egui.context.begin_frame(input);
 
         egui::Window::new("Window").show(&self.egui.context, |ui| {
-            ui.add(
-                Slider::new(&mut self.current_time, 0.0..=100.0)
+            if let Some(beatmap) = &self.current_beatmap {
+                ui.add(
+                    Slider::new(&mut self.current_time, 0.0..=beatmap.hit_objects.last().unwrap().start_time)
                     .handle_shape(HandleShape::Rect{
                         aspect_ratio: 0.30
                     })
+                    .step_by(1.0)
                     .text("Time")
-            )
+                );
+            }
         });
 
         let output = self.egui.context.end_frame();

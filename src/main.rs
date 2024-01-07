@@ -25,6 +25,8 @@ fn main() {
         state
     );
 
+    osu_state.open_beatmap("tests/test.osu");
+
     let _ = event_loop.run(move |event, _, elwf| {
         let _span = tracy_client::span!("event_loop");
 
