@@ -4,7 +4,7 @@ use egui::{Slider, style::HandleShape};
 use rosu_pp::Beatmap;
 use winit::window::Window;
 
-use crate::{state::Graphics, egui_state::EguiState};
+use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture};
 
 pub struct OsuState {
     pub window: Window,
@@ -14,7 +14,10 @@ pub struct OsuState {
 
     current_beatmap: Option<Beatmap>,
 
-    current_time: f64
+    current_time: f64,
+
+    hit_circle_texture: Texture,
+
 }
 
 impl OsuState {
@@ -24,6 +27,11 @@ impl OsuState {
     ) -> Self {
 
         let egui = EguiState::new(&graphics.device, &window);
+
+        let hit_circle_texture = Texture::from_path(
+            "skin/hitcircle.png",
+            &graphics
+        );
         
         Self {
             window,
@@ -31,6 +39,7 @@ impl OsuState {
             egui,
             state: graphics,
             current_time: 0.0,
+            hit_circle_texture,
         }
     }
 

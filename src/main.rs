@@ -1,12 +1,13 @@
 use osu_state::OsuState;
-use state::Graphics;
+use graphics::Graphics;
 use winit::{
     event_loop::EventLoop,
     window::WindowBuilder, 
     event::{WindowEvent, Event}, 
 };
 
-mod state;
+mod graphics;
+mod texture;
 mod egui_state;
 mod osu_state;
 

@@ -3,7 +3,7 @@ use egui_wgpu::Renderer;
 use wgpu::{Device, CommandEncoder};
 use winit::{window::Window, event::WindowEvent};
 
-use crate::state::Graphics;
+use crate::graphics::Graphics;
 
 pub struct EguiState {
     pub context: egui::Context,
