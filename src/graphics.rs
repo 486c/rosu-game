@@ -62,6 +62,7 @@ impl Graphics {
         let surface_format = surface_caps.formats.iter()
             .copied()
             .find(|f| {
+                dbg!(&f);
                 f.is_srgb()
             })            
             .unwrap_or(surface_caps.formats[0]);
