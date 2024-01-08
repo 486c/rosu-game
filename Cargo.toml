@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = { version = "1.14.0", features = ["zeroable_maybe_uninit", "zeroable_atomics"] }
 egui = "0.24.1"
 egui-wgpu = "0.24.1"
 egui-winit = "0.24.1"

@@ -8,6 +8,7 @@ use winit::{
 
 mod graphics;
 mod texture;
+mod vertex;
 mod egui_state;
 mod osu_state;
 
