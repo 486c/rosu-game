@@ -18,17 +18,4 @@ impl Vertex {
             attributes: &Self::ATTRIBS,
         }
     }
-    
-    /*
-    pub fn quad(min: f32, max: f32) -> Vec<Self> {
-        vec![
-            Vertex {pos: [min, min]},
-            Vertex {pos: [min, max]},
-            Vertex {pos: [max, max]},
-            Vertex {pos: [max, max]},
-            Vertex {pos: [max, min]},
-            Vertex {pos: [min, min]},
-        ]
-    }
-    */
 }

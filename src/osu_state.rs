@@ -3,23 +3,23 @@ use std::path::Path;
 use egui::{Slider, style::HandleShape};
 use rosu_pp::Beatmap;
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension, RenderPipeline, BindGroup, BufferUsages, util::DeviceExt};
-use winit::window::Window;
+use winit::{window::Window, dpi::PhysicalSize};
 
-use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex};
+use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera};
 
 const VERTICES: &[Vertex] = &[
-    //Vertex {pos: [0.0, 0.5]},
-    //Vertex {pos: [-0.5, -0.5]},
-    //Vertex {pos: [0.5, -0.5]},
-    Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]}, // 0
-    Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]}, // 1
-    Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]}, // 2
-    Vertex {pos: [0.0, 1.0], uv: [1.0, 0.0]}, // 3
-
-    // 0 1 2 | 2 1 3
+    Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
+    Vertex {pos: [0.0, 500.0], uv:[0.0, 1.0]},
+    Vertex {pos: [500.0, 500.0], uv:[1.0, 1.0]},
+    //Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]},
+    //Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]},
+    //Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]},
+    //Vertex {pos: [0.0, 1.0], uv: [1.0, 0.0]}, 
 ];
 
-const INDECIES: &[u16] = &[0, 2, 3, 0, 1, 2];
+
+//const INDECIES: &[u16] = &[0, 2, 3, 0, 1, 2];
+const INDECIES: &[u16] = &[0, 1, 2];
 
 pub struct OsuState {
     pub window: Window,
@@ -36,6 +36,10 @@ pub struct OsuState {
     hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
     hit_circle_index_buffer: wgpu::Buffer,
+
+    osu_camera: Camera,
+    camera_bind_group: BindGroup,
+    camera_buffer: wgpu::Buffer,
 }
 
 impl OsuState {
@@ -51,10 +55,10 @@ impl OsuState {
             &graphics
         );
 
-
         let shader = graphics.device.create_shader_module(
             wgpu::include_wgsl!("shaders/hit_circle.wgsl")
         );
+
 
         let hit_circle_vertex_buffer = graphics.device
             .create_buffer_init(
@@ -73,6 +77,52 @@ impl OsuState {
                     usage: BufferUsages::INDEX,
                 }
             );
+        
+        /* Camera stuff */
+
+        let camera = Camera::new(
+            graphics.config.width as f32, 
+            graphics.config.height as f32, 
+        );
+
+        let camera_buffer = graphics.device
+            .create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("uniform_buffer"),
+                    contents: bytemuck::cast_slice(camera.mat.as_slice()),
+                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                }
+            );
+
+
+        let camera_bind_group_layout = graphics.device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+            label: Some("camera_bind_group_layout"),
+        });
+
+        let camera_bind_group = graphics.device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &camera_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: camera_buffer.as_entire_binding(),
+                    }
+                ],
+                label: Some("camera_bind_group"),
+        });
 
         let hit_circle_bind_group_layout = graphics.device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -119,7 +169,10 @@ impl OsuState {
             .create_pipeline_layout(
                 &wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[&hit_circle_bind_group_layout],
+                    bind_group_layouts: &[
+                        &hit_circle_bind_group_layout,
+                        &camera_bind_group_layout
+                    ],
                     push_constant_ranges: &[],
                 }
             );
@@ -168,6 +221,7 @@ impl OsuState {
                 multiview: None,
             }
         );
+
         
         Self {
             window,
@@ -180,6 +234,9 @@ impl OsuState {
             hit_circle_bind_group,
             hit_circle_vertex_buffer,
             hit_circle_index_buffer,
+            osu_camera: camera,
+            camera_bind_group,
+            camera_buffer,
         }
     }
 
@@ -192,8 +249,20 @@ impl OsuState {
             },
         };
         
-
         self.current_beatmap = Some(map);
+    }
+
+    pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
+        self.state.resize(new_size);
+        self.osu_camera.resize(new_size);
+
+        // TODO Recreate buffers
+        self.state.queue
+            .write_buffer(
+                &self.camera_buffer, 
+                0, 
+                bytemuck::cast_slice(&[self.osu_camera.mat]) // TODO
+        );
     }
 
     pub fn update_egui(&mut self) {
@@ -274,6 +343,8 @@ impl OsuState {
 
             render_pass.set_pipeline(&self.hit_circle_pipeline);
             render_pass.set_bind_group(0, &self.hit_circle_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+
             render_pass.set_vertex_buffer(
                 0, self.hit_circle_vertex_buffer.slice(..)
             );

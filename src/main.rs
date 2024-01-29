@@ -11,6 +11,7 @@ mod texture;
 mod vertex;
 mod egui_state;
 mod osu_state;
+mod camera;
 
 fn main() {
     let _client = tracy_client::Client::start();
@@ -38,7 +39,8 @@ fn main() {
                     match osu_state.render() {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost) => 
-                            osu_state.state.resize(osu_state.state.size),
+                            osu_state.resize(&osu_state.state.size.clone()),
+                            //osu_state.state.resize(osu_state.state.size),
                         Err(wgpu::SurfaceError::OutOfMemory) => 
                             elwf.set_exit(),
                         Err(e) => eprintln!("{:?}", e),
@@ -63,10 +65,12 @@ fn main() {
                         elwf.set_exit();
                     },
                     WindowEvent::Resized(physical_size) => {
-                        osu_state.state.resize(physical_size)
+                        osu_state.resize(&physical_size);
+                        //osu_state.state.resize(physical_size)
                     },
                     WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        osu_state.state.resize(*new_inner_size);
+                        osu_state.resize(new_inner_size);
+                        //osu_state.state.resize(*new_inner_size);
                     }
                     //WindowEvent::RedrawRequested => {
                     //}
