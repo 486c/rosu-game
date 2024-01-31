@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 bytemuck = { version = "1.14.0", features = ["zeroable_maybe_uninit", "zeroable_atomics"] }
-cgmath = "0.18.0"
 egui = "0.24.1"
+cgmath = { git = "https://github.com/rustgd/cgmath.git", features = ["bytemuck"] }
 egui-wgpu = "0.24.1"
 egui-winit = "0.24.1"
 egui_demo_lib = "0.24.1"

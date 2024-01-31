@@ -11,10 +11,10 @@ impl Camera {
         Self {
             mat: ortho(
                 0.0,
-                0.0,
                 width,
                 height,
                 0.0,
+                -1.0,
                 1.0,
             ),
         }
@@ -23,11 +23,11 @@ impl Camera {
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
         self.mat = ortho(
                 0.0,
-                0.0,
                 new_size.width as f32,
                 new_size.height as f32,
                 0.0,
-                1.0,
+                -1.0, // znear
+                1.0, // zfar
         );
     }
 }

@@ -11,6 +11,7 @@ const VERTICES: &[Vertex] = &[
     Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
     Vertex {pos: [0.0, 500.0], uv:[0.0, 1.0]},
     Vertex {pos: [500.0, 500.0], uv:[1.0, 1.0]},
+    Vertex {pos: [500.0, 0.0], uv:[1.0, 0.0]},
     //Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]},
     //Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]},
     //Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]},
@@ -19,7 +20,7 @@ const VERTICES: &[Vertex] = &[
 
 
 //const INDECIES: &[u16] = &[0, 2, 3, 0, 1, 2];
-const INDECIES: &[u16] = &[0, 1, 2];
+const INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 pub struct OsuState {
     pub window: Window,
@@ -89,7 +90,7 @@ impl OsuState {
             .create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
                     label: Some("uniform_buffer"),
-                    contents: bytemuck::cast_slice(camera.mat.as_slice()),
+                    contents: bytemuck::bytes_of(&camera.mat),
                     usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                 }
             );
@@ -261,7 +262,7 @@ impl OsuState {
             .write_buffer(
                 &self.camera_buffer, 
                 0, 
-                bytemuck::cast_slice(&[self.osu_camera.mat]) // TODO
+                bytemuck::bytes_of(&self.osu_camera.mat) // TODO
         );
     }
 
