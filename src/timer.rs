@@ -2,7 +2,10 @@ use std::time::{Instant, Duration};
 
 pub struct Timer {
     now: Instant,
-    last_time: u128, // Milliseconds
+
+    /// Milliseconds 
+    pub last_time: f64,
+
     paused: bool,
 }
 
@@ -10,7 +13,7 @@ impl Timer {
     pub fn new() -> Self {
         Self {
             now: Instant::now(),
-            last_time: 0,
+            last_time: 0.0,
             paused: true,
         }
     }
@@ -29,12 +32,12 @@ impl Timer {
         self.now = Instant::now();
     }
 
-    pub fn get_time(&self) -> u128 {
+    pub fn get_time(&self) -> f64 {
         self.last_time
     }
     
     /// Updates and returns current time
-    pub fn update(&mut self) -> u128 {
+    pub fn update(&mut self) -> f64 {
         if self.paused {
             return self.last_time
         };
@@ -42,8 +45,9 @@ impl Timer {
         let now = Instant::now();
 
         let diff = now.duration_since(self.now);
-
-        self.last_time += diff.as_millis();
+        
+        // Converting to millis
+        self.last_time += diff.as_secs_f64() * 1000.0;
 
         self.now = now;
 
@@ -57,7 +61,7 @@ fn test_timer_logic() {
 
     std::thread::sleep(Duration::from_millis(15));
 
-    assert!(clock.update() == 0);
+    assert!(clock.update() == 0.0);
 
     clock.unpause();
 
@@ -65,7 +69,7 @@ fn test_timer_logic() {
 
     let expected = clock.update();
 
-    assert!(expected > 13 && expected < 17);
+    assert!(expected > 13.0 && expected < 17.0);
 
     clock.pause();
 

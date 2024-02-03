@@ -314,11 +314,19 @@ impl OsuState {
 
         self.egui.context.begin_frame(input);
 
-        egui::Window::new("Window").show(&self.egui.context, |ui| {
+        egui::Window::new("Window")
+            .show(&self.egui.context, |ui| {
             if let Some(beatmap) = &self.current_beatmap {
                 ui.add(
                     egui::Label::new(
                         format!("{}", self.osu_clock.get_time())
+                    )
+                );
+            
+                ui.add(
+                    Slider::new(
+                        &mut self.osu_clock.last_time,
+                        0.0..=(beatmap.hit_objects.last().unwrap().start_time)
                     )
                 );
 
@@ -357,11 +365,11 @@ impl OsuState {
                     continue;
                 }
 
-                const PREEMPT: u128 = 480;
-                const FADEIN: u128 = 320;
-
-                if (obj.start_time as u128) < self.osu_clock.get_time() + FADEIN 
-                && (obj.start_time as u128) > self.osu_clock.get_time() - PREEMPT {
+                const PREEMPT: f64 = 480.0;
+                const FADEIN: f64 = 320.0;
+                
+                if obj.start_time < self.osu_clock.get_time() + FADEIN 
+                && obj.start_time > self.osu_clock.get_time() - PREEMPT {
                     self.hit_circle_instance_data.push(
                         HitCircleInstance::new(
                             obj.pos.x,
