@@ -5,13 +5,13 @@ use rosu_pp::{Beatmap, parse::HitObjectKind};
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension, RenderPipeline, BindGroup, BufferUsages, util::DeviceExt};
 use winit::{window::Window, dpi::PhysicalSize};
 
-use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance};
+use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance, timer::Timer};
 
 const VERTICES: &[Vertex] = &[
     Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
-    Vertex {pos: [0.0, 20.0], uv:[0.0, 1.0]},
-    Vertex {pos: [20.0, 20.0], uv:[1.0, 1.0]},
-    Vertex {pos: [20.0, 0.0], uv:[1.0, 0.0]},
+    Vertex {pos: [0.0, 50.0], uv:[0.0, 1.0]},
+    Vertex {pos: [50.0, 50.0], uv:[1.0, 1.0]},
+    Vertex {pos: [50.0, 0.0], uv:[1.0, 0.0]},
     //Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]},
     //Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]},
     //Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]},
@@ -27,11 +27,10 @@ pub struct OsuState {
     pub state: Graphics,
     pub egui: EguiState,
 
-
     current_beatmap: Option<Beatmap>,
 
-    current_time: f64,
-    
+    osu_clock: Timer,
+
     hit_circle_bind_group: BindGroup,
     hit_circle_texture: Texture,
     hit_circle_pipeline: RenderPipeline,
@@ -247,7 +246,7 @@ impl OsuState {
             current_beatmap: None,
             egui,
             state: graphics,
-            current_time: 0.0,
+            osu_clock: Timer::new(),
             hit_circle_texture,
             hit_circle_pipeline,
             hit_circle_bind_group,
@@ -270,6 +269,8 @@ impl OsuState {
             },
         };
 
+        /*
+
         for obj in &map.hit_objects {
             if obj.kind == HitObjectKind::Circle {
                 self.hit_circle_instance_data.push(
@@ -290,6 +291,7 @@ impl OsuState {
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             }
         );
+        */
 
         self.current_beatmap = Some(map);
     }
@@ -315,17 +317,20 @@ impl OsuState {
         egui::Window::new("Window").show(&self.egui.context, |ui| {
             if let Some(beatmap) = &self.current_beatmap {
                 ui.add(
-                    Slider::new(
-                        &mut self.current_time, 
-                        0.0..=beatmap.hit_objects.last()
-                            .unwrap().start_time
+                    egui::Label::new(
+                        format!("{}", self.osu_clock.get_time())
                     )
-                    .handle_shape(HandleShape::Rect{
-                        aspect_ratio: 0.30
-                    })
-                    .step_by(1.0)
-                    .text("Time")
                 );
+
+                if !self.osu_clock.is_paused() {
+                    if ui.add(egui::Button::new("pause")).clicked() {
+                        self.osu_clock.pause();
+                    }
+                } else {
+                    if ui.add(egui::Button::new("unpause")).clicked() {
+                        self.osu_clock.unpause();
+                    }
+                }
             }
         });
 
@@ -342,6 +347,41 @@ impl OsuState {
 
     pub fn update(&mut self) {
         self.update_egui();
+        self.osu_clock.update();
+
+        self.hit_circle_instance_data.clear();
+        
+        if let Some(beatmap) = &self.current_beatmap {
+            for obj in &beatmap.hit_objects {
+                if obj.kind != HitObjectKind::Circle {
+                    continue;
+                }
+
+                const PREEMPT: u128 = 480;
+                const FADEIN: u128 = 320;
+
+                if (obj.start_time as u128) < self.osu_clock.get_time() + FADEIN 
+                && (obj.start_time as u128) > self.osu_clock.get_time() - PREEMPT {
+                    self.hit_circle_instance_data.push(
+                        HitCircleInstance::new(
+                            obj.pos.x,
+                            obj.pos.y
+                        )
+                    )
+                }
+            }
+
+            self.hit_circle_instance_buffer = self.state.device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Hit Instance Buffer"),
+                    contents: bytemuck::cast_slice(
+                        &self.hit_circle_instance_data
+                        ),
+                        usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                    }
+                );
+        }
+
         // Other stuff that need's to be updated
         // TODO
     }

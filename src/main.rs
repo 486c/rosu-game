@@ -13,6 +13,7 @@ mod egui_state;
 mod osu_state;
 mod camera;
 mod hit_circle_instance;
+mod timer;
 
 fn main() {
     let _client = tracy_client::Client::start();
