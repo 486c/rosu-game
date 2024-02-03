@@ -1,17 +1,17 @@
 use std::path::Path;
 
 use egui::{Slider, style::HandleShape};
-use rosu_pp::Beatmap;
+use rosu_pp::{Beatmap, parse::HitObjectKind};
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension, RenderPipeline, BindGroup, BufferUsages, util::DeviceExt};
 use winit::{window::Window, dpi::PhysicalSize};
 
-use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera};
+use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance};
 
 const VERTICES: &[Vertex] = &[
     Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
-    Vertex {pos: [0.0, 500.0], uv:[0.0, 1.0]},
-    Vertex {pos: [500.0, 500.0], uv:[1.0, 1.0]},
-    Vertex {pos: [500.0, 0.0], uv:[1.0, 0.0]},
+    Vertex {pos: [0.0, 20.0], uv:[0.0, 1.0]},
+    Vertex {pos: [20.0, 20.0], uv:[1.0, 1.0]},
+    Vertex {pos: [20.0, 0.0], uv:[1.0, 0.0]},
     //Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]},
     //Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]},
     //Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]},
@@ -37,6 +37,9 @@ pub struct OsuState {
     hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
     hit_circle_index_buffer: wgpu::Buffer,
+
+    hit_circle_instance_data: Vec<HitCircleInstance>,
+    hit_circle_instance_buffer: wgpu::Buffer,
 
     osu_camera: Camera,
     camera_bind_group: BindGroup,
@@ -78,9 +81,21 @@ impl OsuState {
                     usage: BufferUsages::INDEX,
                 }
             );
+
+        let hit_circle_instance_data: Vec<HitCircleInstance> = Vec::new();
+
+        let hit_circle_instance_buffer = graphics.device
+            .create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Hit Instance Buffer"),
+                    contents: bytemuck::cast_slice(
+                        &hit_circle_instance_data
+                    ),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
         
         /* Camera stuff */
-
         let camera = Camera::new(
             graphics.config.width as f32, 
             graphics.config.height as f32, 
@@ -185,7 +200,10 @@ impl OsuState {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: "vs_main",
-                    buffers: &[Vertex::desc()],
+                    buffers: &[
+                        Vertex::desc(), 
+                        HitCircleInstance::desc(),
+                    ],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
@@ -238,6 +256,8 @@ impl OsuState {
             osu_camera: camera,
             camera_bind_group,
             camera_buffer,
+            hit_circle_instance_buffer,
+            hit_circle_instance_data,
         }
     }
 
@@ -249,7 +269,28 @@ impl OsuState {
                 return;
             },
         };
-        
+
+        for obj in &map.hit_objects {
+            if obj.kind == HitObjectKind::Circle {
+                self.hit_circle_instance_data.push(
+                    HitCircleInstance::new(
+                        obj.pos.x,
+                        obj.pos.y
+                    )
+                )
+            }
+        }
+
+        self.hit_circle_instance_buffer = self.state.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Hit Instance Buffer"),
+                contents: bytemuck::cast_slice(
+                    &self.hit_circle_instance_data
+                ),
+                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            }
+        );
+
         self.current_beatmap = Some(map);
     }
 
@@ -350,6 +391,10 @@ impl OsuState {
                 0, self.hit_circle_vertex_buffer.slice(..)
             );
 
+            render_pass.set_vertex_buffer(
+                1, self.hit_circle_instance_buffer.slice(..)
+            );
+
             render_pass.set_index_buffer(
                 self.hit_circle_index_buffer.slice(..), 
                 wgpu::IndexFormat::Uint16
@@ -360,7 +405,7 @@ impl OsuState {
             render_pass.draw_indexed(
                 0..INDECIES.len() as u32,
                 0,
-                0..1,
+                0..self.hit_circle_instance_data.len() as u32,
             );
         }
 
