@@ -15,8 +15,9 @@ impl HitCircleInstance {
             5 => Float32x4,
         ];
 
-    pub fn new(x: f32, y: f32) -> HitCircleInstance {
-        let mat = Matrix4::from_translation(Vector3::new(x, y, 0.0));
+    pub fn new(x: f32, y: f32, scale: f32) -> HitCircleInstance {
+        let mat = Matrix4::from_translation(Vector3::new(x, y, 0.0))
+            * Matrix4::from_nonuniform_scale(scale, scale, 0.0);
         Self {
             mat: mat.into()
         }

@@ -7,11 +7,14 @@ use winit::{window::Window, dpi::PhysicalSize};
 
 use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance, timer::Timer};
 
+static OSU_COORDS_WIDTH: f32 = 512.0;
+static OSU_COORDS_HEIGHT: f32 = 384.0;
+
 const VERTICES: &[Vertex] = &[
     Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
-    Vertex {pos: [0.0, 50.0], uv:[0.0, 1.0]},
-    Vertex {pos: [50.0, 50.0], uv:[1.0, 1.0]},
-    Vertex {pos: [50.0, 0.0], uv:[1.0, 0.0]},
+    Vertex {pos: [0.0, 1.0], uv:[0.0, 1.0]},
+    Vertex {pos: [1.0, 1.0], uv:[1.0, 1.0]},
+    Vertex {pos: [1.0, 0.0], uv:[1.0, 0.0]},
     //Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]},
     //Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]},
     //Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]},
@@ -43,6 +46,11 @@ pub struct OsuState {
     osu_camera: Camera,
     camera_bind_group: BindGroup,
     camera_buffer: wgpu::Buffer,
+
+    // TODO remove
+    scale: f32,
+    playfield_scale: (f32, f32),
+    playfield_offsets: (f32, f32)
 }
 
 impl OsuState {
@@ -257,6 +265,9 @@ impl OsuState {
             camera_buffer,
             hit_circle_instance_buffer,
             hit_circle_instance_data,
+            scale: 1.0,
+            playfield_scale: (1.0, 1.0),
+            playfield_offsets: (0.0, 0.0),
         }
     }
 
@@ -299,6 +310,18 @@ impl OsuState {
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
         self.state.resize(new_size);
         self.osu_camera.resize(new_size);
+        
+
+        
+        self.playfield_scale = (
+            new_size.width as f32 / OSU_COORDS_WIDTH,
+            new_size.height as f32 / OSU_COORDS_HEIGHT
+        );
+
+        self.playfield_offsets = (
+            (new_size.width as f32 - (OSU_COORDS_WIDTH * self.playfield_scale.0)) / 2.0,
+            (new_size.height as f32 - (OSU_COORDS_HEIGHT as f32 * self.playfield_scale.1)) / 2.0,
+        );
 
         // TODO Recreate buffers
         self.state.queue
@@ -319,6 +342,26 @@ impl OsuState {
             if let Some(beatmap) = &self.current_beatmap {
                 ui.add(
                     egui::Label::new(
+                        format!(
+                            "Playfield scale: {} - {}", 
+                            self.playfield_scale.0,
+                            self.playfield_scale.1,
+                        )
+                    )
+                );
+
+                ui.add(
+                    egui::Label::new(
+                        format!(
+                            "Playfield offsets: {} - {}", 
+                            self.playfield_offsets.0,
+                            self.playfield_offsets.1,
+                        )
+                    )
+                );
+
+                ui.add(
+                    egui::Label::new(
                         format!("{}", self.osu_clock.get_time())
                     )
                 );
@@ -326,7 +369,7 @@ impl OsuState {
                 ui.add(
                     Slider::new(
                         &mut self.osu_clock.last_time,
-                        0.0..=(beatmap.hit_objects.last().unwrap().start_time)
+                        1.0..=(beatmap.hit_objects.last().unwrap().start_time)
                     )
                 );
 
@@ -339,6 +382,13 @@ impl OsuState {
                         self.osu_clock.unpause();
                     }
                 }
+
+                ui.add(
+                    Slider::new(
+                        &mut self.scale,
+                        0.0..=100.0
+                    ).text("Scale")
+                );
             }
         });
 
@@ -372,8 +422,9 @@ impl OsuState {
                 && obj.start_time > self.osu_clock.get_time() - PREEMPT {
                     self.hit_circle_instance_data.push(
                         HitCircleInstance::new(
-                            obj.pos.x,
-                            obj.pos.y
+                            obj.pos.x * self.playfield_scale.0,
+                            obj.pos.y * self.playfield_scale.1,
+                            self.scale
                         )
                     )
                 }

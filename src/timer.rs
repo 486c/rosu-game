@@ -38,6 +38,7 @@ impl Timer {
     
     /// Updates and returns current time
     pub fn update(&mut self) -> f64 {
+        // TODO refactor
         if self.paused {
             return self.last_time
         };
