@@ -106,14 +106,15 @@ impl OsuState {
         /* Camera stuff */
         let camera = Camera::new(
             graphics.config.width as f32, 
-            graphics.config.height as f32, 
+            graphics.config.height as f32,
+            1.0,
         );
 
         let camera_buffer = graphics.device
             .create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
                     label: Some("uniform_buffer"),
-                    contents: bytemuck::bytes_of(&camera.mat),
+                    contents: bytemuck::bytes_of(&camera.proj),
                     usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                 }
             );
@@ -317,7 +318,7 @@ impl OsuState {
             .write_buffer(
                 &self.camera_buffer, 
                 0, 
-                bytemuck::bytes_of(&self.osu_camera.mat) // TODO
+                bytemuck::bytes_of(&self.osu_camera.calc_view_proj()) // TODO
         );
     }
 
@@ -372,12 +373,19 @@ impl OsuState {
                     }
                 }
 
-                ui.add(
+                if ui.add(
                     Slider::new(
                         &mut self.scale,
                         0.0..=100.0
                     ).text("Scale")
-                );
+                ).changed() {
+                    self.osu_camera.scale(self.scale);
+                    self.state.queue.write_buffer(
+                        &self.camera_buffer, 
+                        0, 
+                        bytemuck::bytes_of(&self.osu_camera.calc_view_proj()) // TODO
+                    );
+                };
             }
         });
 

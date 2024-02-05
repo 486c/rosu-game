@@ -21,7 +21,7 @@ impl EguiState {
 
         let context = egui::Context::default();
 
-        context.set_zoom_factor(0.5);
+        // context.set_zoom_factor(0.5);
 
         //context.set_pixels_per_point(window.scale_factor() as f32);
 
