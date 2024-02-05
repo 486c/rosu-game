@@ -1,4 +1,4 @@
-use cgmath::{Matrix4, Vector3};
+use cgmath::{Matrix4, Vector3, Vector2};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -15,9 +15,12 @@ impl HitCircleInstance {
             5 => Float32x4,
         ];
 
-    pub fn new(x: f32, y: f32, scale: f32) -> HitCircleInstance {
-        let mat = Matrix4::from_translation(Vector3::new(x, y, 0.0))
-            * Matrix4::from_nonuniform_scale(scale, scale, 0.0);
+    pub fn new(
+        x: f32, y: f32, scale: Vector2<f32>
+    ) -> HitCircleInstance {
+        let mat = 
+            Matrix4::from_nonuniform_scale(scale.x, scale.y, 0.0)
+            * Matrix4::from_translation(Vector3::new(x, y, 0.0));
         Self {
             mat: mat.into()
         }

@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use cgmath::{Vector2, Matrix4, Vector3};
 use egui::{Slider, style::HandleShape};
 use rosu_pp::{Beatmap, parse::HitObjectKind};
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension, RenderPipeline, BindGroup, BufferUsages, util::DeviceExt};
@@ -12,9 +13,9 @@ static OSU_COORDS_HEIGHT: f32 = 384.0;
 
 const VERTICES: &[Vertex] = &[
     Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
-    Vertex {pos: [0.0, 1.0], uv:[0.0, 1.0]},
-    Vertex {pos: [1.0, 1.0], uv:[1.0, 1.0]},
-    Vertex {pos: [1.0, 0.0], uv:[1.0, 0.0]},
+    Vertex {pos: [0.0, 20.0], uv:[0.0, 1.0]},
+    Vertex {pos: [20.0, 20.0], uv:[1.0, 1.0]},
+    Vertex {pos: [20.0, 0.0], uv:[1.0, 0.0]},
     //Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]},
     //Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]},
     //Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]},
@@ -311,18 +312,6 @@ impl OsuState {
         self.state.resize(new_size);
         self.osu_camera.resize(new_size);
         
-
-        
-        self.playfield_scale = (
-            new_size.width as f32 / OSU_COORDS_WIDTH,
-            new_size.height as f32 / OSU_COORDS_HEIGHT
-        );
-
-        self.playfield_offsets = (
-            (new_size.width as f32 - (OSU_COORDS_WIDTH * self.playfield_scale.0)) / 2.0,
-            (new_size.height as f32 - (OSU_COORDS_HEIGHT as f32 * self.playfield_scale.1)) / 2.0,
-        );
-
         // TODO Recreate buffers
         self.state.queue
             .write_buffer(
@@ -409,6 +398,7 @@ impl OsuState {
 
         self.hit_circle_instance_data.clear();
         
+        // TODO refactor
         if let Some(beatmap) = &self.current_beatmap {
             for obj in &beatmap.hit_objects {
                 if obj.kind != HitObjectKind::Circle {
@@ -422,9 +412,11 @@ impl OsuState {
                 && obj.start_time > self.osu_clock.get_time() - PREEMPT {
                     self.hit_circle_instance_data.push(
                         HitCircleInstance::new(
-                            obj.pos.x * self.playfield_scale.0,
-                            obj.pos.y * self.playfield_scale.1,
-                            self.scale
+                            obj.pos.x,
+                            obj.pos.y,
+                            Vector2::new(
+                                1.0, 1.0
+                            ),
                         )
                     )
                 }
@@ -441,7 +433,7 @@ impl OsuState {
                 );
         }
 
-        // Other stuff that need's to be updated
+        // Other stuff that needs to be updated
         // TODO
     }
 
