@@ -8,14 +8,18 @@ use winit::{window::Window, dpi::PhysicalSize};
 
 use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance, timer::Timer};
 
-static OSU_COORDS_WIDTH: f32 = 512.0;
-static OSU_COORDS_HEIGHT: f32 = 384.0;
+const OSU_COORDS_WIDTH: f32 = 512.0;
+const OSU_COORDS_HEIGHT: f32 = 384.0;
+
+const OSU_PLAYFIELD_BORDER_TOP_PERCENT: f32 = 0.117;
+const OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT: f32 = 0.0834;
+
 
 const VERTICES: &[Vertex] = &[
     Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
-    Vertex {pos: [0.0, 20.0], uv:[0.0, 1.0]},
-    Vertex {pos: [20.0, 20.0], uv:[1.0, 1.0]},
-    Vertex {pos: [20.0, 0.0], uv:[1.0, 0.0]},
+    Vertex {pos: [0.0, 1.0], uv:[0.0, 1.0]},
+    Vertex {pos: [1.0, 1.0], uv:[1.0, 1.0]},
+    Vertex {pos: [1.0, 0.0], uv:[1.0, 0.0]},
     //Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]},
     //Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]},
     //Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]},
@@ -25,6 +29,22 @@ const VERTICES: &[Vertex] = &[
 
 //const INDECIES: &[u16] = &[0, 2, 3, 0, 1, 2];
 const INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
+
+fn calc_playfield_scale_factor(screen_w: f32, screen_h: f32) -> f32 {
+    let top_border_size = OSU_PLAYFIELD_BORDER_TOP_PERCENT * screen_h;
+    let bottom_border_size = OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT * screen_h;
+    
+    let engine_screen_w = screen_w;
+    let engine_screen_h = screen_h - bottom_border_size - top_border_size;
+
+    let scale_factor = if screen_w / OSU_COORDS_WIDTH > engine_screen_h / OSU_COORDS_HEIGHT {
+        engine_screen_h / OSU_COORDS_HEIGHT
+    } else {
+        engine_screen_w / OSU_COORDS_WIDTH
+    };
+
+    return scale_factor;
+}
 
 pub struct OsuState {
     pub window: Window,
@@ -48,8 +68,14 @@ pub struct OsuState {
     camera_bind_group: BindGroup,
     camera_buffer: wgpu::Buffer,
 
+    cs_bind_group: BindGroup,
+    cs_buffer: wgpu::Buffer,
+
     // TODO remove
+    circle_size: f32,
     scale: f32,
+    custom_scale: f32,
+    override_scale: bool,
     playfield_scale: (f32, f32),
     playfield_offsets: (f32, f32)
 }
@@ -149,6 +175,47 @@ impl OsuState {
                 label: Some("camera_bind_group"),
         });
 
+        let circle_size = 128.0;
+
+        let cs_buffer = graphics.device
+            .create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("uniform_buffer"),
+                    contents: bytemuck::bytes_of(&circle_size),
+                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                }
+            );
+
+
+        let cs_bind_group_layout = graphics.device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+            label: Some("cs_bind_group_layout"),
+        });
+
+        let cs_bind_group = graphics.device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &cs_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: cs_buffer.as_entire_binding(),
+                    }
+                ],
+                label: Some("cs_bind_group"),
+        });
+
         let hit_circle_bind_group_layout = graphics.device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("hitcircles bind"),
@@ -196,7 +263,8 @@ impl OsuState {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
                         &hit_circle_bind_group_layout,
-                        &camera_bind_group_layout
+                        &camera_bind_group_layout,
+                        &cs_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 }
@@ -250,6 +318,10 @@ impl OsuState {
             }
         );
 
+        let scale = calc_playfield_scale_factor(
+            graphics.size.width as f32,
+            graphics.size.height as f32
+        );
         
         Self {
             window,
@@ -265,9 +337,14 @@ impl OsuState {
             osu_camera: camera,
             camera_bind_group,
             camera_buffer,
+            cs_bind_group,
+            cs_buffer,
             hit_circle_instance_buffer,
             hit_circle_instance_data,
-            scale: 1.0,
+            circle_size,
+            scale,
+            custom_scale: 1.0,
+            override_scale: false,
             playfield_scale: (1.0, 1.0),
             playfield_offsets: (0.0, 0.0),
         }
@@ -310,16 +387,19 @@ impl OsuState {
     }
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
+        self.scale = calc_playfield_scale_factor(
+            new_size.width as f32,
+            new_size.height as f32
+        );
+
+        let scale = if self.override_scale { self.custom_scale } else { self.scale };
+
         self.state.resize(new_size);
         self.osu_camera.resize(new_size);
+        self.osu_camera.scale(scale);
         
         // TODO Recreate buffers
-        self.state.queue
-            .write_buffer(
-                &self.camera_buffer, 
-                0, 
-                bytemuck::bytes_of(&self.osu_camera.calc_view_proj()) // TODO
-        );
+        self.state.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.osu_camera.calc_view_proj())); // TODO
     }
 
     pub fn update_egui(&mut self) {
@@ -373,19 +453,33 @@ impl OsuState {
                     }
                 }
 
-                if ui.add(
-                    Slider::new(
-                        &mut self.scale,
-                        0.0..=100.0
-                    ).text("Scale")
-                ).changed() {
-                    self.osu_camera.scale(self.scale);
+                let scale = if self.override_scale { self.custom_scale } else { self.scale };
+
+                ui.label(format!("Current scale: {}", scale));
+
+                if ui.checkbox(&mut self.override_scale, "Custom scale").changed() {                    
+                    self.osu_camera.scale(scale);
+                    self.state.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.osu_camera.calc_view_proj()));
+                }
+
+                let slider = Slider::new(&mut self.custom_scale, 0.0..=10.0)
+                    .text("Scale")
+                    .step_by(0.1);
+
+                if ui.add_enabled(self.override_scale, slider).changed() {
+                    self.osu_camera.scale(self.custom_scale);
                     self.state.queue.write_buffer(
                         &self.camera_buffer, 
                         0, 
                         bytemuck::bytes_of(&self.osu_camera.calc_view_proj()) // TODO
                     );
                 };
+
+                let slider = Slider::new(&mut self.circle_size, 10.0..=256.0).text("CS");
+
+                if ui.add(slider).changed() {
+                    self.state.queue.write_buffer(&self.cs_buffer, 0, bytemuck::bytes_of(&self.circle_size)); // TODO
+                }
             }
         });
 
@@ -485,6 +579,7 @@ impl OsuState {
             render_pass.set_pipeline(&self.hit_circle_pipeline);
             render_pass.set_bind_group(0, &self.hit_circle_bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.cs_bind_group, &[]);
 
             render_pass.set_vertex_buffer(
                 0, self.hit_circle_vertex_buffer.slice(..)
