@@ -35,7 +35,8 @@ impl Camera {
     }
 
     pub fn scale(&mut self, scale: f32) {
-        self.view = Matrix4::identity()
+        self.view
+            = Matrix4::identity()
             * Matrix4::from_scale(scale);
     }
 
