@@ -14,7 +14,6 @@ const OSU_COORDS_HEIGHT: f32 = 384.0;
 const OSU_PLAYFIELD_BORDER_TOP_PERCENT: f32 = 0.117;
 const OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT: f32 = 0.0834;
 
-
 const VERTICES: &[Vertex] = &[
     Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
     Vertex {pos: [0.0, 1.0], uv:[0.0, 1.0]},
@@ -394,6 +393,20 @@ impl OsuState {
 
         let scale = if self.override_scale { self.custom_scale } else { self.scale };
 
+        let scaled_playfield = Vector2::new(
+            OSU_COORDS_WIDTH as f32, 
+            OSU_COORDS_HEIGHT as f32
+        ) * scale;
+
+        let bottom_border_size = 
+            OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT * new_size.height as f32;
+
+        dbg!((new_size.width as f32 - scaled_playfield.x) / 2.0);
+
+        let y_offset = (new_size.height as f32 / 2.0 - (scaled_playfield.y / 2.0)) - bottom_border_size;
+
+        dbg!((new_size.height as f32 - scaled_playfield.y) / 2.0 + y_offset);
+
         self.state.resize(new_size);
         self.osu_camera.resize(new_size);
         self.osu_camera.scale(scale);
@@ -480,6 +493,16 @@ impl OsuState {
                 if ui.add(slider).changed() {
                     self.state.queue.write_buffer(&self.cs_buffer, 0, bytemuck::bytes_of(&self.circle_size)); // TODO
                 }
+
+                let slider = Slider::new(&mut self.playfield_offsets.0, 0.0..=100.0)
+                    .text("X Offset");
+
+                ui.add(slider);
+
+                let slider = Slider::new(&mut self.playfield_offsets.1, 0.0..=100.0)
+                    .text("Y Offset");
+
+                ui.add(slider);
             }
         });
 
@@ -514,8 +537,8 @@ impl OsuState {
                 && obj.start_time > self.osu_clock.get_time() - PREEMPT {
                     self.hit_circle_instance_data.push(
                         HitCircleInstance::new(
-                            obj.pos.x,
-                            obj.pos.y,
+                            obj.pos.x + self.playfield_offsets.0,
+                            obj.pos.y + self.playfield_offsets.1,
                             Vector2::new(
                                 1.0, 1.0
                             ),
