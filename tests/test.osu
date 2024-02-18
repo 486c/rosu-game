@@ -9,11 +9,11 @@ SampleSet: Soft
 StackLeniency: 0.3
 Mode: 0
 LetterboxInBreaks: 0
-WidescreenStoryboard: 0
+WidescreenStoryboard: 1
 
 [Editor]
 DistanceSpacing: 0.2
-BeatDivisor: 4
+BeatDivisor: 16
 GridSize: 32
 TimelineZoom: 1.2
 
@@ -23,10 +23,10 @@ TitleUnicode:Lost In Time
 Artist:Celldweller
 ArtistUnicode:Celldweller
 Creator:fieryrage
-Version:Time Freeze
+Version:for test
 Source:osu!
 Tags:fa featured artist mappers mappers' guild klayton end of an empire english electronic metal rock alternative
-BeatmapID:2236260
+BeatmapID:0
 BeatmapSetID:1068163
 
 [Difficulty]
@@ -41,8 +41,7 @@ SliderTickRate:1
 //Background and Video events
 0,0,"running out.jpg",0,0
 //Break Periods
-2,197074,210017
-2,391359,397538
+2,360,313859
 //Storyboard Layer 0 (Background)
 //Storyboard Layer 1 (Fail)
 //Storyboard Layer 2 (Pass)
@@ -500,7 +499,10 @@ Combo3 : 65,65,65
 Combo4 : 142,131,113
 
 [HitObjects]
-0,0,0,5,0,0:0:0:0:
-512,0,0,5,0,0:0:0:0:
-0,384,0,5,0,0:0:0:0:
-512,384,0,5,0,0:0:0:0:
+0,0,17,5,0,0:0:0:0:
+512,0,53,1,0,0:0:0:0:
+512,384,88,1,0,0:0:0:0:
+0,384,124,1,0,0:0:0:0:
+256,192,160,1,0,0:0:0:0:
+384,256,314338,5,0,0:0:0:0:
+224,224,314374,1,0,0:0:0:0:

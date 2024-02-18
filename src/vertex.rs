@@ -18,4 +18,17 @@ impl Vertex {
             attributes: &Self::ATTRIBS,
         }
     }
+    
+    /// Used to create quad with centered origin
+    pub fn quad(width: f32, height: f32) -> [Vertex; 4] {
+        let x = -width/2.0;
+        let y = -height/2.0;
+
+        [
+            Vertex {pos: [x, y], uv:[0.0, 0.0]},
+            Vertex {pos: [x, y + height], uv:[0.0, 1.0]},
+            Vertex {pos: [x + width, y + height], uv:[1.0, 1.0]},
+            Vertex {pos: [x + width, y], uv:[1.0, 0.0]},
+        ]
+    }
 }

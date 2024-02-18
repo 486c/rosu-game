@@ -44,7 +44,7 @@ fn vs_main(
 
     out.clip_position = camera.view_proj 
 		* model_matrix
-		* vec4<f32>(model.pos * cs, 0.0, 1.0);
+		* vec4<f32>(model.pos, 0.0, 1.0);
 
     return out;
 }

@@ -1,4 +1,4 @@
-use cgmath::{ortho, Matrix4, SquareMatrix};
+use cgmath::{ortho, Matrix4, SquareMatrix, Vector2, Vector3};
 //use ultraviolet::{Mat4, projection::lh_ydown::orthographic_wgpu_dx};
 use winit::dpi::PhysicalSize;
 
@@ -34,9 +34,10 @@ impl Camera {
         );
     }
 
-    pub fn scale(&mut self, scale: f32) {
+    pub fn transform(&mut self, scale: f32, offsets: Vector2<f32>) {
         self.view
             = Matrix4::identity()
+            * Matrix4::from_translation(Vector3::new(offsets.x, offsets.y, 0.0))
             * Matrix4::from_scale(scale);
     }
 

@@ -14,20 +14,17 @@ const OSU_COORDS_HEIGHT: f32 = 384.0;
 const OSU_PLAYFIELD_BORDER_TOP_PERCENT: f32 = 0.117;
 const OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT: f32 = 0.0834;
 
-const VERTICES: &[Vertex] = &[
-    Vertex {pos: [0.0, 0.0], uv:[0.0, 0.0]},
-    Vertex {pos: [0.0, 1.0], uv:[0.0, 1.0]},
-    Vertex {pos: [1.0, 1.0], uv:[1.0, 1.0]},
-    Vertex {pos: [1.0, 0.0], uv:[1.0, 0.0]},
-    //Vertex {pos: [-1.0, 1.0], uv: [0.0, 0.0]},
-    //Vertex {pos: [-1.0, 0.0], uv: [0.0, 1.0]},
-    //Vertex {pos: [0.0, 0.0], uv: [1.0, 1.0]},
-    //Vertex {pos: [0.0, 1.0], uv: [1.0, 0.0]}, 
-];
-
+const TEXTURE_WIDTH: f32 = 128.0;
+const TEXTURE_HEIGHT: f32 = 128.0;
+const TEXTURE_X: f32 = -TEXTURE_WIDTH/2.0;
+const TEXTURE_Y: f32 = -TEXTURE_HEIGHT/2.0;
 
 //const INDECIES: &[u16] = &[0, 2, 3, 0, 1, 2];
 const INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
+
+fn get_hitcircle_diameter(cs: f32) -> f32 {
+	((1.0 - 0.7*(cs - 5.0) / 5.0) / 2.0) * 128.0 * 1.00041
+}
 
 fn calc_playfield_scale_factor(screen_w: f32, screen_h: f32) -> f32 {
     let top_border_size = OSU_PLAYFIELD_BORDER_TOP_PERCENT * screen_h;
@@ -49,6 +46,8 @@ pub struct OsuState {
     pub window: Window,
     pub state: Graphics,
     pub egui: EguiState,
+
+    vertices: [Vertex; 4],
 
     current_beatmap: Option<Beatmap>,
 
@@ -96,12 +95,13 @@ impl OsuState {
             wgpu::include_wgsl!("shaders/hit_circle.wgsl")
         );
 
+        let vertices = Vertex::quad(1.0, 1.0);
 
         let hit_circle_vertex_buffer = graphics.device
             .create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
                     label: Some("hit_circle_buffer"),
-                    contents: bytemuck::cast_slice(VERTICES),
+                    contents: bytemuck::cast_slice(&vertices),
                     usage: BufferUsages::VERTEX,
                 }
             );
@@ -346,6 +346,7 @@ impl OsuState {
             override_scale: false,
             playfield_scale: (1.0, 1.0),
             playfield_offsets: (0.0, 0.0),
+            vertices,
         }
     }
 
@@ -358,61 +359,69 @@ impl OsuState {
             },
         };
 
-        /*
-
-        for obj in &map.hit_objects {
-            if obj.kind == HitObjectKind::Circle {
-                self.hit_circle_instance_data.push(
-                    HitCircleInstance::new(
-                        obj.pos.x,
-                        obj.pos.y
-                    )
-                )
-            }
-        }
-
-        self.hit_circle_instance_buffer = self.state.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Hit Instance Buffer"),
-                contents: bytemuck::cast_slice(
-                    &self.hit_circle_instance_data
-                ),
-                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            }
-        );
-        */
-
         self.current_beatmap = Some(map);
+        self.apply_beatmap_transformations();
+    }
+
+    pub fn apply_beatmap_transformations(&mut self) {
+        //let hit_circle_multiplier = OSU_COORDS_WIDTH * self.scale / OSU_COORDS_WIDTH;
+
+        let cs = match &self.current_beatmap {
+            Some(beatmap) => beatmap.cs,
+            None => 4.0,
+        };
+
+        let hit_circle_diameter = get_hitcircle_diameter(cs);
+
+        self.vertices = Vertex::quad(hit_circle_diameter, hit_circle_diameter);
+
+        self.hit_circle_vertex_buffer = self.state.device
+            .create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("hit_circle_buffer"),
+                    contents: bytemuck::cast_slice(&self.vertices),
+                    usage: BufferUsages::VERTEX,
+                }
+            );
     }
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
+        // Calculate playfield scale
         self.scale = calc_playfield_scale_factor(
             new_size.width as f32,
             new_size.height as f32
         );
-
-        let scale = if self.override_scale { self.custom_scale } else { self.scale };
-
-        let scaled_playfield = Vector2::new(
-            OSU_COORDS_WIDTH as f32, 
-            OSU_COORDS_HEIGHT as f32
-        ) * scale;
+        
+        // Calculate playfield offsets
+        let scaled_height = OSU_COORDS_HEIGHT as f32 * self.scale;
+        let scaled_width = OSU_COORDS_WIDTH as f32 * self.scale;
 
         let bottom_border_size = 
             OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT * new_size.height as f32;
 
-        dbg!((new_size.width as f32 - scaled_playfield.x) / 2.0);
+        let y_offset = new_size.height as f32 / 2.0 - (scaled_height / 2.0) - bottom_border_size;
 
-        let y_offset = (new_size.height as f32 / 2.0 - (scaled_playfield.y / 2.0)) - bottom_border_size;
+        let y_offset = (new_size.height as f32 - scaled_height) / 2.0 + y_offset;
+        let x_offset = (new_size.width as f32 - scaled_width) / 2.0;
 
-        dbg!((new_size.height as f32 - scaled_playfield.y) / 2.0 + y_offset);
+        self.playfield_offsets.0 = x_offset;
+        self.playfield_offsets.1 = y_offset;
+
+        let offsets = Vector2::new(x_offset, y_offset);
+
 
         self.state.resize(new_size);
         self.osu_camera.resize(new_size);
-        self.osu_camera.scale(scale);
+        self.osu_camera.transform(self.scale, offsets);
+
+        self.apply_beatmap_transformations();
         
         // TODO Recreate buffers
-        self.state.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.osu_camera.calc_view_proj())); // TODO
+        self.state.queue.write_buffer(
+            &self.camera_buffer, 
+            0, 
+            bytemuck::bytes_of(&self.osu_camera.calc_view_proj())
+        ); // TODO
     }
 
     pub fn update_egui(&mut self) {
@@ -471,7 +480,7 @@ impl OsuState {
                 ui.label(format!("Current scale: {}", scale));
 
                 if ui.checkbox(&mut self.override_scale, "Custom scale").changed() {                    
-                    self.osu_camera.scale(scale);
+                    //self.osu_camera.transform(scale);
                     self.state.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.osu_camera.calc_view_proj()));
                 }
 
@@ -480,7 +489,7 @@ impl OsuState {
                     .step_by(0.1);
 
                 if ui.add_enabled(self.override_scale, slider).changed() {
-                    self.osu_camera.scale(self.custom_scale);
+                    //self.osu_camera.transform(self.custom_scale);
                     self.state.queue.write_buffer(
                         &self.camera_buffer, 
                         0, 
@@ -522,7 +531,12 @@ impl OsuState {
         self.osu_clock.update();
 
         self.hit_circle_instance_data.clear();
-        
+
+        let texture = Vector2::new(
+            1.0 * self.scale * self.circle_size,
+            1.0 * self.scale * self.circle_size,
+        );
+
         // TODO refactor
         if let Some(beatmap) = &self.current_beatmap {
             for obj in &beatmap.hit_objects {
@@ -537,8 +551,10 @@ impl OsuState {
                 && obj.start_time > self.osu_clock.get_time() - PREEMPT {
                     self.hit_circle_instance_data.push(
                         HitCircleInstance::new(
-                            obj.pos.x + self.playfield_offsets.0,
-                            obj.pos.y + self.playfield_offsets.1,
+                            //(obj.pos.x * self.scale) + self.playfield_offsets.0,
+                            //(obj.pos.y * self.scale) + self.playfield_offsets.1,
+                            obj.pos.x,
+                            obj.pos.y,
                             Vector2::new(
                                 1.0, 1.0
                             ),
