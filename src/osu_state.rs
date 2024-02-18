@@ -14,12 +14,6 @@ const OSU_COORDS_HEIGHT: f32 = 384.0;
 const OSU_PLAYFIELD_BORDER_TOP_PERCENT: f32 = 0.117;
 const OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT: f32 = 0.0834;
 
-const TEXTURE_WIDTH: f32 = 128.0;
-const TEXTURE_HEIGHT: f32 = 128.0;
-const TEXTURE_X: f32 = -TEXTURE_WIDTH/2.0;
-const TEXTURE_Y: f32 = -TEXTURE_HEIGHT/2.0;
-
-//const INDECIES: &[u16] = &[0, 2, 3, 0, 1, 2];
 const INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 fn get_hitcircle_diameter(cs: f32) -> f32 {
@@ -72,10 +66,6 @@ pub struct OsuState {
     // TODO remove
     circle_size: f32,
     scale: f32,
-    custom_scale: f32,
-    override_scale: bool,
-    playfield_scale: (f32, f32),
-    playfield_offsets: (f32, f32)
 }
 
 impl OsuState {
@@ -342,10 +332,6 @@ impl OsuState {
             hit_circle_instance_data,
             circle_size,
             scale,
-            custom_scale: 1.0,
-            override_scale: false,
-            playfield_scale: (1.0, 1.0),
-            playfield_offsets: (0.0, 0.0),
             vertices,
         }
     }
@@ -399,13 +385,10 @@ impl OsuState {
         let bottom_border_size = 
             OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT * new_size.height as f32;
 
-        let y_offset = new_size.height as f32 / 2.0 - (scaled_height / 2.0) - bottom_border_size;
+        let y_offset = (new_size.height as f32 - scaled_height) / 2.0 
+            + (new_size.height as f32 / 2.0 - (scaled_height / 2.0) - bottom_border_size);
 
-        let y_offset = (new_size.height as f32 - scaled_height) / 2.0 + y_offset;
         let x_offset = (new_size.width as f32 - scaled_width) / 2.0;
-
-        self.playfield_offsets.0 = x_offset;
-        self.playfield_offsets.1 = y_offset;
 
         let offsets = Vector2::new(x_offset, y_offset);
 
@@ -434,26 +417,6 @@ impl OsuState {
             if let Some(beatmap) = &self.current_beatmap {
                 ui.add(
                     egui::Label::new(
-                        format!(
-                            "Playfield scale: {} - {}", 
-                            self.playfield_scale.0,
-                            self.playfield_scale.1,
-                        )
-                    )
-                );
-
-                ui.add(
-                    egui::Label::new(
-                        format!(
-                            "Playfield offsets: {} - {}", 
-                            self.playfield_offsets.0,
-                            self.playfield_offsets.1,
-                        )
-                    )
-                );
-
-                ui.add(
-                    egui::Label::new(
                         format!("{}", self.osu_clock.get_time())
                     )
                 );
@@ -475,43 +438,12 @@ impl OsuState {
                     }
                 }
 
-                let scale = if self.override_scale { self.custom_scale } else { self.scale };
-
-                ui.label(format!("Current scale: {}", scale));
-
-                if ui.checkbox(&mut self.override_scale, "Custom scale").changed() {                    
-                    //self.osu_camera.transform(scale);
-                    self.state.queue.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.osu_camera.calc_view_proj()));
-                }
-
-                let slider = Slider::new(&mut self.custom_scale, 0.0..=10.0)
-                    .text("Scale")
-                    .step_by(0.1);
-
-                if ui.add_enabled(self.override_scale, slider).changed() {
-                    //self.osu_camera.transform(self.custom_scale);
-                    self.state.queue.write_buffer(
-                        &self.camera_buffer, 
-                        0, 
-                        bytemuck::bytes_of(&self.osu_camera.calc_view_proj()) // TODO
-                    );
-                };
-
                 let slider = Slider::new(&mut self.circle_size, 10.0..=256.0).text("CS");
 
                 if ui.add(slider).changed() {
                     self.state.queue.write_buffer(&self.cs_buffer, 0, bytemuck::bytes_of(&self.circle_size)); // TODO
                 }
 
-                let slider = Slider::new(&mut self.playfield_offsets.0, 0.0..=100.0)
-                    .text("X Offset");
-
-                ui.add(slider);
-
-                let slider = Slider::new(&mut self.playfield_offsets.1, 0.0..=100.0)
-                    .text("Y Offset");
-
-                ui.add(slider);
             }
         });
 
@@ -532,11 +464,6 @@ impl OsuState {
 
         self.hit_circle_instance_data.clear();
 
-        let texture = Vector2::new(
-            1.0 * self.scale * self.circle_size,
-            1.0 * self.scale * self.circle_size,
-        );
-
         // TODO refactor
         if let Some(beatmap) = &self.current_beatmap {
             for obj in &beatmap.hit_objects {
@@ -551,8 +478,6 @@ impl OsuState {
                 && obj.start_time > self.osu_clock.get_time() - PREEMPT {
                     self.hit_circle_instance_data.push(
                         HitCircleInstance::new(
-                            //(obj.pos.x * self.scale) + self.playfield_offsets.0,
-                            //(obj.pos.y * self.scale) + self.playfield_offsets.1,
                             obj.pos.x,
                             obj.pos.y,
                             Vector2::new(
