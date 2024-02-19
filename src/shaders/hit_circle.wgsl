@@ -7,8 +7,14 @@ struct CameraUniform {
 @group(1) @binding(0)
 var<uniform> camera: CameraUniform;
 
+struct OsuShaderState {
+	time: f32,
+	preempt: f32,
+	fadein: f32
+}
+
 @group(2) @binding(0)
-var<uniform> cs: f32;
+var<uniform> shader_state: CameraUniform;
 
 struct VertexInput {
 	@location(0) pos: vec2<f32>,
@@ -20,11 +26,13 @@ struct InstanceInput {
 	@location(3) row2: vec4<f32>,
 	@location(4) row3: vec4<f32>,
 	@location(5) row4: vec4<f32>,
+	@location(6) time: f32,
 }
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
 	@location(0) uv: vec2<f32>,
+	@location(1) alpha: f32,
 };
 
 @vertex
@@ -41,6 +49,8 @@ fn vs_main(
 		instance.row3,
 		instance.row4,
 	);
+
+	out.alpha = 0.0;
 
     out.clip_position = camera.view_proj 
 		* model_matrix

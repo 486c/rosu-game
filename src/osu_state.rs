@@ -6,7 +6,7 @@ use rosu_pp::{Beatmap, parse::HitObjectKind};
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension, RenderPipeline, BindGroup, BufferUsages, util::DeviceExt};
 use winit::{window::Window, dpi::PhysicalSize};
 
-use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance, timer::Timer};
+use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance, timer::Timer, osu_shader_state::OsuShaderState};
 
 const OSU_COORDS_WIDTH: f32 = 512.0;
 const OSU_COORDS_HEIGHT: f32 = 384.0;
@@ -18,6 +18,23 @@ const INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 fn get_hitcircle_diameter(cs: f32) -> f32 {
 	((1.0 - 0.7*(cs - 5.0) / 5.0) / 2.0) * 128.0 * 1.00041
+}
+
+/// Return preempt and fadein based on AR
+fn calculate_preempt_fadein(ar: f32) -> (f32, f32) {
+    if ar > 5.0 {
+        (
+            1200.0 - 750.0 * (ar - 5.0) / 5.0, 
+            800.0 - 500.0 * (ar - 5.0) / 5.0
+        )
+    } else if ar < 5.0 {
+        (
+            1200.0 + 600.0 * (5.0 - ar) / 5.0, 
+            800.0 + 400.0 * (5.0 - ar) / 5.0
+        )
+    } else {
+        (1200.0, 800.0)
+    }
 }
 
 fn calc_playfield_scale_factor(screen_w: f32, screen_h: f32) -> f32 {
@@ -60,11 +77,11 @@ pub struct OsuState {
     camera_bind_group: BindGroup,
     camera_buffer: wgpu::Buffer,
 
-    cs_bind_group: BindGroup,
-    cs_buffer: wgpu::Buffer,
+    state_bind_group: BindGroup,
+    state_buffer: wgpu::Buffer,
 
     // TODO remove
-    circle_size: f32,
+    shader_state: OsuShaderState,
     scale: f32,
 }
 
@@ -163,20 +180,21 @@ impl OsuState {
                 ],
                 label: Some("camera_bind_group"),
         });
+        
+        // Represent's state of the game that shader need to know
+        let state = OsuShaderState::default();
 
-        let circle_size = 128.0;
-
-        let cs_buffer = graphics.device
+        let state_buffer = graphics.device
             .create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
                     label: Some("uniform_buffer"),
-                    contents: bytemuck::bytes_of(&circle_size),
+                    contents: bytemuck::bytes_of(&state),
                     usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                 }
             );
 
 
-        let cs_bind_group_layout = graphics.device
+        let state_bind_group_layout = graphics.device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -190,19 +208,19 @@ impl OsuState {
                     count: None,
                 }
             ],
-            label: Some("cs_bind_group_layout"),
+            label: Some("state_bind_group_layout"),
         });
 
-        let cs_bind_group = graphics.device
+        let state_bind_group = graphics.device
             .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &cs_bind_group_layout,
+                layout: &state_bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: cs_buffer.as_entire_binding(),
+                        resource: state_buffer.as_entire_binding(),
                     }
                 ],
-                label: Some("cs_bind_group"),
+                label: Some("state_bind_group"),
         });
 
         let hit_circle_bind_group_layout = graphics.device
@@ -253,7 +271,7 @@ impl OsuState {
                     bind_group_layouts: &[
                         &hit_circle_bind_group_layout,
                         &camera_bind_group_layout,
-                        &cs_bind_group_layout,
+                        &state_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 }
@@ -326,11 +344,11 @@ impl OsuState {
             osu_camera: camera,
             camera_bind_group,
             camera_buffer,
-            cs_bind_group,
-            cs_buffer,
+            state_bind_group,
+            state_buffer,
             hit_circle_instance_buffer,
             hit_circle_instance_data,
-            circle_size,
+            shader_state: state,
             scale,
             vertices,
         }
@@ -344,6 +362,11 @@ impl OsuState {
                 return;
             },
         };
+
+
+        let (preempt, fadein) = calculate_preempt_fadein(map.ar);
+        self.shader_state.preempt = preempt;
+        self.shader_state.fadein = fadein;
 
         self.current_beatmap = Some(map);
         self.apply_beatmap_transformations();
@@ -437,13 +460,6 @@ impl OsuState {
                         self.osu_clock.unpause();
                     }
                 }
-
-                let slider = Slider::new(&mut self.circle_size, 10.0..=256.0).text("CS");
-
-                if ui.add(slider).changed() {
-                    self.state.queue.write_buffer(&self.cs_buffer, 0, bytemuck::bytes_of(&self.circle_size)); // TODO
-                }
-
             }
         });
 
@@ -461,6 +477,14 @@ impl OsuState {
     pub fn update(&mut self) {
         self.update_egui();
         self.osu_clock.update();
+
+        // Update shaders state
+        self.state.queue
+            .write_buffer(
+                &self.state_buffer, 
+                0, 
+                bytemuck::bytes_of(&self.shader_state)
+            );
 
         self.hit_circle_instance_data.clear();
 
@@ -480,9 +504,7 @@ impl OsuState {
                         HitCircleInstance::new(
                             obj.pos.x,
                             obj.pos.y,
-                            Vector2::new(
-                                1.0, 1.0
-                            ),
+                            obj.start_time as f32, // TODO
                         )
                     )
                 }
@@ -543,7 +565,7 @@ impl OsuState {
             render_pass.set_pipeline(&self.hit_circle_pipeline);
             render_pass.set_bind_group(0, &self.hit_circle_bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.cs_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.state_bind_group, &[]);
 
             render_pass.set_vertex_buffer(
                 0, self.hit_circle_vertex_buffer.slice(..)
