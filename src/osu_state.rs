@@ -373,6 +373,33 @@ impl OsuState {
 
         self.current_beatmap = Some(map);
         self.apply_beatmap_transformations();
+
+        // TODO refactor
+        if let Some(beatmap) = &self.current_beatmap {
+            for obj in &beatmap.hit_objects {
+                if obj.kind != HitObjectKind::Circle {
+                    continue;
+                }
+
+                self.hit_circle_instance_data.push(
+                    HitCircleInstance::new(
+                        obj.pos.x,
+                        obj.pos.y,
+                        obj.start_time as f32, // TODO
+                    )
+                )
+            }
+        }
+
+        self.hit_circle_instance_buffer = self.state.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Hit Instance Buffer"),
+                contents: bytemuck::cast_slice(
+                    &self.hit_circle_instance_data
+                    ),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
     }
 
     pub fn apply_beatmap_transformations(&mut self) {
@@ -490,35 +517,6 @@ impl OsuState {
                 0, 
                 bytemuck::bytes_of(&self.shader_state)
             );
-
-        self.hit_circle_instance_data.clear();
-
-        // TODO refactor
-        if let Some(beatmap) = &self.current_beatmap {
-            for obj in &beatmap.hit_objects {
-                if obj.kind != HitObjectKind::Circle {
-                    continue;
-                }
-                
-                self.hit_circle_instance_data.push(
-                    HitCircleInstance::new(
-                        obj.pos.x,
-                        obj.pos.y,
-                        obj.start_time as f32, // TODO
-                    )
-                )
-            }
-
-            self.hit_circle_instance_buffer = self.state.device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Hit Instance Buffer"),
-                    contents: bytemuck::cast_slice(
-                        &self.hit_circle_instance_data
-                        ),
-                        usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                    }
-                );
-        }
 
         // Other stuff that needs to be updated
         // TODO
