@@ -14,7 +14,7 @@ struct OsuShaderState {
 }
 
 @group(2) @binding(0)
-var<uniform> shader_state: CameraUniform;
+var<uniform> shader_state: OsuShaderState;
 
 struct VertexInput {
 	@location(0) pos: vec2<f32>,
@@ -50,7 +50,22 @@ fn vs_main(
 		instance.row4,
 	);
 
-	out.alpha = 0.0;
+
+	var x1 = instance.time - shader_state.preempt;
+	var y1 = 0.0;
+
+	var x3 = (instance.time - shader_state.preempt) + shader_state.fadein;
+	var y3 = 1.0;
+
+	var x2 = shader_state.time;
+
+	var alpha = (x2-x1)*(y3-y1)/(x3-x1)+y1;
+
+	if alpha > 1.0 {
+		out.alpha = 0.0;
+	} else {
+		out.alpha = clamp(alpha, 0.0, 1.0);
+	}
 
     out.clip_position = camera.view_proj 
 		* model_matrix
@@ -69,6 +84,8 @@ var texture_sampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	return textureSample(texture, texture_sampler, in.uv);
-	//return vec4<f32>(1.0, 0.2, 0.1, 1.0);
+	//var out = textureSample(texture, texture_sampler, in.uv);
+	//return out;
+	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
+	return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
 }

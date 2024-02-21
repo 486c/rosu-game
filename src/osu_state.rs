@@ -368,6 +368,9 @@ impl OsuState {
         self.shader_state.preempt = preempt;
         self.shader_state.fadein = fadein;
 
+        dbg!(preempt);
+        dbg!(fadein);
+
         self.current_beatmap = Some(map);
         self.apply_beatmap_transformations();
     }
@@ -478,6 +481,8 @@ impl OsuState {
         self.update_egui();
         self.osu_clock.update();
 
+        self.shader_state.time = self.osu_clock.get_time() as f32;
+
         // Update shaders state
         self.state.queue
             .write_buffer(
@@ -494,20 +499,14 @@ impl OsuState {
                 if obj.kind != HitObjectKind::Circle {
                     continue;
                 }
-
-                const PREEMPT: f64 = 480.0;
-                const FADEIN: f64 = 320.0;
                 
-                if obj.start_time < self.osu_clock.get_time() + FADEIN 
-                && obj.start_time > self.osu_clock.get_time() - PREEMPT {
-                    self.hit_circle_instance_data.push(
-                        HitCircleInstance::new(
-                            obj.pos.x,
-                            obj.pos.y,
-                            obj.start_time as f32, // TODO
-                        )
+                self.hit_circle_instance_data.push(
+                    HitCircleInstance::new(
+                        obj.pos.x,
+                        obj.pos.y,
+                        obj.start_time as f32, // TODO
                     )
-                }
+                )
             }
 
             self.hit_circle_instance_buffer = self.state.device.create_buffer_init(
