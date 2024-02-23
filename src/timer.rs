@@ -46,7 +46,7 @@ impl Timer {
         let now = Instant::now();
 
         let diff = now.duration_since(self.now);
-        
+
         // Converting to millis
         self.last_time += diff.as_secs_f64() * 1000.0;
 

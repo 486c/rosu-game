@@ -25,7 +25,7 @@ impl Graphics {
             limits: wgpu::Limits::default(),
         };
         let power_preferences = wgpu::PowerPreference::default();
-        let present_mode = PresentMode::Fifo;
+        let present_mode = PresentMode::AutoVsync;
 
         let size = window.inner_size();
 

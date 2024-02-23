@@ -473,7 +473,7 @@ impl OsuState {
                         format!("{}", self.osu_clock.get_time())
                     )
                 );
-            
+
                 ui.add(
                     Slider::new(
                         &mut self.osu_clock.last_time,
@@ -523,7 +523,7 @@ impl OsuState {
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let _span = tracy_client::span!("wgpu render");
+        let _span = tracy_client::span!("osu_state render");
 
         let output = self.state.surface.get_current_texture()?;
         let view = output.texture.create_view(

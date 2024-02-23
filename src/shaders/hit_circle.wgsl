@@ -35,6 +35,10 @@ struct VertexOutput {
 	@location(1) alpha: f32,
 };
 
+fn interpolate(x1: f32, y1: f32, x3: f32, y3: f32, x2: f32) -> f32 {
+	return (x2-x1)*(y3-y1)/(x3-x1)+y1;
+}
+
 @vertex
 fn vs_main(
 	model: VertexInput,
@@ -50,21 +54,18 @@ fn vs_main(
 		instance.row4,
 	);
 
+	var fadein_alpha = interpolate(
+		instance.time - shader_state.preempt,
+		0.0,
+		(instance.time - shader_state.preempt) + shader_state.fadein,
+		1.0,
+		shader_state.time
+	);
 
-	var x1 = instance.time - shader_state.preempt;
-	var y1 = 0.0;
-
-	var x3 = (instance.time - shader_state.preempt) + shader_state.fadein;
-	var y3 = 1.0;
-
-	var x2 = shader_state.time;
-
-	var alpha = (x2-x1)*(y3-y1)/(x3-x1)+y1;
-
-	if alpha > 1.0 {
+	if fadein_alpha > 1.0 {
 		out.alpha = 0.0;
 	} else {
-		out.alpha = clamp(alpha, 0.0, 1.0);
+		out.alpha = fadein_alpha;
 	}
 
     out.clip_position = camera.view_proj 
