@@ -1,5 +1,6 @@
-use std::{path::Path, fs::File, io::BufReader};
+use std::path::Path;
 use image::{io::Reader as ImageReader, GenericImageView, DynamicImage};
+use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension};
 
 use crate::graphics::Graphics;
 
@@ -7,10 +8,14 @@ pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
+    pub bind_group: wgpu::BindGroup,
+    pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl Texture {
-    pub fn from_path<P: AsRef<Path>>(path: P, graphics: &Graphics) -> Self {
+    pub fn from_path<P: AsRef<Path>>(
+        path: P, graphics: &Graphics
+    ) -> Self {
         let image = ImageReader::open(path).unwrap()
             .decode().unwrap();
 
@@ -38,7 +43,7 @@ impl Texture {
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             }
-        );
+            );
 
         graphics.queue.write_texture(
             wgpu::ImageCopyTexture {
@@ -54,9 +59,12 @@ impl Texture {
                 rows_per_image: Some(dimensions.1),
             },
             size,
+            );
+
+        let view = texture.create_view(
+            &wgpu::TextureViewDescriptor::default()
         );
 
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = graphics.device.create_sampler(
             &wgpu::SamplerDescriptor {
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -69,10 +77,61 @@ impl Texture {
             }
         );
 
+        let bind_group_layout = graphics.device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("texture_something"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float {
+                                filterable: true
+                            },
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler (
+                            wgpu::SamplerBindingType::Filtering
+                            ),
+                            count: None,
+                    },
+                ],
+            });
+
+
+        let bind_group = graphics.device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(
+                            &view
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(
+                            &sampler
+                        ),
+                    },
+                ],
+                label: Some("hit_circle_bind"),
+            }
+        );
+
         Self {
             texture,
             view,
-            sampler
+            sampler,
+            bind_group_layout,
+            bind_group,
         }
     }
 }

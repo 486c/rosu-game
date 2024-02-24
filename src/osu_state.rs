@@ -72,7 +72,6 @@ pub struct OsuState {
 
     osu_clock: Timer,
 
-    hit_circle_bind_group: BindGroup,
     hit_circle_texture: Texture,
     hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
@@ -103,6 +102,11 @@ impl OsuState {
 
         let hit_circle_texture = Texture::from_path(
             "skin/hitcircle.png",
+            &graphics
+        );
+
+        let approach_circle_texture = Texture::from_path(
+            "skin/approachcircle.png",
             &graphics
         );
 
@@ -231,53 +235,12 @@ impl OsuState {
                 label: Some("state_bind_group"),
         });
 
-        let hit_circle_bind_group_layout = graphics.device
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("hitcircles bind"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            sample_type: TextureSampleType::Float {filterable: true},
-                            view_dimension: TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Sampler (wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
-
-        let hit_circle_bind_group = graphics.device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                layout: &hit_circle_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&hit_circle_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&hit_circle_texture.sampler),
-                    }
-                ],
-                label: Some("hit_circle_bind"),
-            }
-        );
-
         let hit_circle_pipeline_layout = graphics.device
             .create_pipeline_layout(
                 &wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
-                        &hit_circle_bind_group_layout,
+                        &hit_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
                         &state_bind_group_layout,
                     ],
@@ -346,7 +309,6 @@ impl OsuState {
             osu_clock: Timer::new(),
             hit_circle_texture,
             hit_circle_pipeline,
-            hit_circle_bind_group,
             hit_circle_vertex_buffer,
             hit_circle_index_buffer,
             osu_camera: camera,
@@ -571,7 +533,11 @@ impl OsuState {
             });
 
             render_pass.set_pipeline(&self.hit_circle_pipeline);
-            render_pass.set_bind_group(0, &self.hit_circle_bind_group, &[]);
+            render_pass.set_bind_group(
+                0, 
+                &self.hit_circle_texture.bind_group, 
+                &[]
+            );
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(2, &self.state_bind_group, &[]);
 
