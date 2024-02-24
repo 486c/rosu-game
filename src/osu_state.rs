@@ -37,6 +37,14 @@ fn calculate_preempt_fadein(ar: f32) -> (f32, f32) {
     }
 }
 
+fn calculate_hit_window(od: f32) -> (f32, f32, f32) {
+    (
+        80.0 - 6.0 * od,
+        140.0 - 8.0 * od,
+        200.0 - 10.0 * od
+    )
+}
+
 fn calc_playfield_scale_factor(screen_w: f32, screen_h: f32) -> f32 {
     let top_border_size = OSU_PLAYFIELD_BORDER_TOP_PERCENT * screen_h;
     let bottom_border_size = OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT * screen_h;
@@ -365,8 +373,11 @@ impl OsuState {
 
 
         let (preempt, fadein) = calculate_preempt_fadein(map.ar);
+        let (x300, x100, x50) = calculate_hit_window(map.od);
+
         self.shader_state.preempt = preempt;
         self.shader_state.fadein = fadein;
+        self.shader_state.hit_offset = x50;
 
         dbg!(preempt);
         dbg!(fadein);

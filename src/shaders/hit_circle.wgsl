@@ -10,7 +10,8 @@ var<uniform> camera: CameraUniform;
 struct OsuShaderState {
 	time: f32,
 	preempt: f32,
-	fadein: f32
+	fadein: f32,
+	hit_offset: f32
 }
 
 @group(2) @binding(0)
@@ -62,7 +63,7 @@ fn vs_main(
 		shader_state.time
 	);
 
-	if fadein_alpha > 1.0 {
+	if instance.time < shader_state.time + shader_state.hit_offset {
 		out.alpha = 0.0;
 	} else {
 		out.alpha = fadein_alpha;
