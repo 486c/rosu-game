@@ -28,6 +28,7 @@ struct InstanceInput {
 	@location(4) row3: vec4<f32>,
 	@location(5) row4: vec4<f32>,
 	@location(6) time: f32,
+	@location(7) is_approach: u32,
 }
 
 struct VertexOutput {
@@ -47,6 +48,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 	out.uv = model.uv;
+
 
 	let model_matrix = mat4x4<f32>(
 		instance.row1,
@@ -68,10 +70,20 @@ fn vs_main(
 	} else {
 		out.alpha = fadein_alpha;
 	}
+	
+	/*
+	var scale = 1.0;
+	if bool(instance.is_approach) {
+		scale = 1.5;
+	}
+	*/
+
+	var scaled_pos = vec4<f32>(1.0, 1.0, 0.0, 1.0) 
+		* vec4<f32>(model.pos, 0.0, 1.0);
 
     out.clip_position = camera.view_proj 
 		* model_matrix
-		* vec4<f32>(model.pos, 0.0, 1.0);
+		* scaled_pos;
 
     return out;
 }

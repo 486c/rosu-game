@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use cgmath::{Vector2, Matrix4, Vector3};
-use egui::{Slider, style::HandleShape};
+use cgmath::Vector2;
+use egui::Slider;
 use rosu_pp::{Beatmap, parse::HitObjectKind};
-use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension, RenderPipeline, BindGroup, BufferUsages, util::DeviceExt};
+use wgpu::{util::DeviceExt, RenderPipeline, BindGroup, BufferUsages};
 use winit::{window::Window, dpi::PhysicalSize};
 
 use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance, timer::Timer, osu_shader_state::OsuShaderState};
@@ -325,6 +325,7 @@ impl OsuState {
     }
 
     pub fn open_beatmap<P: AsRef<Path>>(&mut self, path: P) {
+        dbg!("open beatmap");
         let map = match Beatmap::from_path(path) {
             Ok(m) => m,
             Err(_) => {
@@ -335,7 +336,7 @@ impl OsuState {
 
 
         let (preempt, fadein) = calculate_preempt_fadein(map.ar);
-        let (x300, x100, x50) = calculate_hit_window(map.od);
+        let (_x300, _x100, x50) = calculate_hit_window(map.od);
 
         self.shader_state.preempt = preempt;
         self.shader_state.fadein = fadein;
@@ -353,14 +354,26 @@ impl OsuState {
                 if obj.kind != HitObjectKind::Circle {
                     continue;
                 }
-
+                
+                // Hit Circle itself
                 self.hit_circle_instance_data.push(
                     HitCircleInstance::new(
                         obj.pos.x,
                         obj.pos.y,
                         obj.start_time as f32, // TODO
+                        false
                     )
-                )
+                );
+
+                // Approach circle
+                self.hit_circle_instance_data.push(
+                    HitCircleInstance::new(
+                        obj.pos.x,
+                        obj.pos.y,
+                        obj.start_time as f32, // TODO
+                        true
+                    )
+                );
             }
         }
 
