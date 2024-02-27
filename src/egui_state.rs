@@ -17,7 +17,7 @@ pub struct EguiState {
 }
 
 impl EguiState {
-    pub fn new(device: &Device, window: &Window) -> Self {
+    pub fn new(graphics: &Graphics, window: &Window) -> Self {
 
         let context = egui::Context::default();
 
@@ -34,8 +34,8 @@ impl EguiState {
 
 
         let egui_renderer = Renderer::new(
-            &device, 
-            wgpu::TextureFormat::Bgra8UnormSrgb,
+            &graphics.device, 
+            graphics.config.format,
             None, 
             1
         );

@@ -98,7 +98,7 @@ impl OsuState {
         graphics: Graphics
     ) -> Self {
 
-        let egui = EguiState::new(&graphics.device, &window);
+        let egui = EguiState::new(&graphics, &window);
 
         let hit_circle_texture = Texture::from_path(
             "skin/hitcircle.png",
