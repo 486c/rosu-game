@@ -2,10 +2,6 @@ use wgpu::{Instance, InstanceDescriptor, RequestAdapterOptions, PresentMode};
 use winit::window::Window;
 use futures::executor::block_on;
 
-#[global_allocator]
-static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System>  =
-    tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
-
 pub struct Graphics {
     pub surface: wgpu::Surface,
     pub device: wgpu::Device,
@@ -18,7 +14,7 @@ impl Graphics {
     pub fn new(window: &Window) -> Self {
         let _span = tracy_client::span!("wgpu init");
 
-        let supported_backend = wgpu::Backends::VULKAN;
+        let supported_backend = wgpu::Backends::GL;
         let device_descriptor = wgpu::DeviceDescriptor {
             label: None,
             features: wgpu::Features::empty(),
