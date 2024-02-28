@@ -73,6 +73,7 @@ pub struct OsuState {
     osu_clock: Timer,
 
     hit_circle_texture: Texture,
+    approach_circle_texture: Texture,
     hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
     hit_circle_index_buffer: wgpu::Buffer,
@@ -241,6 +242,7 @@ impl OsuState {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
                         &hit_circle_texture.bind_group_layout,
+                        &approach_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
                         &state_bind_group_layout,
                     ],
@@ -321,6 +323,7 @@ impl OsuState {
             shader_state: state,
             scale,
             vertices,
+            approach_circle_texture,
         }
     }
 
@@ -551,8 +554,15 @@ impl OsuState {
                 &self.hit_circle_texture.bind_group, 
                 &[]
             );
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.state_bind_group, &[]);
+
+            render_pass.set_bind_group(
+                1, 
+                &self.approach_circle_texture.bind_group, 
+                &[]
+            );
+
+            render_pass.set_bind_group(2, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(3, &self.state_bind_group, &[]);
 
             render_pass.set_vertex_buffer(
                 0, self.hit_circle_vertex_buffer.slice(..)

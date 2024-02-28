@@ -98,8 +98,8 @@ impl Texture {
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Sampler (
                             wgpu::SamplerBindingType::Filtering
-                            ),
-                            count: None,
+                        ),
+                        count: None,
                     },
                 ],
             });
