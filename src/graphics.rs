@@ -14,7 +14,7 @@ impl Graphics {
     pub fn new(window: &Window) -> Self {
         let _span = tracy_client::span!("wgpu init");
 
-        let supported_backend = wgpu::Backends::GL;
+        let supported_backend = wgpu::Backends::VULKAN;
         let device_descriptor = wgpu::DeviceDescriptor {
             label: None,
             features: wgpu::Features::empty(),

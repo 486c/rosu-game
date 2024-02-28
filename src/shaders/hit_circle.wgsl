@@ -65,7 +65,15 @@ fn vs_main(
 		shader_state.time
 	);
 
-	if instance.time < shader_state.time + shader_state.hit_offset {
+	var approach_scale = interpolate(
+		instance.time,
+		1.0,
+		instance.time - shader_state.preempt,
+		4.0,
+		shader_state.time
+	);
+
+	if instance.time < shader_state.time {
 		out.alpha = 0.0;
 	} else {
 		out.alpha = fadein_alpha;
@@ -73,7 +81,7 @@ fn vs_main(
 	
 	var scale = 1.0;
 	if bool(instance.is_approach) {
-		scale = 1.5;
+		scale = approach_scale;
 	}
 
 	var scaled_pos = vec4<f32>(scale, scale, 0.0, 1.0) 
