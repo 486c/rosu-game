@@ -32,8 +32,8 @@ struct VertexOutput {
 	@location(1) alpha: f32,
 };
 
-fn interpolate(x1: f32, y1: f32, x3: f32, y3: f32, x2: f32) -> f32 {
-	return (x2-x1)*(y3-y1)/(x3-x1)+y1;
+fn lerp(a: f32, b: f32, v: f32) -> f32 {
+	return a + v * (b - a);
 }
 
 @vertex
@@ -51,18 +51,14 @@ fn vs_main(
 		instance.pos.x, instance.pos.y, 0.0, 1.0,
 	);
 
-	let approach_scale: f32 = clamp(interpolate(
-		instance.time,
-		1.0,
-		instance.time - shader_state.preempt,
-		4.0,
-		shader_state.time
-	), 1.0, 4.0);
-
 	let start_time = instance.time - shader_state.preempt;
 	let end_time = start_time + shader_state.fadein;
 
 	let fadein_alpha2 = (shader_state.time-start_time)/(end_time-start_time);
+	let approach_progress = (shader_state.time-start_time)/(instance.time-start_time); 
+
+	//let approach_scale = clamp(4.0 * approach_progress, 1.0, 4.0);
+	let approach_scale = clamp(lerp(1.0, 4.0, 1.0 - approach_progress), 1.0, 4.0);
 
 	if shader_state.time > instance.time {
 		out.alpha = 0.0;
