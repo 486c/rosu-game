@@ -32,6 +32,10 @@ struct VertexOutput {
 	@location(1) alpha: f32,
 };
 
+fn interpolate(x1: f32, y1: f32, x3: f32, y3: f32, x2: f32) -> f32 {
+	return (x2-x1)*(y3-y1)/(x3-x1)+y1;
+}
+
 @vertex
 fn vs_main(
 	model: VertexInput,
@@ -45,11 +49,19 @@ fn vs_main(
 		0.0, 1.0, 0.0, 0.0,
 		0.0, 0.0, 1.0, 0.0,
 		instance.pos.x, instance.pos.y, 0.0, 1.0,
-
 	);
+
+	let approach_scale: f32 = clamp(interpolate(
+		instance.time,
+		1.0,
+		instance.time - shader_state.preempt,
+		4.0,
+		shader_state.time
+	), 1.0, 4.0);
 
 	let start_time = instance.time - shader_state.preempt;
 	let end_time = start_time + shader_state.fadein;
+
 	let fadein_alpha2 = (shader_state.time-start_time)/(end_time-start_time);
 
 	if shader_state.time > instance.time {
@@ -58,7 +70,7 @@ fn vs_main(
 		out.alpha = fadein_alpha2;
 	}
 
-	let scaled_pos = vec4<f32>(1.0, 1.0, 0.0, 1.0) 
+	let scaled_pos = vec4<f32>(approach_scale, approach_scale, 0.0, 1.0) 
 		* vec4<f32>(model.pos, 0.0, 1.0);
 
     out.clip_position = camera.view_proj 
@@ -75,7 +87,6 @@ fn vs_main(
 var texture: texture_2d<f32>;
 @group(0) @binding(1)
 var texture_sampler: sampler;
-
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {

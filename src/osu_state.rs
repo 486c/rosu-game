@@ -75,11 +75,14 @@ pub struct OsuState {
     hit_circle_texture: Texture,
     approach_circle_texture: Texture,
     hit_circle_pipeline: RenderPipeline,
+    approach_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
     hit_circle_index_buffer: wgpu::Buffer,
 
     hit_circle_instance_data: Vec<HitCircleInstance>,
     hit_circle_instance_buffer: wgpu::Buffer,
+    approach_circle_instance_data: Vec<HitCircleInstance>,
+    approach_circle_instance_buffer: wgpu::Buffer,
 
     osu_camera: Camera,
     camera_bind_group: BindGroup,
@@ -111,8 +114,12 @@ impl OsuState {
             &graphics
         );
 
-        let shader = graphics.device.create_shader_module(
+        let hit_circle_shader = graphics.device.create_shader_module(
             wgpu::include_wgsl!("shaders/hit_circle.wgsl")
+        );
+
+        let approach_circle_shader = graphics.device.create_shader_module(
+            wgpu::include_wgsl!("shaders/approach_circle.wgsl")
         );
 
         let vertices = Vertex::quad(1.0, 1.0);
@@ -143,6 +150,20 @@ impl OsuState {
                     label: Some("Hit Instance Buffer"),
                     contents: bytemuck::cast_slice(
                         &hit_circle_instance_data
+                    ),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
+
+        let approach_circle_instance_data: Vec<HitCircleInstance> =
+            Vec::new();
+
+        let approach_circle_instance_buffer = graphics.device
+            .create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Hit Instance Buffer"),
+                    contents: bytemuck::cast_slice(
+                        &approach_circle_instance_data
                     ),
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 }
@@ -236,13 +257,75 @@ impl OsuState {
                 label: Some("state_bind_group"),
         });
 
+        let approach_circle_pipeline_layout = graphics.device
+            .create_pipeline_layout(
+                &wgpu::PipelineLayoutDescriptor {
+                    label: Some("approach circle pipeline Layout"),
+                    bind_group_layouts: &[
+                        &approach_circle_texture.bind_group_layout,
+                        //&approach_circle_texture.bind_group_layout,
+                        &camera_bind_group_layout,
+                        &state_bind_group_layout,
+                    ],
+                    push_constant_ranges: &[],
+                }
+        );
+
+        let approach_circle_pipeline = graphics.device.create_render_pipeline(
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("approach circle render pipeline"),
+                layout: Some(&approach_circle_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &approach_circle_shader,
+                    entry_point: "vs_main",
+                    buffers: &[
+                        Vertex::desc(), 
+                        HitCircleInstance::desc(),
+                    ],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &approach_circle_shader,
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: graphics.config.format,
+                        blend: Some(wgpu::BlendState{
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::SrcAlpha,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent::OVER,
+                        }
+                        ),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
+            }
+        );
+
         let hit_circle_pipeline_layout = graphics.device
             .create_pipeline_layout(
                 &wgpu::PipelineLayoutDescriptor {
-                    label: Some("Render Pipeline Layout"),
+                    label: Some("hitcircle pipeline Layout"),
                     bind_group_layouts: &[
                         &hit_circle_texture.bind_group_layout,
-                        &approach_circle_texture.bind_group_layout,
+                        //&approach_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
                         &state_bind_group_layout,
                     ],
@@ -255,7 +338,7 @@ impl OsuState {
                 label: Some("hit_circle render pipeline"),
                 layout: Some(&hit_circle_pipeline_layout),
                 vertex: wgpu::VertexState {
-                    module: &shader,
+                    module: &hit_circle_shader,
                     entry_point: "vs_main",
                     buffers: &[
                         Vertex::desc(), 
@@ -263,7 +346,7 @@ impl OsuState {
                     ],
                 },
                 fragment: Some(wgpu::FragmentState {
-                    module: &shader,
+                    module: &hit_circle_shader,
                     entry_point: "fs_main",
                     targets: &[Some(wgpu::ColorTargetState {
                         format: graphics.config.format,
@@ -324,6 +407,9 @@ impl OsuState {
             scale,
             vertices,
             approach_circle_texture,
+            approach_circle_pipeline,
+            approach_circle_instance_data,
+            approach_circle_instance_buffer,
         }
     }
 
@@ -364,17 +450,15 @@ impl OsuState {
                         obj.pos.x,
                         obj.pos.y,
                         obj.start_time as f32, // TODO
-                        false
                     )
                 );
 
                 // Approach circle
-                self.hit_circle_instance_data.push(
+                self.approach_circle_instance_data.push(
                     HitCircleInstance::new(
                         obj.pos.x,
                         obj.pos.y,
                         obj.start_time as f32, // TODO
-                        true
                     )
                 );
             }
@@ -385,6 +469,16 @@ impl OsuState {
                 label: Some("Hit Instance Buffer"),
                 contents: bytemuck::cast_slice(
                     &self.hit_circle_instance_data
+                    ),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
+
+        self.approach_circle_instance_buffer = self.state.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("approach Instance Buffer"),
+                contents: bytemuck::cast_slice(
+                    &self.approach_circle_instance_data
                     ),
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 }
@@ -450,6 +544,8 @@ impl OsuState {
     }
 
     pub fn update_egui(&mut self) {
+        let _span = tracy_client::span!("osu_state update egui");
+
         let input = self.egui.state.take_egui_input(&self.window);
 
         self.egui.context.begin_frame(input);
@@ -494,6 +590,8 @@ impl OsuState {
     }
 
     pub fn update(&mut self) {
+        let _span = tracy_client::span!("osu_state update");
+
         self.update_egui();
         self.osu_clock.update();
 
@@ -513,18 +611,28 @@ impl OsuState {
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_state render");
+        
 
+        let _span = tracy_client::span!("osu_state get_current_texture");
         let output = self.state.surface.get_current_texture()?;
+        drop(_span);
+
+        let _span = tracy_client::span!("osu_state create view");
         let view = output.texture.create_view(
             &wgpu::TextureViewDescriptor::default()
         );
+        drop(_span);
 
+        let _span = tracy_client::span!("create command_encoder");
         let mut encoder = self.state.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
         });
+        drop(_span);
 
         {
+            let _span = tracy_client::span!("osu_state render pass");
+
             let mut render_pass = encoder.begin_render_pass(
                 &wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -554,15 +662,17 @@ impl OsuState {
                 &self.hit_circle_texture.bind_group, 
                 &[]
             );
-
+            
+            /*
             render_pass.set_bind_group(
                 1, 
                 &self.approach_circle_texture.bind_group, 
                 &[]
             );
+            */
 
-            render_pass.set_bind_group(2, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(3, &self.state_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.state_bind_group, &[]);
 
             render_pass.set_vertex_buffer(
                 0, self.hit_circle_vertex_buffer.slice(..)
@@ -584,13 +694,58 @@ impl OsuState {
                 0,
                 0..self.hit_circle_instance_data.len() as u32,
             );
+
+            render_pass.set_pipeline(&self.approach_circle_pipeline);
+            render_pass.set_bind_group(
+                0, 
+                &self.approach_circle_texture.bind_group, 
+                &[]
+            );
+            
+            /*
+            render_pass.set_bind_group(
+                1, 
+                &self.approach_circle_texture.bind_group, 
+                &[]
+            );
+            */
+
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.state_bind_group, &[]);
+
+            render_pass.set_vertex_buffer(
+                0, self.hit_circle_vertex_buffer.slice(..)
+            );
+
+            render_pass.set_vertex_buffer(
+                1, self.approach_circle_instance_buffer.slice(..)
+            );
+
+            render_pass.set_index_buffer(
+                self.hit_circle_index_buffer.slice(..), 
+                wgpu::IndexFormat::Uint16
+            );
+
+            //render_pass.draw(0..VERTICES.len() as u32, 0..1);
+            //render_pass.draw(0..4, 0..1);
+            render_pass.draw_indexed(
+                0..INDECIES.len() as u32,
+                0,
+                0..self.approach_circle_instance_data.len() as u32,
+            );
         }
 
-        // TODO errors
-        let _ = self.egui.render(&self.state, &mut encoder, &view);
+        let _span = tracy_client::span!("osu_state render egui");
+        self.egui.render(&self.state, &mut encoder, &view)?;
+        drop(_span);
 
+        let _span = tracy_client::span!("osu_state queue submit");
         self.state.queue.submit(std::iter::once(encoder.finish()));
+        drop(_span);
+
+        let _span = tracy_client::span!("osu_state present");
         output.present();
+        drop(_span);
 
         Ok(())
     }

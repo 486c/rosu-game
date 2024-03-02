@@ -14,6 +14,7 @@ mod egui_state;
 mod osu_state;
 mod camera;
 mod hit_circle_instance;
+mod approach_circle_instance;
 mod timer;
 
 fn main() {
