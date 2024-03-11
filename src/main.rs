@@ -14,7 +14,6 @@ mod egui_state;
 mod osu_state;
 mod camera;
 mod hit_circle_instance;
-mod approach_circle_instance;
 mod timer;
 
 fn main() {
@@ -40,15 +39,17 @@ fn main() {
         match event {
             Event::RedrawRequested(window_id) => {
                 if window_id == osu_state.window.id() {
-                    match osu_state.render() {
-                        Ok(_) => {}
-                        Err(wgpu::SurfaceError::Lost) => 
-                            osu_state.resize(&osu_state.state.size.clone()),
-                            //osu_state.state.resize(osu_state.state.size),
-                        Err(wgpu::SurfaceError::OutOfMemory) => 
-                            elwf.set_exit(),
-                        Err(e) => eprintln!("{:?}", e),
-                    }
+                    'blk: loop {
+                        match osu_state.render() {
+                            Ok(_) => break 'blk,
+                            Err(wgpu::SurfaceError::Lost) => 
+                                osu_state.resize(&osu_state.state.size.clone()),
+                                //osu_state.state.resize(osu_state.state.size),
+                            Err(wgpu::SurfaceError::OutOfMemory) => 
+                                elwf.set_exit(),
+                            Err(e) => eprintln!("{:?}", e),
+                        }
+                    };
                 }
 
             },

@@ -58,12 +58,9 @@ fn vs_main(
 		out.alpha = fadein_alpha2;
 	}
 
-	let scaled_pos = vec4<f32>(1.0, 1.0, 0.0, 1.0) 
-		* vec4<f32>(model.pos, 0.0, 1.0);
-
     out.clip_position = camera.view_proj 
 		* model_matrix
-		* scaled_pos;
+		* vec4<f32>(model.pos, 0.0, 1.0);
 
     return out;
 }
