@@ -6,7 +6,7 @@ use rosu_pp::{Beatmap, parse::HitObjectKind};
 use wgpu::{util::DeviceExt, RenderPipeline, BindGroup, BufferUsages};
 use winit::{window::Window, dpi::PhysicalSize};
 
-use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::HitCircleInstance, timer::Timer, osu_shader_state::OsuShaderState};
+use crate::{graphics::Graphics, egui_state::EguiState, texture::Texture, vertex::Vertex, camera::Camera, hit_circle_instance::{HitCircleInstance, ApproachCircleInstance}, timer::Timer, osu_shader_state::OsuShaderState};
 
 const OSU_COORDS_WIDTH: f32 = 512.0;
 const OSU_COORDS_HEIGHT: f32 = 384.0;
@@ -15,6 +15,10 @@ const OSU_PLAYFIELD_BORDER_TOP_PERCENT: f32 = 0.117;
 const OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT: f32 = 0.0834;
 
 const INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
+
+fn lerp(a: f64, b: f64, v: f64) -> f64 {
+    a + v * (b - a)
+}
 
 fn get_hitcircle_diameter(cs: f32) -> f32 {
 	((1.0 - 0.7*(cs - 5.0) / 5.0) / 2.0) * 128.0 * 1.00041
@@ -72,24 +76,23 @@ pub struct OsuState {
 
     osu_clock: Timer,
 
-    hit_circle_texture: Texture,
-    approach_circle_texture: Texture,
-    hit_circle_pipeline: RenderPipeline,
     approach_circle_pipeline: RenderPipeline,
+    approach_circle_texture: Texture,
+
+    approach_circle_instance_buffer: wgpu::Buffer,
+    approach_circle_instance_data: Vec<ApproachCircleInstance>,
+
+    hit_circle_texture: Texture,
+    hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
     hit_circle_index_buffer: wgpu::Buffer,
 
     hit_circle_instance_data: Vec<HitCircleInstance>,
     hit_circle_instance_buffer: wgpu::Buffer,
-    approach_circle_instance_data: Vec<HitCircleInstance>,
-    approach_circle_instance_buffer: wgpu::Buffer,
 
     osu_camera: Camera,
     camera_bind_group: BindGroup,
     camera_buffer: wgpu::Buffer,
-
-    state_bind_group: BindGroup,
-    state_buffer: wgpu::Buffer,
 
     // TODO remove
     shader_state: OsuShaderState,
@@ -142,7 +145,7 @@ impl OsuState {
                 }
             );
 
-        let hit_circle_instance_data: Vec<HitCircleInstance> = Vec::new();
+        let hit_circle_instance_data: Vec<HitCircleInstance> = Vec::with_capacity(10);
 
         let hit_circle_instance_buffer = graphics.device
             .create_buffer_init(
@@ -154,9 +157,9 @@ impl OsuState {
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 }
             );
-
-        let approach_circle_instance_data: Vec<HitCircleInstance> =
-            Vec::new();
+        
+        let approach_circle_instance_data: Vec<ApproachCircleInstance> =
+            Vec::with_capacity(10);
 
         let approach_circle_instance_buffer = graphics.device
             .create_buffer_init(
@@ -215,48 +218,6 @@ impl OsuState {
                 label: Some("camera_bind_group"),
         });
         
-        // Represent's state of the game that shader need to know
-        let state = OsuShaderState::default();
-
-        let state_buffer = graphics.device
-            .create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("uniform_buffer"),
-                    contents: bytemuck::bytes_of(&state),
-                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-                }
-            );
-
-
-        let state_bind_group_layout = graphics.device
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }
-            ],
-            label: Some("state_bind_group_layout"),
-        });
-
-        let state_bind_group = graphics.device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &state_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: state_buffer.as_entire_binding(),
-                    }
-                ],
-                label: Some("state_bind_group"),
-        });
-
         let approach_circle_pipeline_layout = graphics.device
             .create_pipeline_layout(
                 &wgpu::PipelineLayoutDescriptor {
@@ -265,7 +226,6 @@ impl OsuState {
                         &approach_circle_texture.bind_group_layout,
                         //&approach_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
-                        &state_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 }
@@ -280,7 +240,7 @@ impl OsuState {
                     entry_point: "vs_main",
                     buffers: &[
                         Vertex::desc(), 
-                        HitCircleInstance::desc(),
+                        ApproachCircleInstance::desc(),
                     ],
                 },
                 fragment: Some(wgpu::FragmentState {
@@ -327,7 +287,6 @@ impl OsuState {
                         &hit_circle_texture.bind_group_layout,
                         //&approach_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
-                        &state_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 }
@@ -399,11 +358,9 @@ impl OsuState {
             osu_camera: camera,
             camera_bind_group,
             camera_buffer,
-            state_bind_group,
-            state_buffer,
             hit_circle_instance_buffer,
             hit_circle_instance_data,
-            shader_state: state,
+            shader_state: OsuShaderState::default(),
             scale,
             vertices,
             approach_circle_texture,
@@ -438,6 +395,7 @@ impl OsuState {
         self.apply_beatmap_transformations();
 
         // TODO refactor
+        /*
         if let Some(beatmap) = &self.current_beatmap {
             for obj in &beatmap.hit_objects {
                 if obj.kind != HitObjectKind::Circle {
@@ -483,6 +441,8 @@ impl OsuState {
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 }
             );
+
+        */
     }
 
     pub fn apply_beatmap_transformations(&mut self) {
@@ -593,17 +553,84 @@ impl OsuState {
         let _span = tracy_client::span!("osu_state update");
 
         self.update_egui();
-        self.osu_clock.update();
+        let time = self.osu_clock.update();
 
-        self.shader_state.time = self.osu_clock.get_time() as f32;
+        self.hit_circle_instance_data.clear();
+        self.approach_circle_instance_data.clear();
+
+        if let Some(beatmap) = &self.current_beatmap {
+            for obj in &beatmap.hit_objects {
+               if time > obj.start_time - self.shader_state.preempt as f64
+               && time < obj.start_time + 60.0 {
+                    if obj.kind == HitObjectKind::Circle {
+                 
+                        let start_time = 
+                            obj.start_time - self.shader_state.preempt as f64;
+                        let end_time = 
+                            start_time + self.shader_state.fadein as f64;
+                        let alpha = 
+                            ((time-start_time)/(end_time-start_time))
+                            .clamp(0.0, 1.0);
+
+                        let approach_progress = 
+                            (time-start_time)/(obj.start_time-start_time); 
+
+                        let scale = lerp(1.0, 4.0, 1.0 - approach_progress)
+                            .clamp(1.0, 4.0);
+
+                        self.hit_circle_instance_data.push(
+                            HitCircleInstance::new(
+                                obj.pos.x,
+                                obj.pos.y,
+                                alpha as f32
+                            )
+                        );
+
+                        self.approach_circle_instance_data.push(
+                            ApproachCircleInstance::new(
+                                obj.pos.x,
+                                obj.pos.y,
+                                alpha as f32,
+                                scale as f32
+                            )
+                        );
+                    }
+                }
+            }
+        }
+
+        self.hit_circle_instance_buffer = self.state.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Hit Instance Buffer"),
+                contents: bytemuck::cast_slice(
+                    &self.hit_circle_instance_data
+                    ),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
+
+        self.approach_circle_instance_buffer = self.state.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Approach Instance Buffer"),
+                contents: bytemuck::cast_slice(
+                    &self.approach_circle_instance_data
+                    ),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
+
 
         // Update shaders state
+        
+        /*
+        self.shader_state.time = self.osu_clock.get_time() as f32;
         self.state.queue
             .write_buffer(
                 &self.state_buffer, 
                 0, 
                 bytemuck::bytes_of(&self.shader_state)
             );
+        */
 
         // Other stuff that needs to be updated
         // TODO
@@ -655,7 +682,7 @@ impl OsuState {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-
+            
             render_pass.set_pipeline(&self.hit_circle_pipeline);
             render_pass.set_bind_group(
                 0, 
@@ -672,7 +699,6 @@ impl OsuState {
             */
 
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.state_bind_group, &[]);
 
             render_pass.set_vertex_buffer(
                 0, self.hit_circle_vertex_buffer.slice(..)
@@ -695,6 +721,8 @@ impl OsuState {
                 0..self.hit_circle_instance_data.len() as u32,
             );
 
+
+            // Approach circle
             render_pass.set_pipeline(&self.approach_circle_pipeline);
             render_pass.set_bind_group(
                 0, 
@@ -702,16 +730,13 @@ impl OsuState {
                 &[]
             );
             
-            /*
             render_pass.set_bind_group(
                 1, 
                 &self.approach_circle_texture.bind_group, 
                 &[]
             );
-            */
 
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.state_bind_group, &[]);
 
             render_pass.set_vertex_buffer(
                 0, self.hit_circle_vertex_buffer.slice(..)
@@ -726,8 +751,6 @@ impl OsuState {
                 wgpu::IndexFormat::Uint16
             );
 
-            //render_pass.draw(0..VERTICES.len() as u32, 0..1);
-            //render_pass.draw(0..4, 0..1);
             render_pass.draw_indexed(
                 0..INDECIES.len() as u32,
                 0,
