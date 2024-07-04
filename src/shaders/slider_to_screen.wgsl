@@ -15,7 +15,6 @@ struct VertexInput {
 struct InstanceInput {
 	@location(2) pos: vec2<f32>,
 	@location(3) alpha: f32,
-	@location(4) scale: f32,
 }
 
 struct VertexOutput {
@@ -33,18 +32,12 @@ fn vs_main(
 	out.uv = model.uv;
 	out.alpha = instance.alpha;
 
-	let model_matrix = mat4x4<f32>(
-		1.0, 0.0, 0.0, 0.0,
-		0.0, 1.0, 0.0, 0.0,
-		0.0, 0.0, 1.0, 0.0,
-		instance.pos.x, instance.pos.y, 0.0, 1.0,
+    //out.clip_position = //camera.view_proj 
+	out.clip_position = camera.proj * camera.view * vec4<f32>(
+		model.pos.x + instance.pos.x, 
+		model.pos.y + instance.pos.y, 
+		0.0, 1.0
 	);
-
-	let scaled_pos = vec4<f32>(instance.scale, instance.scale, 0.0, 1.0) * vec4<f32>(model.pos, 0.0, 1.0);
-
-    out.clip_position = camera.proj * camera.view
-		* model_matrix
-		* scaled_pos;
 
     return out;
 }
@@ -56,12 +49,10 @@ var texture: texture_2d<f32>;
 @group(0) @binding(1)
 var texture_sampler: sampler;
 
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	var out = textureSample(texture, texture_sampler, in.uv);
 	out.w = out.w * in.alpha;
 	return out;
-	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
-	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
+	//return vec4<f32>(1.0, 0.5, 1.0, 0.2);
 }

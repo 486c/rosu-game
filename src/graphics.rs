@@ -1,4 +1,4 @@
-use wgpu::{Instance, InstanceDescriptor, RequestAdapterOptions, PresentMode};
+use wgpu::{Instance, InstanceDescriptor, PresentMode, RequestAdapterOptions, SurfaceTexture};
 use winit::window::Window;
 use futures::executor::block_on;
 
@@ -17,10 +17,11 @@ impl Graphics {
         let supported_backend = wgpu::Backends::VULKAN;
         let device_descriptor = wgpu::DeviceDescriptor {
             label: None,
-            features: wgpu::Features::empty(),
+            features: wgpu::Features::default(),
             limits: wgpu::Limits::default(),
         };
         let power_preferences = wgpu::PowerPreference::default();
+        //let present_mode = PresentMode::Fifo;
         let present_mode = PresentMode::Immediate;
 
         let size = window.inner_size();
@@ -58,7 +59,6 @@ impl Graphics {
         let surface_format = surface_caps.formats.iter()
             .copied()
             .find(|f| {
-                dbg!(&f);
                 f.is_srgb()
             })            
             .unwrap_or(surface_caps.formats[0]);
@@ -96,5 +96,11 @@ impl Graphics {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
         }
+    }
+
+    pub fn get_current_texture(
+        &self
+    ) -> Result<SurfaceTexture, wgpu::SurfaceError> {
+        self.surface.get_current_texture()
     }
 }

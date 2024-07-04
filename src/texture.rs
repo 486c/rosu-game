@@ -4,6 +4,56 @@ use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension};
 
 use crate::graphics::Graphics;
 
+
+pub struct DepthTexture {
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub sampler: wgpu::Sampler,
+}
+
+impl DepthTexture {
+    pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+
+    pub fn new(graphics: &Graphics, width: u32, height: u32) -> Self {
+        let size = wgpu::Extent3d { // 2.
+            width,
+            height,
+            depth_or_array_layers: 1,
+
+        };
+        let desc = wgpu::TextureDescriptor {
+            label: Some("another depth texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT // 3.
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        };
+        let texture = graphics.device.create_texture(&desc);
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = graphics.device.create_sampler(
+            &wgpu::SamplerDescriptor { // 4.
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::FilterMode::Nearest,
+                compare: Some(wgpu::CompareFunction::LessEqual), // 5.
+                lod_min_clamp: 0.0,
+                lod_max_clamp: 100.0,
+                ..Default::default()
+            }
+        );
+
+        Self { texture, view, sampler }
+    }
+}
+
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
@@ -20,6 +70,85 @@ impl Texture {
             .decode().unwrap();
 
         Self::from_image(image, graphics)
+    }
+
+    pub fn default_bind_group_layout(graphics: &Graphics) -> wgpu::BindGroupLayout {
+        graphics.device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("texture_something"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float {
+                                filterable: true
+                            },
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler (
+                            wgpu::SamplerBindingType::Filtering
+                        ),
+                        count: None,
+                    },
+                ],
+            })
+    }
+
+    pub fn from_texture(texture: wgpu::Texture, graphics: &Graphics) -> Self {
+        let view = texture.create_view(
+            &wgpu::TextureViewDescriptor::default()
+        );
+
+        let sampler = graphics.device.create_sampler(
+            &wgpu::SamplerDescriptor {
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::FilterMode::Nearest,
+                ..Default::default()
+            }
+        );
+        
+
+        let bind_group_layout = Self::default_bind_group_layout(graphics);
+
+        let bind_group = graphics.device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(
+                            &view
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(
+                            &sampler
+                        ),
+                    },
+                ],
+                label: Some("hit_circle_bind"),
+            }
+        );
+
+        Self {
+            texture,
+            view,
+            sampler,
+            bind_group_layout,
+            bind_group,
+        }
     }
 
     pub fn from_image(image: DynamicImage, graphics: &Graphics) -> Self {

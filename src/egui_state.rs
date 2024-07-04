@@ -69,6 +69,8 @@ impl EguiState {
         encoder: &mut CommandEncoder,
         view: &wgpu::TextureView,
     ) -> Result<(), wgpu::SurfaceError> {
+        let _span = tracy_client::span!("egui_state render");
+
         if self.output.is_none() {
             println!("None");
             return Ok(());

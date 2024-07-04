@@ -1,6 +1,7 @@
 // Vertex shader
 struct CameraUniform {
-    view_proj: mat4x4<f32>,
+    proj: mat4x4<f32>,
+    view: mat4x4<f32>,
 };
 
 @group(1) @binding(0)
@@ -31,17 +32,8 @@ fn vs_main(
 	out.uv = model.uv;
 	out.alpha = instance.alpha;
 
-	let model_matrix = mat4x4<f32>(
-		1.0, 0.0, 0.0, 0.0,
-		0.0, 1.0, 0.0, 0.0,
-		0.0, 0.0, 1.0, 0.0,
-		instance.pos.x, instance.pos.y, 0.0, 1.0,
-
-	);
-
-    out.clip_position = camera.view_proj 
-		* model_matrix
-		* vec4<f32>(model.pos, 0.0, 1.0);
+    out.clip_position = camera.proj * camera.view
+		* vec4<f32>(model.pos.x + instance.pos.x, model.pos.y + instance.pos.y, 0.0, 1.0);
 
     return out;
 }
@@ -60,6 +52,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	var out = textureSample(texture, texture_sampler, in.uv);
 	out.w = out.w * in.alpha;
 	return out;
-	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
 	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
 }

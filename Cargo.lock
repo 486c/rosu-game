@@ -1839,6 +1839,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "216080ab382b992234dda86873c18d4c48358f5cfcb70fd693d7f6f2131b628b"
 
 [[package]]
+name = "rosu-map"
+version = "0.1.1"
+source = "git+https://github.com/MaxOhn/rosu-map.git#ef502207ad243ca9ec6df7766c71e2173cfb2d87"
+
+[[package]]
 name = "rosu-pp"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2644,6 +2649,7 @@ dependencies = [
  "futures",
  "image",
  "raw-window-handle 0.6.0",
+ "rosu-map",
  "rosu-pp",
  "tracy-client",
  "ultraviolet",

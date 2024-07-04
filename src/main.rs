@@ -1,11 +1,12 @@
 use osu_state::OsuState;
 use graphics::Graphics;
 use winit::{
-    event_loop::EventLoop,
-    window::WindowBuilder, 
-    event::{WindowEvent, Event}, 
+    dpi::LogicalSize, event::{Event, WindowEvent}, event_loop::EventLoop, window::WindowBuilder 
 };
+pub mod math;
 
+mod osu_renderer;
+mod hitobjects;
 mod graphics;
 mod osu_shader_state;
 mod texture;
@@ -13,7 +14,9 @@ mod vertex;
 mod egui_state;
 mod osu_state;
 mod camera;
+mod slider;
 mod hit_circle_instance;
+mod slider_instance;
 mod timer;
 
 fn main() {
@@ -21,6 +24,8 @@ fn main() {
 
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
+        //.with_resizable(false)
+        .with_inner_size(LogicalSize::new(800, 600))
         .build(&event_loop)
         .unwrap();
 
@@ -31,7 +36,10 @@ fn main() {
         state
     );
 
-    osu_state.open_beatmap("tests/test2.osu");
+    osu_state.open_beatmap("tests/mayday.osu");
+
+    //osu_state.open_beatmap("tests/single_slider.osu");
+    //osu_state.open_beatmap("tests/linear_sliders.osu");
 
     let _ = event_loop.run(move |event, _, elwf| {
         let _span = tracy_client::span!("event_loop");
@@ -43,7 +51,8 @@ fn main() {
                         match osu_state.render() {
                             Ok(_) => break 'blk,
                             Err(wgpu::SurfaceError::Lost) => 
-                                osu_state.resize(&osu_state.state.size.clone()),
+                                println!("Surface Lost"),
+                                //osu_state.resize(&osu_state.state.size.clone()),
                                 //osu_state.state.resize(osu_state.state.size),
                             Err(wgpu::SurfaceError::OutOfMemory) => 
                                 elwf.set_exit(),

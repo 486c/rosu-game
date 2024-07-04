@@ -1,7 +1,6 @@
 // Vertex shader
 struct CameraUniform {
-    proj: mat4x4<f32>,
-    view: mat4x4<f32>,
+    view_proj: mat4x4<f32>,
 };
 
 @group(1) @binding(0)
@@ -14,8 +13,6 @@ struct VertexInput {
 
 struct InstanceInput {
 	@location(2) pos: vec2<f32>,
-	@location(3) alpha: f32,
-	@location(4) scale: f32,
 }
 
 struct VertexOutput {
@@ -31,26 +28,26 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 	out.uv = model.uv;
-	out.alpha = instance.alpha;
+	out.alpha = 1.0;
 
 	let model_matrix = mat4x4<f32>(
 		1.0, 0.0, 0.0, 0.0,
 		0.0, 1.0, 0.0, 0.0,
 		0.0, 0.0, 1.0, 0.0,
 		instance.pos.x, instance.pos.y, 0.0, 1.0,
+
 	);
 
-	let scaled_pos = vec4<f32>(instance.scale, instance.scale, 0.0, 1.0) * vec4<f32>(model.pos, 0.0, 1.0);
-
-    out.clip_position = camera.proj * camera.view
+    out.clip_position = camera.view_proj 
 		* model_matrix
-		* scaled_pos;
+		* vec4<f32>(model.pos, 0.0, 1.0);
 
     return out;
 }
 
 
 // Fragment shader
+
 @group(0) @binding(0)
 var texture: texture_2d<f32>;
 @group(0) @binding(1)
@@ -65,3 +62,4 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
 	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
 }
+
