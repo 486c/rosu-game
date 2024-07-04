@@ -1,21 +1,10 @@
 use std::path::Path;
 
-use cgmath::Vector2;
 use egui::Slider;
-use rosu_map::{section::hit_objects::{HitObject, HitObjectCircle, HitObjectKind, PathType, SplineType}, Beatmap};
-use wgpu::{util::DeviceExt, BindGroup, BufferUsages, Extent3d, RenderPipeline, TextureDescriptor, TextureDimension, TextureUsages};
+use rosu_map::Beatmap;
 use winit::{window::Window, dpi::PhysicalSize};
 
-use crate::{camera::Camera, egui_state::EguiState, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hitobjects::{self, Object, ObjectKind}, osu_renderer::OsuRenderer, osu_shader_state::OsuShaderState, slider_instance::SliderInstance, texture::{self, DepthTexture, Texture}, timer::Timer, vertex::Vertex};
-
-
-
-pub struct Bebra<'a> {
-    pub graphics: &'a Graphics,
-    pub slider: &'a mut hitobjects::Slider,
-    pub vertex_buffer: &'a wgpu::Buffer,
-    pub index_buffer: &'a wgpu::Buffer,
-}
+use crate::{egui_state::EguiState, graphics::Graphics, hitobjects::{Object, ObjectKind}, osu_renderer::OsuRenderer, timer::Timer};
 
 /// Return preempt and fadein based on AR
 fn calculate_preempt_fadein(ar: f32) -> (f32, f32) {

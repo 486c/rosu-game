@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use cgmath::Vector2;
 use rosu_map::{section::hit_objects::{Curve, HitObject}, util::Pos};
-use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureUsages};
 
-use crate::{graphics::{self, Graphics}, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, texture::Texture};
+use crate::texture::Texture;
 
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;
 pub const CIRCLE_FADEOUT_TIME: f64 = 60.0;
@@ -23,18 +22,10 @@ impl Rectangle {
     pub fn height(&self) -> f32 {
         (self.bottom_right - self.top_left).y.abs()
     }
-
-    pub fn center(&self) -> Vector2::<f32> {
-        Vector2::new(
-            self.width() / 2.0,
-            self.height() / 2.0,
-        )
-    }
 }
 
 pub struct Object {
     pub start_time: f64,
-    pub pos: Pos,
     pub kind: ObjectKind,
 }
 
@@ -74,7 +65,7 @@ impl Slider {
     }
     
     /// (x, y, width, height)
-    pub fn bounding_box(&self, mut radius: f32) -> Rectangle {
+    pub fn bounding_box(&self, radius: f32) -> Rectangle {
         let mut min_x = f32::MAX;
         let mut max_x = f32::MIN;
         let mut min_y = f32::MAX;
@@ -132,7 +123,6 @@ impl Object {
 
                 Some(Self {
                     start_time: value.start_time,
-                    pos,
                     kind: ObjectKind::Slider(Slider {
                         repeats: slider.span_count(),
                         start_time: value.start_time,
@@ -149,7 +139,6 @@ impl Object {
                 Some (
                     Self {
                         start_time: value.start_time,
-                        pos: circle.pos,
                         kind: ObjectKind::Circle(
                             Circle {
                                 start_time: value.start_time,

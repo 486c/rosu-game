@@ -1,12 +1,11 @@
-use std::{mem::size_of, num::NonZeroU32, ops::Div, sync::Arc};
+use std::{mem::size_of, sync::Arc};
 
-use cgmath::{Matrix4, SquareMatrix, Vector2, Vector3};
-use rosu_map::Beatmap;
+use cgmath::Vector2;
 use smallvec::SmallVec;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, CommandEncoder, Extent3d, RenderPipeline, TextureDescriptor, TextureDimension, TextureUsages, TextureView};
 use winit::dpi::PhysicalSize;
 
-use crate::{camera::Camera, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hitobjects::{self, Object, SLIDER_FADEOUT_TIME}, math::{self, lerp}, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex};
+use crate::{camera::Camera, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hitobjects::{self, Object, SLIDER_FADEOUT_TIME}, math::lerp, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex};
 
 macro_rules! buffer_write_or_init {
     ($queue:expr, $device:expr, $buffer:expr, $data:expr, $t: ty) => {{
@@ -136,11 +135,6 @@ impl OsuRenderer {
 
         let approach_circle_texture = Texture::from_path(
             "skin/approachcircle.png",
-            &graphics
-        );
-
-        let slider_control_point_texture = Texture::from_path(
-            "skin/slider_control_point.png",
             &graphics
         );
 
@@ -834,7 +828,7 @@ impl OsuRenderer {
             );
 
         // Slider
-        let (slider_vertices, slider_index) = Vertex::cone55(hit_circle_diameter / 2.0);
+        let (slider_vertices, slider_index) = Vertex::cone(hit_circle_diameter / 2.0);
 
         self.slider_verticies = slider_vertices.into();
 
