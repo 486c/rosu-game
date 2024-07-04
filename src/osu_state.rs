@@ -230,8 +230,6 @@ impl OsuState {
                 },
             }
 
-
-            //self.objects_queue.push(i);
             self.osu_renderer.prepare_object_for_render(
                 obj,
                 time,
@@ -240,9 +238,9 @@ impl OsuState {
             );
         }
         
-
+        // When we are done preparing all objects for rendering
+        // we should not forget to upload all that to gpu
         self.osu_renderer.write_buffers();
-
     }
 
     pub fn update(&mut self) {
@@ -250,10 +248,6 @@ impl OsuState {
 
         self.update_egui();
         let time = self.osu_clock.update();
-
-        //self.hit_circle_instance_data.clear();
-        //self.approach_circle_instance_data.clear();
-        //self.slider_instance_data.clear();
 
         self.prepare_objects(time);
     }
@@ -274,14 +268,13 @@ impl OsuState {
         let mut encoder = graphics.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
-        }); // TODO move this encoder into egui render
+        });
 
         self.egui.render(graphics, &mut encoder, &view)?;
 
         let span = tracy_client::span!("osu_state queue::submit");
         graphics.queue.submit(std::iter::once(encoder.finish()));
         drop(span);
-        
 
         let span = tracy_client::span!("osu_state render::present");
         output.present();

@@ -1,4 +1,4 @@
-use std::{num::NonZeroU32, sync::Arc};
+use std::{mem::size_of, num::NonZeroU32, ops::Div, sync::Arc};
 
 use cgmath::{Matrix4, SquareMatrix, Vector2, Vector3};
 use rosu_map::Beatmap;
@@ -7,6 +7,37 @@ use winit::dpi::PhysicalSize;
 
 use crate::{camera::Camera, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hitobjects::{self, Object, SLIDER_FADEOUT_TIME}, math::{self, lerp}, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex};
 
+macro_rules! buffer_write_or_init {
+    ($queue:expr, $device:expr, $buffer:expr, $data:expr, $t: ty) => {{
+        let data_len = $data.len() as u64;
+        let buffer_bytes_size = $buffer.size();
+
+        let buffer_len = buffer_bytes_size / size_of::<$t>() as u64;
+
+        if data_len <= buffer_len {
+            $queue.write_buffer(
+                &$buffer,
+                0,
+                bytemuck::cast_slice(
+                    $data
+                )
+            )
+        } else {
+            let buffer = $device
+                .create_buffer_init(
+                    &wgpu::util::BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::cast_slice(
+                            $data 
+                        ),
+                        usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                    }
+                );
+
+            $buffer = buffer;
+        }
+    }}
+}
 
 const QUAD_INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
@@ -45,10 +76,8 @@ pub struct OsuRenderer {
     offsets: Vector2::<f32>,
     hit_circle_diameter: f32,
 
-
     // Quad verticies
     quad_verticies: [Vertex; 4],
-
 
     // Camera
     camera: Camera,
@@ -85,13 +114,14 @@ pub struct OsuRenderer {
     slider_to_screen_render_pipeline: RenderPipeline,
     slider_to_screen_instance_buffer: wgpu::Buffer,
     slider_to_screen_instance_data: Vec<SliderInstance>,
-    slider_to_screen_textures: Vec<(Arc<Texture>, Arc<wgpu::Buffer>)>,
 
-    // Slider follow point
+    // Slider follow circle
     follow_point_texture: Texture,
     follow_points_instance_data: Vec<HitCircleInstance>,
     follow_points_instance_buffer: wgpu::Buffer,
 
+    // Slider body queue
+    slider_to_screen_textures: Vec<(Arc<Texture>, Arc<wgpu::Buffer>)>,
 
     depth_texture: DepthTexture,
 }
@@ -235,7 +265,6 @@ impl OsuRenderer {
                     label: Some("approach circle pipeline Layout"),
                     bind_group_layouts: &[
                         &approach_circle_texture.bind_group_layout,
-                        //&approach_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
@@ -286,7 +315,7 @@ impl OsuRenderer {
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
-                multiview: None,//Some(NonZeroU32::new(4).unwrap()),
+                multiview: None,
             }
         );
 
@@ -296,7 +325,6 @@ impl OsuRenderer {
                     label: Some("hitcircle pipeline Layout"),
                     bind_group_layouts: &[
                         &hit_circle_texture.bind_group_layout,
-                        //&approach_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
@@ -592,30 +620,10 @@ impl OsuRenderer {
         let bbox_width = bbox.width();
         let bbox_height = bbox.height();
 
-        //width += 300.0;
-        //height += 300.0;
-
         let depth_texture = DepthTexture::new(&self.graphics, bbox_width as u32, bbox_height as u32);
 
-        //let mut ortho = Camera::ortho(top_left.x, width, height, top_left.y);
-        // glOrtho(center_x - width / 2, center_x + width / 2, center_y - height / 2, center_y + height / 2, -1, 1);
-        //glOrtho(top_left_x, top_right_x, bottom_left_y, top_left_y, -1, 1);
-        //let mut ortho = Camera::ortho(center_x - width / 2.0, center_x + width / 2.0, center_y - height / 2.0, center_y + height / 2.0);
         let ortho = Camera::ortho(0.0, bbox_width, bbox_height, 0.0);
         
-        // gluLookAt(center_x, center_y, 0, center_x, center_y, -1, 0, 1, 0);
-        //ortho.scale(self.scale);
-        
-        /*
-        ortho.view = Matrix4::look_at_rh(
-            [center_x, center_y, 0.0].into(),
-            [center_x, center_y, -1.0].into(),
-            [0.0, 1.0, 0.0].into()
-        );
-        */
-
-        //ortho.view = self.camera.view;
-
         let camera_buffer = self.graphics.device
             .create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
@@ -911,53 +919,42 @@ impl OsuRenderer {
             );
     }
 
+
     pub fn write_buffers(&mut self) {
         let _span = tracy_client::span!("osu_renderer write buffers");
 
-        self.hit_circle_instance_buffer = self.graphics.device
-            .create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Hit Instance Buffer"),
-                    contents: bytemuck::cast_slice(
-                        &self.hit_circle_instance_data
-                    ),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                }
-            );
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.hit_circle_instance_buffer,
+            &self.hit_circle_instance_data,
+            HitCircleInstance
+        );
 
-        self.approach_circle_instance_buffer = self.graphics.device
-            .create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Approach Instance Buffer"),
-                    contents: bytemuck::cast_slice(
-                        &self.approach_circle_instance_data
-                    ),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                }
-            );
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.approach_circle_instance_buffer,
+            &self.approach_circle_instance_data,
+            ApproachCircleInstance
+        );
 
-        self.slider_to_screen_instance_buffer = self.graphics.device
-            .create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Approach Instance Buffer"),
-                    contents: bytemuck::cast_slice(
-                        &self.slider_to_screen_instance_data
-                    ),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                }
-            );
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.slider_to_screen_instance_buffer,
+            &self.slider_to_screen_instance_data,
+            SliderInstance
+        );
 
-
-        self.follow_points_instance_buffer = self.graphics.device
-            .create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Instance Buffer"),
-                    contents: bytemuck::cast_slice(
-                        &self.follow_points_instance_data,
-                    ),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                }
-            );
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.follow_points_instance_buffer,
+            &self.follow_points_instance_data,
+            SliderInstance
+        );
+        
     }
     
     /// Clears internal buffers
@@ -1044,7 +1041,6 @@ impl OsuRenderer {
                 // BODY
                 self.slider_to_screen_instance_data.push(
                     SliderInstance {
-                        //pos: [x as f32, y as f32],
                         pos: [0.0, 0.0],
                         alpha: alpha as f32,
                 });
@@ -1098,27 +1094,19 @@ impl OsuRenderer {
                         }
                     )
                 }
-
-                let start_pos = slider.pos + slider.curve.position_at(0.0);
-
-                assert!(slider.bounding_box.is_none() != true);
-
-                if let Some(bbox) = &slider.bounding_box {
-                    let x_top_left = slider.pos.x - (bbox.width() / 2.0);
-                    let y_top_left = slider.pos.y + (bbox.height() / 2.0);
-                    
-                    self.approach_circle_instance_data.push(
-                        ApproachCircleInstance::new(
-                            slider.pos.x,
-                            slider.pos.y,
-                            //x_top_left + self.offsets.x,
-                            //y_top_left + self.offsets.y,
-                            approach_alpha as f32,
-                            approach_scale as f32
-                        )
-                    );
-                }
-
+                
+                self.approach_circle_instance_data.push(
+                    ApproachCircleInstance::new(
+                        slider.pos.x,
+                        slider.pos.y,
+                        approach_alpha as f32,
+                        approach_scale as f32
+                    )
+                );
+                
+                // That's tricky part. Since every slider have a according 
+                // slider texture and a quad where texture will be rendered and presented on screen.
+                // So we are pushing all textures to the "queue" so we can iterate on it later
                 if let (Some(texture), Some(quad)) = (&slider.texture, &slider.quad) {
                     self.slider_to_screen_textures.push(
                         (texture.clone(), quad.clone()), // TODO
@@ -1131,6 +1119,7 @@ impl OsuRenderer {
         }
     }
 
+    /// Render all sliders from the queue
     pub fn render_sliders(&mut self, view: &TextureView) -> Result<CommandEncoder, wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer render_sliders");
 
@@ -1165,7 +1154,6 @@ impl OsuRenderer {
 
             render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
 
-
             render_pass.set_vertex_buffer(
                 1, self.slider_to_screen_instance_buffer.slice(..)
             );
@@ -1195,12 +1183,17 @@ impl OsuRenderer {
                     &texture.bind_group, 
                     &[]
                 );
-
+                
+                // First draw a slider body
                 render_pass.draw_indexed(
                     0..QUAD_INDECIES.len() as u32,
                     0,
                     instance,
                 );
+
+                // TODO ticks 
+
+                // Then goes a follow circle
             }
 
             // Slider follow points
@@ -1342,9 +1335,6 @@ impl OsuRenderer {
 
         let hitcircles_encoder = self.render_hitcircles(&view)?;
         let sliders_encoder = self.render_sliders(&view)?;
-
-        //println!("Sliders to render: {}", self.slider_to_screen_instance_data.len());
-        
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
         self.graphics.queue.submit(
