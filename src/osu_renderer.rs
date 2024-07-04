@@ -2,6 +2,7 @@ use std::{mem::size_of, num::NonZeroU32, ops::Div, sync::Arc};
 
 use cgmath::{Matrix4, SquareMatrix, Vector2, Vector3};
 use rosu_map::Beatmap;
+use smallvec::SmallVec;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, CommandEncoder, Extent3d, RenderPipeline, TextureDescriptor, TextureDimension, TextureUsages, TextureView};
 use winit::dpi::PhysicalSize;
 
@@ -88,25 +89,25 @@ pub struct OsuRenderer {
     approach_circle_pipeline: RenderPipeline,
     approach_circle_texture: Texture,
     approach_circle_instance_buffer: wgpu::Buffer,
-    approach_circle_instance_data: Vec<ApproachCircleInstance>,
+    approach_circle_instance_data: SmallVec<[ApproachCircleInstance; 32]>,
 
     // Hit Circle
     hit_circle_texture: Texture,
     hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
     hit_circle_index_buffer: wgpu::Buffer,
-    hit_circle_instance_data: Vec<HitCircleInstance>,
+    hit_circle_instance_data: SmallVec<[HitCircleInstance; 32]>,
     hit_circle_instance_buffer: wgpu::Buffer,
 
     // Slider to texture
     slider_instance_buffer: wgpu::Buffer,
     slider_instance_data: Vec<SliderInstance>,
     slider_pipeline: RenderPipeline,
-    slider_indecies: Vec<u16>,
+    slider_indecies: SmallVec<[u16; 16]>,
 
     slider_vertex_buffer: wgpu::Buffer,
     slider_index_buffer: wgpu::Buffer,
-    slider_verticies: Vec<Vertex>,
+    slider_verticies: SmallVec<[Vertex; 256]>,
 
     // Slider texture to screen
     slider_to_screen_verticies: [Vertex; 4],
@@ -121,7 +122,7 @@ pub struct OsuRenderer {
     follow_points_instance_buffer: wgpu::Buffer,
 
     // Slider body queue
-    slider_to_screen_textures: Vec<(Arc<Texture>, Arc<wgpu::Buffer>)>,
+    slider_to_screen_textures: SmallVec::<[(Arc<Texture>, Arc<wgpu::Buffer>); 32]>,
 
     depth_texture: DepthTexture,
 }
@@ -186,7 +187,7 @@ impl OsuRenderer {
                 }
             );
 
-        let hit_circle_instance_data: Vec<HitCircleInstance> = Vec::with_capacity(10);
+        let hit_circle_instance_data = SmallVec::new();
 
         let hit_circle_instance_buffer = graphics.device
             .create_buffer_init(
@@ -199,8 +200,8 @@ impl OsuRenderer {
                 }
             );
         
-        let approach_circle_instance_data: Vec<ApproachCircleInstance> =
-            Vec::with_capacity(10);
+        let approach_circle_instance_data = 
+            SmallVec::new();
 
         let approach_circle_instance_buffer = graphics.device
             .create_buffer_init(
@@ -584,16 +585,16 @@ impl OsuRenderer {
             slider_instance_buffer,
             slider_instance_data,
             slider_pipeline,
-            slider_indecies,
+            slider_indecies: slider_indecies.into(),
             slider_vertex_buffer,
             slider_index_buffer,
-            slider_verticies,
+            slider_verticies: slider_verticies.into(),
             slider_to_screen_verticies,
             slider_to_screen_vertex_buffer,
             slider_to_screen_render_pipeline,
             slider_to_screen_instance_buffer,
             slider_to_screen_instance_data,
-            slider_to_screen_textures: Vec::with_capacity(10),
+            slider_to_screen_textures: SmallVec::new(),
             follow_point_texture,
             follow_points_instance_data,
             follow_points_instance_buffer,
@@ -835,20 +836,18 @@ impl OsuRenderer {
         // Slider
         let (slider_vertices, slider_index) = Vertex::cone55(hit_circle_diameter / 2.0);
 
-        self.slider_verticies = slider_vertices;
+        self.slider_verticies = slider_vertices.into();
 
-        self.slider_vertex_buffer = self.graphics.device
-            .create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("hit_circle_buffer"),
-                    contents: bytemuck::cast_slice(&self.slider_verticies),
-                    usage: BufferUsages::VERTEX,
-                }
-            );
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.slider_vertex_buffer,
+            &self.slider_verticies,
+            Vertex
+        );
 
-        self.slider_indecies = slider_index;
+        self.slider_indecies = slider_index.into();
         
-
         self.slider_index_buffer = self.graphics.device
             .create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
@@ -908,15 +907,13 @@ impl OsuRenderer {
             self.graphics.config.height as f32,
         );
 
-
-        self.slider_to_screen_vertex_buffer = self.graphics.device
-            .create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("hit_circle_buffer"),
-                    contents: bytemuck::cast_slice(&self.slider_to_screen_verticies),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                }
-            );
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.slider_to_screen_vertex_buffer,
+            &self.slider_to_screen_verticies,
+            Vertex
+        );
     }
 
 
