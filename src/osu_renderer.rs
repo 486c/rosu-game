@@ -1,6 +1,7 @@
 use std::{mem::size_of, sync::Arc};
 
 use cgmath::Vector2;
+use rosu_map::util::Pos;
 use smallvec::SmallVec;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, CommandEncoder, Extent3d, RenderPipeline, TextureDescriptor, TextureDimension, TextureUsages, TextureView};
 use winit::dpi::PhysicalSize;
@@ -121,7 +122,7 @@ pub struct OsuRenderer {
     follow_points_instance_buffer: wgpu::Buffer,
 
     // Slider body queue
-    slider_to_screen_textures: SmallVec::<[(Arc<Texture>, Arc<wgpu::Buffer>); 32]>,
+    slider_to_screen_textures: SmallVec::<[(Arc<Texture>, Arc<wgpu::Buffer>, Option<u32>); 32]>,
 
     depth_texture: DepthTexture,
 }
@@ -152,7 +153,7 @@ impl OsuRenderer {
         );
 
         let slider_shader = graphics.device.create_shader_module(
-            wgpu::include_wgsl!("shaders/slider2.wgsl")
+            wgpu::include_wgsl!("shaders/slider.wgsl")
         );
 
         let slider_to_screen_shader = graphics.device.create_shader_module(
@@ -1011,7 +1012,7 @@ impl OsuRenderer {
                 let start_time = obj.start_time - preempt as f64;
                 let end_time = start_time + fadein as f64;
 
-                let mut alpha = 
+                let mut body_alpha = 
                     ((time-start_time)/(end_time-start_time))
                     .clamp(0.0, 0.95);
 
@@ -1026,15 +1027,10 @@ impl OsuRenderer {
 
                     let percentage = 100.0 - (((time - min) * 100.0) / (max - min)); // TODO remove `* 100.0`
 
-                    alpha = (percentage / 100.0).clamp(0.0, 0.95);
+                    body_alpha = (percentage / 100.0).clamp(0.0, 0.95);
                 }
 
-                // BODY
-                self.slider_to_screen_instance_data.push(
-                    SliderInstance {
-                        pos: [0.0, 0.0],
-                        alpha: alpha as f32,
-                });
+
                 
                 // APPROACH
                 let approach_progress = 
@@ -1046,11 +1042,12 @@ impl OsuRenderer {
                 let approach_alpha = if time >= obj.start_time {
                     0.0
                 } else {
-                    alpha
+                    body_alpha
                 };
 
-                // FOLLOW POINTS STUFF
+                // FOLLOW CIRCLE STUFF
                 // BLOCK IN WHICH SLIDER IS HITABLE
+                let mut follow_circle = None;
                 if time >= obj.start_time && time <= obj.start_time + slider.duration {
                     // Calculating current slide
                     let v1 = time - obj.start_time;
@@ -1059,7 +1056,6 @@ impl OsuRenderer {
 
 
                     let slide_start = obj.start_time + (v2 * (slide as f64 - 1.0));
-
 
                     let start = slide_start;
                     let current = time;
@@ -1078,14 +1074,27 @@ impl OsuRenderer {
                 
                     let pos = slider.curve.position_at(percentage / 100.0);
 
+
                     self.follow_points_instance_data.push(
                         HitCircleInstance {
-                            pos: [pos.x + slider.pos.x, pos.y + slider.pos.y],
-                            alpha: 1.0,
+                            pos: [
+                                pos.x + slider.pos.x, 
+                                pos.y + slider.pos.y
+                            ],
+                            alpha: body_alpha as f32,
                         }
-                    )
+                    );
+
+                    follow_circle = Some(self.follow_points_instance_data.len() as u32);
                 }
-                
+
+                // BODY
+                self.slider_to_screen_instance_data.push(
+                    SliderInstance {
+                        pos: [0.0, 0.0],
+                        alpha: body_alpha as f32,
+                });
+
                 self.approach_circle_instance_data.push(
                     ApproachCircleInstance::new(
                         slider.pos.x,
@@ -1100,7 +1109,7 @@ impl OsuRenderer {
                 // So we are pushing all textures to the "queue" so we can iterate on it later
                 if let (Some(texture), Some(quad)) = (&slider.texture, &slider.quad) {
                     self.slider_to_screen_textures.push(
-                        (texture.clone(), quad.clone()), // TODO
+                        (texture.clone(), quad.clone(), follow_circle), // TODO
                     )
                 } else {
                     panic!("Texture and quad should be present");
@@ -1143,18 +1152,6 @@ impl OsuRenderer {
                 occlusion_query_set: None,
             });
 
-            render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
-
-            render_pass.set_vertex_buffer(
-                1, self.slider_to_screen_instance_buffer.slice(..)
-            );
-
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-
-            render_pass.set_index_buffer(
-                self.hit_circle_index_buffer.slice(..),  // DOCS
-                wgpu::IndexFormat::Uint16
-            );
             
             // Sanity check
             assert_eq!(
@@ -1162,8 +1159,22 @@ impl OsuRenderer {
                 self.slider_to_screen_textures.len()
             );
 
-            for (i, (texture, vertex_buffer)) in self.slider_to_screen_textures.iter().enumerate() {
+            for (i, (texture, vertex_buffer, follow)) in self.slider_to_screen_textures.iter().enumerate().rev() {
                 let instance = i as u32..i as u32 +1;
+
+
+                render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
+
+                render_pass.set_vertex_buffer(
+                    1, self.slider_to_screen_instance_buffer.slice(..)
+                );
+
+                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+
+                render_pass.set_index_buffer(
+                    self.hit_circle_index_buffer.slice(..),  // DOCS
+                    wgpu::IndexFormat::Uint16
+                );
 
                 render_pass.set_vertex_buffer(
                     0, vertex_buffer.slice(..)
@@ -1181,37 +1192,42 @@ impl OsuRenderer {
                     0,
                     instance,
                 );
+                
+                if let Some(follow_instance) = follow {
+                    assert!(*follow_instance as usize <= self.follow_points_instance_data.len());
+                    let follow_instance = *follow_instance-1..*follow_instance;
+
+                    render_pass.set_pipeline(&self.hit_circle_pipeline);
+                    render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                    render_pass.set_bind_group(
+                        0, 
+                        &self.follow_point_texture.bind_group, 
+                        &[]
+                    );
+
+                    render_pass.set_vertex_buffer(
+                        0, self.hit_circle_vertex_buffer.slice(..)
+                    );
+                    render_pass.set_vertex_buffer(
+                        1, self.follow_points_instance_buffer.slice(..)
+                    );
+                    render_pass.set_index_buffer(
+                        self.hit_circle_index_buffer.slice(..), 
+                        wgpu::IndexFormat::Uint16
+                    );
+
+                    render_pass.draw_indexed(
+                        0..QUAD_INDECIES.len() as u32,
+                        0,
+                        follow_instance,
+                    );
+                }
+
 
                 // TODO ticks 
 
                 // Then goes a follow circle
             }
-
-            // Slider follow points
-            render_pass.set_pipeline(&self.hit_circle_pipeline);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(
-                0, 
-                &self.follow_point_texture.bind_group, 
-                &[]
-            );
-
-            render_pass.set_vertex_buffer(
-                0, self.hit_circle_vertex_buffer.slice(..)
-            );
-            render_pass.set_vertex_buffer(
-                1, self.follow_points_instance_buffer.slice(..)
-            );
-            render_pass.set_index_buffer(
-                self.hit_circle_index_buffer.slice(..), 
-                wgpu::IndexFormat::Uint16
-            );
-
-            render_pass.draw_indexed(
-                0..QUAD_INDECIES.len() as u32,
-                0,
-                0..self.follow_points_instance_data.len() as u32,
-            );
 
         }
 

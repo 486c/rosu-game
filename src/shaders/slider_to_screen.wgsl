@@ -32,7 +32,6 @@ fn vs_main(
 	out.uv = model.uv;
 	out.alpha = instance.alpha;
 
-    //out.clip_position = //camera.view_proj 
 	out.clip_position = camera.proj * camera.view * vec4<f32>(
 		model.pos.x + instance.pos.x, 
 		model.pos.y + instance.pos.y, 
@@ -54,5 +53,4 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	var out = textureSample(texture, texture_sampler, in.uv);
 	out.w = out.w * in.alpha;
 	return out;
-	//return vec4<f32>(1.0, 0.5, 1.0, 0.2);
 }
