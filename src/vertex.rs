@@ -1,11 +1,13 @@
 use std::mem;
 
+use cgmath::Vector3;
+
 static PI: f32 = 3.1415926535897932384626433832795028841971693993751058209749445923078164;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    pub pos: [f32; 3],
+    pub pos: Vector3::<f32>,
     pub uv: [f32; 2],
 }
 
@@ -34,10 +36,10 @@ impl Vertex {
             let z = radius * theta.cos();
 
             //v.push(Vertex {pos: [x, z, 1.0], uv: [0.0, 0.0]});
-            v.push(Vertex {pos: [x, z, -0.5], uv: [0.0, 0.0]});
+            v.push(Vertex {pos: [x, z, -0.5].into(), uv: [0.0, 0.0]});
         }
 
-        v.push(Vertex {pos: [0.0, 0.0, 0.0], uv: [1.0, 0.0]});
+        v.push(Vertex {pos: [0.0, 0.0, 0.0].into(), uv: [1.0, 0.0]});
 
 
         for i in 0..SEGMENTS + 2 {
@@ -55,28 +57,28 @@ impl Vertex {
         let y = -height/2.0;
 
         [
-            Vertex {pos: [x, y, 0.0], uv:[0.0, 0.0]},
-            Vertex {pos: [x, y + height, 0.0], uv:[0.0, 1.0]},
-            Vertex {pos: [x + width, y + height, 0.0], uv:[1.0, 1.0]},
-            Vertex {pos: [x + width, y, 0.0], uv:[1.0, 0.0]},
+            Vertex {pos: [x, y, 0.0].into(), uv:[0.0, 0.0]},
+            Vertex {pos: [x, y + height, 0.0].into(), uv:[0.0, 1.0]},
+            Vertex {pos: [x + width, y + height, 0.0].into(), uv:[1.0, 1.0]},
+            Vertex {pos: [x + width, y, 0.0].into(), uv:[1.0, 0.0]},
         ]
     }
 
     pub fn quad_positional(x: f32, y: f32, width: f32, height: f32) -> [Vertex; 4] {
         [
-            Vertex {pos: [x, y, 0.0], uv:[0.0, 0.0]},
-            Vertex {pos: [x, y + height, 0.0], uv:[0.0, 1.0]},
-            Vertex {pos: [x + width, y + height, 0.0], uv:[1.0, 1.0]},
-            Vertex {pos: [x + width, y, 0.0], uv:[1.0, 0.0]},
+            Vertex {pos: [x, y, 0.0].into(), uv:[0.0, 0.0]},
+            Vertex {pos: [x, y + height, 0.0].into(), uv:[0.0, 1.0]},
+            Vertex {pos: [x + width, y + height, 0.0].into(), uv:[1.0, 1.0]},
+            Vertex {pos: [x + width, y, 0.0].into(), uv:[1.0, 0.0]},
         ]
     }
 
     pub fn quad_origin(origin_x: f32, origin_y: f32, width: f32, height: f32) -> [Vertex; 4] {
         [
-            Vertex {pos: [origin_x, origin_y, 0.0], uv:[0.0, 0.0]},
-            Vertex {pos: [origin_x, origin_y + height, 0.0], uv:[0.0, 1.0]},
-            Vertex {pos: [origin_x + width, origin_y + height, 0.0], uv:[1.0, 1.0]},
-            Vertex {pos: [origin_x + width, origin_y, 0.0], uv:[1.0, 0.0]},
+            Vertex {pos: [origin_x, origin_y, 0.0].into(), uv:[0.0, 0.0]},
+            Vertex {pos: [origin_x, origin_y + height, 0.0].into(), uv:[0.0, 1.0]},
+            Vertex {pos: [origin_x + width, origin_y + height, 0.0].into(), uv:[1.0, 1.0]},
+            Vertex {pos: [origin_x + width, origin_y, 0.0].into(), uv:[1.0, 0.0]},
         ]
     }
 }

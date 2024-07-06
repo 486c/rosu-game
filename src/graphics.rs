@@ -63,6 +63,20 @@ impl Graphics {
             })            
             .unwrap_or(surface_caps.formats[0]);
 
+        let surf_features = adapter.get_texture_format_features(
+            surface_format
+        );
+
+        let surf_flags = surf_features.flags;
+
+        println!(
+            "{surface_format:?}: 1x: {}, 2x: {}, 4x: {}, 8x: {}",
+            surf_flags.sample_count_supported(1),
+            surf_flags.sample_count_supported(2),
+            surf_flags.sample_count_supported(4),
+            surf_flags.sample_count_supported(8)
+        );
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,

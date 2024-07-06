@@ -1,5 +1,5 @@
 use std::path::Path;
-use image::{io::Reader as ImageReader, GenericImageView, DynamicImage};
+use image::{imageops::FilterType, io::Reader as ImageReader, DynamicImage, GenericImageView};
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension};
 
 use crate::graphics::Graphics;
@@ -14,7 +14,7 @@ pub struct DepthTexture {
 impl DepthTexture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    pub fn new(graphics: &Graphics, width: u32, height: u32) -> Self {
+    pub fn new(graphics: &Graphics, width: u32, height: u32, sample_count: u32) -> Self {
         let size = wgpu::Extent3d { // 2.
             width,
             height,
@@ -25,7 +25,7 @@ impl DepthTexture {
             label: Some("another depth texture"),
             size,
             mip_level_count: 1,
-            sample_count: 1,
+            sample_count,
             dimension: wgpu::TextureDimension::D2,
             format: Self::DEPTH_FORMAT,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT // 3.
@@ -36,14 +36,14 @@ impl DepthTexture {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = graphics.device.create_sampler(
-            &wgpu::SamplerDescriptor { // 4.
+            &wgpu::SamplerDescriptor {
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
                 address_mode_w: wgpu::AddressMode::ClampToEdge,
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 mipmap_filter: wgpu::FilterMode::Nearest,
-                compare: Some(wgpu::CompareFunction::LessEqual), // 5.
+                compare: Some(wgpu::CompareFunction::LessEqual),
                 lod_min_clamp: 0.0,
                 lod_max_clamp: 100.0,
                 ..Default::default()
@@ -69,10 +69,15 @@ impl Texture {
         let image = ImageReader::open(path).unwrap()
             .decode().unwrap();
 
+        let width = image.width();
+        let height = image.height();
+
+        let image = image.resize(width*2, height*2, FilterType::Lanczos3);
+
         Self::from_image(image, graphics)
     }
 
-    pub fn default_bind_group_layout(graphics: &Graphics) -> wgpu::BindGroupLayout {
+    pub fn default_bind_group_layout(graphics: &Graphics, sample_count: u32) -> wgpu::BindGroupLayout {
         graphics.device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("texture_something"),
@@ -82,10 +87,10 @@ impl Texture {
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Texture {
                             sample_type: TextureSampleType::Float {
-                                filterable: true
+                                filterable: if sample_count > 1 { false } else { true } 
                             },
                             view_dimension: TextureViewDimension::D2,
-                            multisampled: false,
+                            multisampled: if sample_count > 1 { true } else { false },
                         },
                         count: None,
                     },
@@ -101,7 +106,7 @@ impl Texture {
             })
     }
 
-    pub fn from_texture(texture: wgpu::Texture, graphics: &Graphics) -> Self {
+    pub fn from_texture(texture: wgpu::Texture, graphics: &Graphics, sample_count: u32) -> Self {
         let view = texture.create_view(
             &wgpu::TextureViewDescriptor::default()
         );
@@ -112,14 +117,14 @@ impl Texture {
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
                 address_mode_w: wgpu::AddressMode::ClampToEdge,
                 mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Nearest,
+                min_filter: wgpu::FilterMode::Linear,
                 mipmap_filter: wgpu::FilterMode::Nearest,
                 ..Default::default()
             }
         );
         
 
-        let bind_group_layout = Self::default_bind_group_layout(graphics);
+        let bind_group_layout = Self::default_bind_group_layout(graphics, sample_count);
 
         let bind_group = graphics.device.create_bind_group(
             &wgpu::BindGroupDescriptor {
@@ -138,7 +143,7 @@ impl Texture {
                         ),
                     },
                 ],
-                label: Some("hit_circle_bind"),
+                label: Some("from_texture_bind"),
             }
         );
 
@@ -200,7 +205,7 @@ impl Texture {
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
                 address_mode_w: wgpu::AddressMode::ClampToEdge,
                 mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Nearest,
+                min_filter: wgpu::FilterMode::Linear,
                 mipmap_filter: wgpu::FilterMode::Nearest,
                 ..Default::default()
             }

@@ -3,8 +3,11 @@ use std::{mem::size_of, sync::Arc};
 use cgmath::Vector2;
 use rosu_map::util::Pos;
 use smallvec::SmallVec;
-use wgpu::{util::DeviceExt, BindGroup, BufferUsages, CommandEncoder, Extent3d, RenderPipeline, TextureDescriptor, TextureDimension, TextureUsages, TextureView};
+use wgpu::{util::DeviceExt, BindGroup, BindingType, BufferUsages, CommandEncoder, Extent3d, RenderPipeline, ShaderStages, TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages, TextureView, TextureViewDimension};
 use winit::dpi::PhysicalSize;
+
+
+const SLIDER_SAMPLE_COUNT: u32 = 4;
 
 use crate::{camera::Camera, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hitobjects::{self, Object, SLIDER_FADEOUT_TIME}, math::lerp, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex};
 
@@ -160,8 +163,8 @@ impl OsuRenderer {
             wgpu::include_wgsl!("shaders/slider_to_screen.wgsl")
         );
 
-        let depth_texture = DepthTexture::new(&graphics, graphics.config.width, graphics.config.height);
-
+        let depth_texture = DepthTexture::new(&graphics, graphics.config.width, graphics.config.height, 4);
+        
         let quad_verticies = Vertex::quad_centered(1.0, 1.0);
 
         let hit_circle_vertex_buffer = graphics.device
@@ -409,7 +412,6 @@ impl OsuRenderer {
                 &wgpu::PipelineLayoutDescriptor {
                     label: Some("slider test pipeline Layout"),
                     bind_group_layouts: &[
-                        //&approach_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
@@ -454,9 +456,8 @@ impl OsuRenderer {
                     bias: wgpu::DepthBiasState::default(),
                 }),
                 multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
+                    count: SLIDER_SAMPLE_COUNT,
+                    ..Default::default()
                 },
                 multiview: None,
             }
@@ -473,12 +474,41 @@ impl OsuRenderer {
                 }
             );
 
+        let slider_to_screen_bind_group_layout = graphics.device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: Some("slider to screen bind group layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float {
+                                filterable: true, 
+                            },
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler (
+                            wgpu::SamplerBindingType::Filtering
+                        ),
+                        count: None,
+                    },
+                ],
+            }
+        );
+
         let slider_to_screen_pipeline_layout = graphics.device
             .create_pipeline_layout(
                 &wgpu::PipelineLayoutDescriptor {
                     label: Some("slider to screen pipeline Layout"),
                     bind_group_layouts: &[
-                        &Texture::default_bind_group_layout(&graphics),
+                        //&Texture::default_bind_group_layout(&graphics, 1),
+                        &slider_to_screen_bind_group_layout,
                         &camera_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
@@ -487,7 +517,7 @@ impl OsuRenderer {
 
         let slider_to_screen_render_pipeline = graphics.device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
-                label: Some("slider to screen render pipeline"),
+                label: Some("slider to screen render pipeline23"),
                 layout: Some(&slider_to_screen_pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &slider_to_screen_shader,
@@ -525,8 +555,7 @@ impl OsuRenderer {
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState {
                     count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
+                    .. Default::default()
                 },
                 multiview: None,
             }
@@ -604,11 +633,15 @@ impl OsuRenderer {
     
     /// Render slider to the **texture** not screen
     pub fn prepare_and_render_slider_texture(&mut self, slider: &mut hitobjects::Slider) {
+        // TODO optimization idea
+
         let _span = tracy_client::span!("osu_renderer prepare_and_render_slider_texture");
+        /*
         if !slider.bounding_box.is_none() 
         && !slider.texture.is_none() {
             return
         }
+        */
         
         let bbox = slider.bounding_box(self.hit_circle_diameter / 2.0);
         slider.bounding_box = Some(bbox.clone());
@@ -616,7 +649,12 @@ impl OsuRenderer {
         let bbox_width = bbox.width();
         let bbox_height = bbox.height();
 
-        let depth_texture = DepthTexture::new(&self.graphics, bbox_width as u32, bbox_height as u32);
+        let depth_texture = DepthTexture::new(
+            &self.graphics, 
+            bbox_width as u32, 
+            bbox_height as u32, 
+            SLIDER_SAMPLE_COUNT
+        );
 
         let ortho = Camera::ortho(0.0, bbox_width, bbox_height, 0.0);
         
@@ -660,7 +698,7 @@ impl OsuRenderer {
 
         self.slider_instance_data.clear();
 
-        let slider_texture = self.graphics.device.create_texture(
+        let slider_texture_not_sampled = self.graphics.device.create_texture(
             &TextureDescriptor {
                 label: Some("SLIDER RENDER TEXTURE"),
                 size: Extent3d {
@@ -670,6 +708,22 @@ impl OsuRenderer {
                 },
                 mip_level_count: 1,
                 sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: self.graphics.config.format,
+                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                view_formats: &[self.graphics.config.format],
+            });
+
+        let slider_texture_sampled = self.graphics.device.create_texture(
+            &TextureDescriptor {
+                label: Some("SLIDER RENDER TEXTURE"),
+                size: Extent3d {
+                    width: bbox_width as u32,
+                    height: bbox_height as u32,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: SLIDER_SAMPLE_COUNT,
                 dimension: TextureDimension::D2,
                 format: self.graphics.config.format,
                 usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
@@ -719,7 +773,11 @@ impl OsuRenderer {
             );
 
         // Drawing to the texture
-        let view = slider_texture.create_view(
+        let view = slider_texture_not_sampled.create_view(
+            &wgpu::TextureViewDescriptor::default()
+        );
+
+        let view_sampled = slider_texture_sampled.create_view(
             &wgpu::TextureViewDescriptor::default()
         );
 
@@ -734,8 +792,8 @@ impl OsuRenderer {
                 label: Some("slider render pass"),
                 color_attachments: 
                     &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
+                        view: &view_sampled,
+                        resolve_target: Some(&view),
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Load,/*wgpu::LoadOp::Clear(
                                 wgpu::Color {
@@ -788,10 +846,10 @@ impl OsuRenderer {
 
         self.graphics.queue.submit(std::iter::once(encoder.finish()));
 
-        slider.texture = Some(Arc::new(Texture::from_texture(slider_texture, &self.graphics)));
+        slider.texture = Some(Arc::new(Texture::from_texture(slider_texture_not_sampled, &self.graphics, 1)));
 
         // RENDERED SLIDER TEXTURE QUAD
-        let verticies = Vertex::quad_origin(
+        let mut verticies = Vertex::quad_origin(
             slider.pos.x - origin.x, 
             slider.pos.y - origin.y,
             bbox_width,
@@ -818,6 +876,8 @@ impl OsuRenderer {
         self.hit_circle_diameter = hit_circle_diameter;
 
         self.quad_verticies = Vertex::quad_centered(hit_circle_diameter, hit_circle_diameter);
+
+        // TODO temp
 
         self.hit_circle_vertex_buffer = self.graphics.device
             .create_buffer_init(
@@ -884,6 +944,7 @@ impl OsuRenderer {
             &self.graphics,
             self.graphics.config.width,
             self.graphics.config.height,
+            4
         );
         
         // TODO Recreate buffers
@@ -1029,8 +1090,6 @@ impl OsuRenderer {
 
                     body_alpha = (percentage / 100.0).clamp(0.0, 0.95);
                 }
-
-
                 
                 // APPROACH
                 let approach_progress = 
@@ -1161,8 +1220,7 @@ impl OsuRenderer {
 
             for (i, (texture, vertex_buffer, follow)) in self.slider_to_screen_textures.iter().enumerate().rev() {
                 let instance = i as u32..i as u32 +1;
-
-
+                
                 render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
 
                 render_pass.set_vertex_buffer(
