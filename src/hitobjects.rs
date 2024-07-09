@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use cgmath::Vector2;
-use rosu_map::{section::hit_objects::{Curve, HitObject}, util::Pos};
+use rosu_map::{
+    section::hit_objects::{Curve, HitObject},
+    util::Pos,
+};
 
 use crate::texture::Texture;
 
@@ -10,8 +13,8 @@ pub const CIRCLE_FADEOUT_TIME: f64 = 60.0;
 
 #[derive(Clone)]
 pub struct Rectangle {
-    pub top_left: Vector2::<f32>,
-    pub bottom_right: Vector2::<f32>,
+    pub top_left: Vector2<f32>,
+    pub bottom_right: Vector2<f32>,
 }
 
 impl Rectangle {
@@ -22,6 +25,11 @@ impl Rectangle {
     pub fn height(&self) -> f32 {
         (self.bottom_right - self.top_left).y.abs()
     }
+
+    pub fn scale(&mut self, scale: f32) {
+        self.top_left *= scale;
+        self.bottom_right *= scale;
+    }
 }
 
 pub struct Object {
@@ -31,7 +39,7 @@ pub struct Object {
 
 pub enum ObjectKind {
     Circle(Circle),
-    Slider(Slider)
+    Slider(Slider),
 }
 
 pub struct Circle {
@@ -41,8 +49,7 @@ pub struct Circle {
 
 impl Circle {
     pub fn is_visible(&self, time: f64, preempt: f32) -> bool {
-        time > self.start_time - preempt as f64 
-        && time < self.start_time + CIRCLE_FADEOUT_TIME 
+        time > self.start_time - preempt as f64 && time < self.start_time + CIRCLE_FADEOUT_TIME
     }
 }
 
@@ -55,15 +62,15 @@ pub struct Slider {
 
     pub texture: Option<Arc<Texture>>,
     pub quad: Option<Arc<wgpu::Buffer>>,
-    pub bounding_box: Option<Rectangle>
+    pub bounding_box: Option<Rectangle>,
 }
 
 impl Slider {
     pub fn is_visible(&self, time: f64, preempt: f32) -> bool {
-        time > self.start_time - preempt as f64 
-        && time < self.start_time + self.duration + SLIDER_FADEOUT_TIME 
+        time > self.start_time - preempt as f64
+            && time < self.start_time + self.duration + SLIDER_FADEOUT_TIME
     }
-    
+
     /// (x, y, width, height)
     pub fn bounding_box(&self, radius: f32) -> Rectangle {
         let mut min_x = f32::MAX;
@@ -76,8 +83,8 @@ impl Slider {
             let pos = self.curve.position_at(t);
 
             let pos = Pos {
-                x: self.pos.x + pos.x,
-                y: self.pos.y + pos.y,
+                x: (self.pos.x + pos.x),
+                y: (self.pos.y + pos.y),
             };
 
             min_x = min_x.min(pos.x - radius);
@@ -94,9 +101,9 @@ impl Slider {
 
         //(top_left, top_right, bottom_left, bottom_right)
         Rectangle {
-            top_left, bottom_right
+            top_left,
+            bottom_right,
         }
-            
 
         //(min_x, min_y, max_x-min_x, max_y - min_y)
         //(min_x, min_y, max_x, min_y)
@@ -131,23 +138,17 @@ impl Object {
                         curve,
                         texture: None,
                         quad: None,
-                        bounding_box: None
-                    })
+                        bounding_box: None,
+                    }),
                 })
-            },
-            rosu_map::section::hit_objects::HitObjectKind::Circle(circle) => {
-                Some (
-                    Self {
-                        start_time: value.start_time,
-                        kind: ObjectKind::Circle(
-                            Circle {
-                                start_time: value.start_time,
-                                pos: circle.pos
-                            }
-                        )
-                    }
-                )
             }
+            rosu_map::section::hit_objects::HitObjectKind::Circle(circle) => Some(Self {
+                start_time: value.start_time,
+                kind: ObjectKind::Circle(Circle {
+                    start_time: value.start_time,
+                    pos: circle.pos,
+                }),
+            }),
             _ => None,
         }
     }

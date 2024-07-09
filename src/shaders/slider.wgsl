@@ -83,7 +83,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let transition_size = DEFAULT_TRANSITION_SIZE;
 
 	var border_color = vec4<f32>(1.0, 1.0, 1.0, 0.7);
-	let outer_shadow_color = vec4<f32>(1.0, 1.0, 1.0, 0.25);
+	let outer_shadow_color = vec4<f32>(0.0, 0.0, 0.0, 0.25);
 
 	let bodyColor = vec4<f32>(0.0, 0.0, 0.0, 0.7);
 	var inner_body_color = get_inner_body_color(bodyColor);

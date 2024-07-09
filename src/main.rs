@@ -34,7 +34,7 @@ fn main() {
         state
     );
 
-    osu_state.open_beatmap("tests/test2.osu");
+    osu_state.open_beatmap("tests/mayday.osu");
 
     //osu_state.open_beatmap("tests/single_slider.osu");
     //osu_state.open_beatmap("tests/linear_sliders.osu");
