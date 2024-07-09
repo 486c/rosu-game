@@ -16,7 +16,7 @@ use crate::{
     camera::Camera,
     graphics::Graphics,
     hit_circle_instance::{ApproachCircleInstance, HitCircleInstance},
-    hitobjects::{self, Object, SLIDER_FADEOUT_TIME},
+    hit_objects::{self, Object, SLIDER_FADEOUT_TIME},
     math::lerp,
     slider_instance::SliderInstance,
     texture::{DepthTexture, Texture},
@@ -601,7 +601,10 @@ impl OsuRenderer {
     }
 
     /// Render slider to the **texture** not screen
-    pub fn prepare_and_render_slider_texture(&mut self, slider: &mut hitobjects::Slider) {
+    pub fn prepare_and_render_slider_texture(
+        &mut self,
+        slider: &mut crate::hit_objects::slider::Slider,
+    ) {
         // TODO optimization idea
 
         let _span = tracy_client::span!("osu_renderer prepare_and_render_slider_texture");
@@ -610,10 +613,9 @@ impl OsuRenderer {
             return;
         }
 
-        let mut bbox = slider.bounding_box((self.hit_circle_diameter / 2.0) * SLIDER_SCALE);
+        let bbox = slider.bounding_box((self.hit_circle_diameter / 2.0) * SLIDER_SCALE);
 
-        let (slider_vertices, slider_index) =
-            Vertex::cone((self.hit_circle_diameter / 2.0) * SLIDER_SCALE);
+        let (slider_vertices, _) = Vertex::cone((self.hit_circle_diameter / 2.0) * SLIDER_SCALE);
 
         self.slider_verticies = slider_vertices.into();
 
@@ -735,9 +737,8 @@ impl OsuRenderer {
         }
 
         let mut origin = Vector2::new(slider.pos.x, slider.pos.y);
-        origin.x = 0.0 + (origin.x - bbox.top_left.x); //((bbox_width / unsafe { SLIDER_SCALE }) / bbox_width);
+        origin.x = 0.0 + (origin.x - bbox.top_left.x);
         origin.y = 0.0 + (origin.y - bbox.top_left.y);
-        //* ((bbox_height / unsafe { SLIDER_SCALE }) / bbox_height);
 
         self.slider_instance_buffer =
             self.graphics
@@ -989,7 +990,7 @@ impl OsuRenderer {
         fadein: f32,
     ) {
         match &obj.kind {
-            hitobjects::ObjectKind::Circle(circle) => {
+            hit_objects::ObjectKind::Circle(circle) => {
                 let _span = tracy_client::span!("osu_renderer prepare_object_for_render::circle");
 
                 let start_time = obj.start_time - preempt as f64;
@@ -1014,7 +1015,7 @@ impl OsuRenderer {
                         approach_scale as f32,
                     ));
             }
-            hitobjects::ObjectKind::Slider(slider) => {
+            hit_objects::ObjectKind::Slider(slider) => {
                 let _span = tracy_client::span!("osu_renderer prepare_object_for_render::slider");
 
                 let start_time = obj.start_time - preempt as f64;

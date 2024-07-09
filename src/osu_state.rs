@@ -7,7 +7,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::{
     egui_state::EguiState,
     graphics::Graphics,
-    hitobjects::{Object, ObjectKind},
+    hit_objects::{Object, ObjectKind},
     osu_renderer::OsuRenderer,
     timer::Timer,
 };
