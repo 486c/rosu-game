@@ -7,6 +7,12 @@ use crate::texture::Texture;
 
 use super::{Rectangle, SLIDER_FADEOUT_TIME};
 
+pub struct SliderRender {
+    pub texture: Arc<Texture>,
+    pub quad: Arc<wgpu::Buffer>,
+    pub bounding_box: Rectangle,
+}
+
 pub struct Slider {
     pub start_time: f64,
     pub duration: f64,
@@ -14,9 +20,10 @@ pub struct Slider {
     pub pos: Pos,
     pub repeats: i32,
 
-    pub texture: Option<Arc<Texture>>,
-    pub quad: Option<Arc<wgpu::Buffer>>,
-    pub bounding_box: Option<Rectangle>,
+    pub render: Option<SliderRender>,
+    //pub texture: Option<Arc<Texture>>,
+    //pub quad: Option<Arc<wgpu::Buffer>>,
+    //pub bounding_box: Option<Rectangle>,
 }
 
 impl Slider {

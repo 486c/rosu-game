@@ -55,9 +55,7 @@ impl Object {
                         pos,
                         duration,
                         curve,
-                        texture: None,
-                        quad: None,
-                        bounding_box: None,
+                        render: None,
                     }),
                 })
             }
