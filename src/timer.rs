@@ -35,6 +35,10 @@ impl Timer {
     pub fn get_time(&self) -> f64 {
         self.last_time
     }
+
+    pub fn set_time(&mut self, time: f64) {
+        self.last_time = time;
+    }
     
     /// Updates and returns current time
     pub fn update(&mut self) -> f64 {

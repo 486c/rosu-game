@@ -103,6 +103,10 @@ impl OsuState {
         self.apply_beatmap_transformations();
     }
 
+    pub fn set_time(&mut self, time: f64) {
+        self.osu_clock.set_time(time);
+    }
+
     pub fn apply_beatmap_transformations(&mut self) {
         let cs = match &self.current_beatmap {
             Some(beatmap) => beatmap.circle_size,
@@ -165,7 +169,7 @@ impl OsuState {
 
         self.objects_queue.clear();
 
-        for (_, obj) in self.hit_objects.iter_mut().enumerate() {
+        for (i, obj) in self.hit_objects.iter_mut().enumerate() {
             if !obj.is_visible(time, self.preempt) {
                 continue;
             }
@@ -178,9 +182,16 @@ impl OsuState {
                 }
             }
 
-            self.osu_renderer
-                .prepare_object_for_render(obj, time, self.preempt, self.fadein);
+            self.objects_queue.push(i);
+
+            //self.osu_renderer
+                //.prepare_object_for_render(obj, time, self.preempt, self.fadein);
         }
+
+        self.osu_renderer.prepare_objects2(
+            time, self.preempt, self.fadein,
+            &self.objects_queue, &self.hit_objects
+        );
 
         // When we are done preparing all objects for rendering
         // we should not forget to upload all that to gpu

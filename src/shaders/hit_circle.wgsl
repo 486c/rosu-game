@@ -13,7 +13,7 @@ struct VertexInput {
 }
 
 struct InstanceInput {
-	@location(2) pos: vec2<f32>,
+	@location(2) pos: vec3<f32>,
 	@location(3) alpha: f32,
 }
 

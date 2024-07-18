@@ -99,7 +99,7 @@ pub struct OsuRenderer {
     hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
     hit_circle_index_buffer: wgpu::Buffer,
-    hit_circle_instance_data: SmallVec<[HitCircleInstance; 32]>,
+    hit_circle_instance_data: Vec<HitCircleInstance>,
     hit_circle_instance_buffer: wgpu::Buffer,
 
     // Slider to texture
@@ -155,7 +155,7 @@ impl OsuRenderer {
             .create_shader_module(wgpu::include_wgsl!("shaders/slider_to_screen.wgsl"));
 
         let depth_texture =
-            DepthTexture::new(&graphics, graphics.config.width, graphics.config.height, 4);
+            DepthTexture::new(&graphics, graphics.config.width, graphics.config.height, 1);
 
         let quad_verticies = Vertex::quad_centered(1.0, 1.0);
 
@@ -177,7 +177,7 @@ impl OsuRenderer {
                     usage: BufferUsages::INDEX,
                 });
 
-        let hit_circle_instance_data = SmallVec::new();
+        let hit_circle_instance_data = Vec::new();
 
         let hit_circle_instance_buffer =
             graphics
@@ -290,7 +290,13 @@ impl OsuRenderer {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: None,
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DepthTexture::DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::LessEqual, // 1.
+                        stencil: wgpu::StencilState::default(),     // 2.
+                        bias: wgpu::DepthBiasState::default(),
+                    }),
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         mask: !0,
@@ -347,7 +353,13 @@ impl OsuRenderer {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: None,
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DepthTexture::DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::LessEqual, // 1.
+                        stencil: wgpu::StencilState::default(),     // 2.
+                        bias: wgpu::DepthBiasState::default(),
+                    }),
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         mask: !0,
@@ -592,6 +604,159 @@ impl OsuRenderer {
             offsets: Vector2::new(0.0, 0.0),
             hit_circle_diameter: 1.0,
         }
+    }
+
+    pub fn prepare_objects2(
+        &mut self, 
+        time: f64,
+        preempt: f32,
+        fadein: f32,
+        queue: &[usize], 
+        objects: &[Object]
+    ) {
+        println!("Need to render: {} objects", queue.len());
+
+        // Calculating Z values for current queue
+        let total = queue.len() as f32;
+        let step = 2.0 / total;
+        let mut curr_val = -1.0;
+
+        for current_index in queue {
+            assert!(curr_val <= 1.0);
+
+            let object = &objects[*current_index];
+
+            match &object.kind {
+                hit_objects::ObjectKind::Circle(circle) => {
+                    let start_time = object.start_time - preempt as f64;
+                    let end_time = start_time + fadein as f64;
+                    let alpha = ((time - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
+
+                    let approach_progress = (time - start_time) / (object.start_time - start_time);
+
+                    let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);
+
+                    self.hit_circle_instance_data.push(HitCircleInstance::new(
+                            circle.pos.x,
+                            circle.pos.y,
+                            curr_val,
+                            alpha as f32,
+                    ));
+
+                    self.approach_circle_instance_data
+                        .push(ApproachCircleInstance::new(
+                                circle.pos.x,
+                                circle.pos.y,
+                                curr_val,
+                                alpha as f32,
+                                approach_scale as f32,
+                        ));
+                },
+                hit_objects::ObjectKind::Slider(slider) => {
+                    let _span = tracy_client::span!("osu_renderer prepare_object_for_render::slider");
+
+                    let start_time = slider.start_time - preempt as f64;
+                    let end_time = start_time + fadein as f64;
+
+                    let mut body_alpha =
+                        ((time - start_time) / (end_time - start_time)).clamp(0.0, 0.95);
+
+                    // FADEOUT
+                    if time >= object.start_time + slider.duration
+                        && time <= object.start_time + slider.duration + SLIDER_FADEOUT_TIME
+                    {
+                        let start = object.start_time + slider.duration;
+                        let end = object.start_time + slider.duration + SLIDER_FADEOUT_TIME;
+
+                        let min = start.min(end);
+                        let max = start.max(end);
+
+                        let percentage = 100.0 - (((time - min) * 100.0) / (max - min)); // TODO remove `* 100.0`
+
+                        body_alpha = (percentage / 100.0).clamp(0.0, 0.95);
+                    }
+
+                    // APPROACH
+                    let approach_progress = (time - start_time) / (object.start_time - start_time);
+
+                    let approach_scale = lerp(1.0, 3.95, 1.0 - approach_progress).clamp(1.0, 4.0);
+
+                    let approach_alpha = if time >= object.start_time {
+                        0.0
+                    } else {
+                        body_alpha
+                    };
+
+                    // FOLLOW CIRCLE STUFF
+                    // BLOCK IN WHICH SLIDER IS HITABLE
+                    let mut follow_circle = None;
+                    if time >= object.start_time && time <= object.start_time + slider.duration {
+                        // Calculating current slide
+                        let v1 = time - object.start_time;
+                        let v2 = slider.duration / slider.repeats as f64;
+                        let slide = (v1 / v2).floor() as i32 + 1;
+
+                        let slide_start = object.start_time + (v2 * (slide as f64 - 1.0));
+
+                        let start = slide_start;
+                        let current = time;
+                        let end = slide_start + v2;
+
+                        let min = start.min(end);
+                        let max = start.max(end);
+
+                        let mut percentage = ((current - min) * 100.0) / (max - min); // TODO remove `* 100.0`
+
+                        // If slide is even we should go from 100% to 0%
+                        // if not then from 0% to 100%
+                        if slide % 2 == 0 {
+                            percentage = 100.0 - percentage;
+                        }
+
+                        let pos = slider.curve.position_at(percentage / 100.0);
+
+                        self.follow_points_instance_data.push(HitCircleInstance {
+                            pos: [pos.x + slider.pos.x, pos.y + slider.pos.y, 0.0],
+                            alpha: body_alpha as f32,
+                        });
+
+                        follow_circle = Some(self.follow_points_instance_data.len() as u32);
+                    }
+
+                    // BODY
+                    self.slider_to_screen_instance_data.push(SliderInstance {
+                        pos: [0.0, 0.0],
+                        alpha: body_alpha as f32,
+                    });
+
+                    self.approach_circle_instance_data
+                        .push(ApproachCircleInstance::new(
+                                slider.pos.x,
+                                slider.pos.y,
+                                curr_val,
+                                approach_alpha as f32,
+                                approach_scale as f32,
+                        ));
+
+                    // That's tricky part. Since every slider have a according
+                    // slider texture and a quad where texture will be rendered and presented on screen.
+                    // So we are pushing all textures to the "queue" so we can iterate on it later
+                    if let Some(render) = &slider.render {
+                        self.slider_to_screen_textures.push((
+                                render.texture.clone(),
+                                render.quad.clone(),
+                                follow_circle,
+                        ))
+                    } else {
+                        panic!("Texture and quad should be present");
+                    };
+
+                },
+            }
+
+            curr_val += step;
+        }
+
     }
 
     pub fn get_graphics(&self) -> &Graphics {
@@ -895,7 +1060,7 @@ impl OsuRenderer {
             &self.graphics,
             self.graphics.config.width,
             self.graphics.config.height,
-            4,
+            1,
         );
 
         // TODO Recreate buffers
@@ -923,6 +1088,23 @@ impl OsuRenderer {
 
     pub fn write_buffers(&mut self) {
         let _span = tracy_client::span!("osu_renderer write buffers");
+        //println!("==============");
+        
+        /*
+        // TODO remove later
+        let total = self.hit_circle_instance_data.len() as f32;
+        //let step = 1.0 / ((1.0 - 0.0) / (total - 1.0));
+        let step = 2.0 / total;
+        let mut curr_val = -1.0;
+        for hitobject in &mut self.hit_circle_instance_data {
+            assert!(curr_val <= 1.0);
+            hitobject.pos[2] = curr_val;
+            println!("z: {curr_val}: step: {step}: total: {total}");
+            curr_val += step;
+        }
+        */
+
+        //self.hit_circle_instance_data = self.hit_circle_instance_data.clone().into_iter().rev().collect();
 
         buffer_write_or_init!(
             self.graphics.queue,
@@ -931,7 +1113,7 @@ impl OsuRenderer {
             &self.hit_circle_instance_data,
             HitCircleInstance
         );
-
+        
         buffer_write_or_init!(
             self.graphics.queue,
             self.graphics.device,
@@ -939,6 +1121,7 @@ impl OsuRenderer {
             &self.approach_circle_instance_data,
             ApproachCircleInstance
         );
+        /*
 
         buffer_write_or_init!(
             self.graphics.queue,
@@ -955,6 +1138,7 @@ impl OsuRenderer {
             &self.follow_points_instance_data,
             SliderInstance
         );
+        */
     }
 
     /// Clears internal buffers
@@ -982,7 +1166,8 @@ impl OsuRenderer {
         match &obj.kind {
             hit_objects::ObjectKind::Circle(circle) => {
                 let _span = tracy_client::span!("osu_renderer prepare_object_for_render::circle");
-
+                
+                /*
                 let start_time = obj.start_time - preempt as f64;
                 let end_time = start_time + fadein as f64;
                 let alpha = ((time - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
@@ -994,6 +1179,7 @@ impl OsuRenderer {
                 self.hit_circle_instance_data.push(HitCircleInstance::new(
                     circle.pos.x,
                     circle.pos.y,
+                    0.0,
                     alpha as f32,
                 ));
 
@@ -1004,104 +1190,9 @@ impl OsuRenderer {
                         alpha as f32,
                         approach_scale as f32,
                     ));
+                */
             }
             hit_objects::ObjectKind::Slider(slider) => {
-                let _span = tracy_client::span!("osu_renderer prepare_object_for_render::slider");
-
-                let start_time = obj.start_time - preempt as f64;
-                let end_time = start_time + fadein as f64;
-
-                let mut body_alpha =
-                    ((time - start_time) / (end_time - start_time)).clamp(0.0, 0.95);
-
-                // FADEOUT
-                if time >= obj.start_time + slider.duration
-                    && time <= obj.start_time + slider.duration + SLIDER_FADEOUT_TIME
-                {
-                    let start = obj.start_time + slider.duration;
-                    let end = obj.start_time + slider.duration + SLIDER_FADEOUT_TIME;
-
-                    let min = start.min(end);
-                    let max = start.max(end);
-
-                    let percentage = 100.0 - (((time - min) * 100.0) / (max - min)); // TODO remove `* 100.0`
-
-                    body_alpha = (percentage / 100.0).clamp(0.0, 0.95);
-                }
-
-                // APPROACH
-                let approach_progress = (time - start_time) / (obj.start_time - start_time);
-
-                let approach_scale = lerp(1.0, 3.95, 1.0 - approach_progress).clamp(1.0, 4.0);
-
-                let approach_alpha = if time >= obj.start_time {
-                    0.0
-                } else {
-                    body_alpha
-                };
-
-                // FOLLOW CIRCLE STUFF
-                // BLOCK IN WHICH SLIDER IS HITABLE
-                let mut follow_circle = None;
-                if time >= obj.start_time && time <= obj.start_time + slider.duration {
-                    // Calculating current slide
-                    let v1 = time - obj.start_time;
-                    let v2 = slider.duration / slider.repeats as f64;
-                    let slide = (v1 / v2).floor() as i32 + 1;
-
-                    let slide_start = obj.start_time + (v2 * (slide as f64 - 1.0));
-
-                    let start = slide_start;
-                    let current = time;
-                    let end = slide_start + v2;
-
-                    let min = start.min(end);
-                    let max = start.max(end);
-
-                    let mut percentage = ((current - min) * 100.0) / (max - min); // TODO remove `* 100.0`
-
-                    // If slide is even we should go from 100% to 0%
-                    // if not then from 0% to 100%
-                    if slide % 2 == 0 {
-                        percentage = 100.0 - percentage;
-                    }
-
-                    let pos = slider.curve.position_at(percentage / 100.0);
-
-                    self.follow_points_instance_data.push(HitCircleInstance {
-                        pos: [pos.x + slider.pos.x, pos.y + slider.pos.y],
-                        alpha: body_alpha as f32,
-                    });
-
-                    follow_circle = Some(self.follow_points_instance_data.len() as u32);
-                }
-
-                // BODY
-                self.slider_to_screen_instance_data.push(SliderInstance {
-                    pos: [0.0, 0.0],
-                    alpha: body_alpha as f32,
-                });
-
-                self.approach_circle_instance_data
-                    .push(ApproachCircleInstance::new(
-                        slider.pos.x,
-                        slider.pos.y,
-                        approach_alpha as f32,
-                        approach_scale as f32,
-                    ));
-
-                // That's tricky part. Since every slider have a according
-                // slider texture and a quad where texture will be rendered and presented on screen.
-                // So we are pushing all textures to the "queue" so we can iterate on it later
-                if let Some(render) = &slider.render {
-                    self.slider_to_screen_textures.push((
-                        render.texture.clone(),
-                        render.quad.clone(),
-                        follow_circle,
-                    ))
-                } else {
-                    panic!("Texture and quad should be present");
-                };
             }
         }
     }
@@ -1224,12 +1315,19 @@ impl OsuRenderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
 
-            // Hit circles section
+            // HIT CIRCLES
             render_pass.set_pipeline(&self.hit_circle_pipeline);
             render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
 
@@ -1250,7 +1348,7 @@ impl OsuRenderer {
                 0..self.hit_circle_instance_data.len() as u32,
             );
 
-            // Approach circles section
+            // APPROACH CIRCLES
             render_pass.set_pipeline(&self.approach_circle_pipeline);
             render_pass.set_bind_group(
                 // TODO ???
@@ -1260,17 +1358,9 @@ impl OsuRenderer {
             );
 
             render_pass.set_bind_group(1, &self.approach_circle_texture.bind_group, &[]);
-
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 
-            render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
-
             render_pass.set_vertex_buffer(1, self.approach_circle_instance_buffer.slice(..));
-
-            render_pass.set_index_buffer(
-                self.hit_circle_index_buffer.slice(..),
-                wgpu::IndexFormat::Uint16,
-            );
 
             render_pass.draw_indexed(
                 0..QUAD_INDECIES.len() as u32,
@@ -1288,12 +1378,12 @@ impl OsuRenderer {
         let _span = tracy_client::span!("osu_renderer render_objects");
 
         let hitcircles_encoder = self.render_hitcircles(&view)?;
-        let sliders_encoder = self.render_sliders(&view)?;
+        //let sliders_encoder = self.render_sliders(&view)?;
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
         self.graphics
             .queue
-            .submit([sliders_encoder.finish(), hitcircles_encoder.finish()]);
+            .submit([/*sliders_encoder.finish(), */hitcircles_encoder.finish()]);
         drop(span);
 
         self.clear_buffers();

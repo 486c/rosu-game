@@ -13,7 +13,7 @@ struct VertexInput {
 }
 
 struct InstanceInput {
-	@location(2) pos: vec2<f32>,
+	@location(2) pos: vec3<f32>,
 	@location(3) alpha: f32,
 	@location(4) scale: f32,
 }
@@ -37,7 +37,7 @@ fn vs_main(
 		1.0, 0.0, 0.0, 0.0,
 		0.0, 1.0, 0.0, 0.0,
 		0.0, 0.0, 1.0, 0.0,
-		instance.pos.x, instance.pos.y, 0.0, 1.0,
+		instance.pos.x, instance.pos.y, instance.pos.z, 1.0,
 	);
 
 	let scaled_pos = vec4<f32>(instance.scale, instance.scale, 0.0, 1.0) * vec4<f32>(model.pos, 0.0, 1.0);
