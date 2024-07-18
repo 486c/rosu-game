@@ -33,7 +33,12 @@ fn vs_main(
 	out.alpha = instance.alpha;
 
     out.clip_position = camera.proj * camera.view
-		* vec4<f32>(model.pos.x + instance.pos.x, model.pos.y + instance.pos.y, 0.0, 1.0);
+		* vec4<f32>(
+			model.pos.x + instance.pos.x, 
+			model.pos.y + instance.pos.y, 
+			instance.pos.z + 0.0, 
+			1.0
+		);
 
     return out;
 }

@@ -293,7 +293,7 @@ impl OsuRenderer {
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DepthTexture::DEPTH_FORMAT,
                         depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::LessEqual, // 1.
+                        depth_compare: wgpu::CompareFunction::Always, // 1.
                         stencil: wgpu::StencilState::default(),     // 2.
                         bias: wgpu::DepthBiasState::default(),
                     }),
@@ -356,9 +356,12 @@ impl OsuRenderer {
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DepthTexture::DEPTH_FORMAT,
                         depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::LessEqual, // 1.
+                        depth_compare: wgpu::CompareFunction::Always, // 1.
                         stencil: wgpu::StencilState::default(),     // 2.
-                        bias: wgpu::DepthBiasState::default(),
+                        bias: wgpu::DepthBiasState {
+                            clamp: 1.0,
+                            ..Default::default()
+                        },
                     }),
                     multisample: wgpu::MultisampleState {
                         count: 1,
@@ -534,7 +537,16 @@ impl OsuRenderer {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: None,
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DepthTexture::DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Always, // 1.
+                        stencil: wgpu::StencilState::default(),     // 2.
+                        bias: wgpu::DepthBiasState {
+                            clamp: 1.0,
+                            ..Default::default()
+                        },
+                    }),
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         ..Default::default()
@@ -614,15 +626,16 @@ impl OsuRenderer {
         queue: &[usize], 
         objects: &[Object]
     ) {
-        println!("Need to render: {} objects", queue.len());
 
         // Calculating Z values for current queue
         let total = queue.len() as f32;
-        let step = 2.0 / total;
-        let mut curr_val = -1.0;
+        let step = 1.0 / total;
+        let mut curr_val = 0.0;
 
         for current_index in queue {
             assert!(curr_val <= 1.0);
+
+            //println!("z val: {}", curr_val);
 
             let object = &objects[*current_index];
 
@@ -716,7 +729,7 @@ impl OsuRenderer {
                         let pos = slider.curve.position_at(percentage / 100.0);
 
                         self.follow_points_instance_data.push(HitCircleInstance {
-                            pos: [pos.x + slider.pos.x, pos.y + slider.pos.y, 0.0],
+                            pos: [pos.x + slider.pos.x, pos.y + slider.pos.y, curr_val],
                             alpha: body_alpha as f32,
                         });
 
@@ -725,7 +738,7 @@ impl OsuRenderer {
 
                     // BODY
                     self.slider_to_screen_instance_data.push(SliderInstance {
-                        pos: [0.0, 0.0],
+                        pos: [0.0, 0.0, curr_val],
                         alpha: body_alpha as f32,
                     });
 
@@ -874,6 +887,7 @@ impl OsuRenderer {
             self.slider_instance_data.push(SliderInstance::new(
                 x * SLIDER_SCALE,
                 y * SLIDER_SCALE,
+                0.0,
                 1.0,
             ));
 
@@ -1121,7 +1135,6 @@ impl OsuRenderer {
             &self.approach_circle_instance_data,
             ApproachCircleInstance
         );
-        /*
 
         buffer_write_or_init!(
             self.graphics.queue,
@@ -1138,7 +1151,6 @@ impl OsuRenderer {
             &self.follow_points_instance_data,
             SliderInstance
         );
-        */
     }
 
     /// Clears internal buffers
@@ -1227,7 +1239,14 @@ impl OsuRenderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
@@ -1238,47 +1257,44 @@ impl OsuRenderer {
                 self.slider_to_screen_textures.len()
             );
 
-            for (i, (texture, vertex_buffer, follow)) in
+            render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
+            render_pass.set_vertex_buffer(1, self.slider_to_screen_instance_buffer.slice(..));
+            render_pass.set_index_buffer(
+                self.hit_circle_index_buffer.slice(..), // DOCS
+                wgpu::IndexFormat::Uint16,
+            );
+
+
+            for (i, (texture, vertex_buffer, _follow)) in
                 self.slider_to_screen_textures.iter().enumerate().rev()
             {
                 let instance = i as u32..i as u32 + 1;
 
-                render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
-
-                render_pass.set_vertex_buffer(1, self.slider_to_screen_instance_buffer.slice(..));
-
                 render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-
-                render_pass.set_index_buffer(
-                    self.hit_circle_index_buffer.slice(..), // DOCS
-                    wgpu::IndexFormat::Uint16,
-                );
-
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
 
                 render_pass.set_bind_group(0, &texture.bind_group, &[]);
 
                 // First draw a slider body
                 render_pass.draw_indexed(0..QUAD_INDECIES.len() as u32, 0, instance);
-
-                if let Some(follow_instance) = follow {
-                    assert!(*follow_instance as usize <= self.follow_points_instance_data.len());
-                    let follow_instance = *follow_instance - 1..*follow_instance;
-
-                    render_pass.set_pipeline(&self.hit_circle_pipeline);
-                    render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                    render_pass.set_bind_group(0, &self.follow_point_texture.bind_group, &[]);
-
-                    render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
-                    render_pass.set_vertex_buffer(1, self.follow_points_instance_buffer.slice(..));
-                    render_pass.set_index_buffer(
-                        self.hit_circle_index_buffer.slice(..),
-                        wgpu::IndexFormat::Uint16,
-                    );
-
-                    render_pass.draw_indexed(0..QUAD_INDECIES.len() as u32, 0, follow_instance);
-                }
             }
+
+            render_pass.set_pipeline(&self.hit_circle_pipeline);
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.follow_point_texture.bind_group, &[]);
+
+            render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.follow_points_instance_buffer.slice(..));
+            render_pass.set_index_buffer(
+                self.hit_circle_index_buffer.slice(..),
+                wgpu::IndexFormat::Uint16,
+            );
+
+            render_pass.draw_indexed(
+                0..QUAD_INDECIES.len() as u32, 
+                0, 
+                0..self.follow_points_instance_data.len() as u32
+            );
         }
 
         Ok(encoder)
@@ -1378,12 +1394,12 @@ impl OsuRenderer {
         let _span = tracy_client::span!("osu_renderer render_objects");
 
         let hitcircles_encoder = self.render_hitcircles(&view)?;
-        //let sliders_encoder = self.render_sliders(&view)?;
+        let sliders_encoder = self.render_sliders(&view)?;
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
         self.graphics
             .queue
-            .submit([/*sliders_encoder.finish(), */hitcircles_encoder.finish()]);
+            .submit([sliders_encoder.finish(), hitcircles_encoder.finish()]);
         drop(span);
 
         self.clear_buffers();

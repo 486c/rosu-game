@@ -147,7 +147,18 @@ impl OsuState {
                     if ui.add(egui::Button::new("unpause")).clicked() {
                         self.osu_clock.unpause();
                     }
-                }
+
+
+                    if ui.add(egui::Button::new("<")).clicked() {
+                        self.osu_clock.set_time(self.osu_clock.get_time() - 1.0);
+                    }
+
+                    if ui.add(egui::Button::new(">")).clicked() {
+                        self.osu_clock.set_time(self.osu_clock.get_time() + 1.0);
+                    }
+                } 
+
+
             }
         });
 

@@ -13,7 +13,7 @@ struct VertexInput {
 }
 
 struct InstanceInput {
-	@location(2) pos: vec2<f32>,
+	@location(2) pos: vec3<f32>,
 	@location(3) alpha: f32,
 }
 
@@ -35,7 +35,7 @@ fn vs_main(
 	out.clip_position = camera.proj * camera.view * vec4<f32>(
 		model.pos.x + instance.pos.x, 
 		model.pos.y + instance.pos.y, 
-		0.0, 1.0
+		0.0 + instance.pos.z, 1.0
 	);
 
     return out;

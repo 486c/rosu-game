@@ -29,8 +29,8 @@ impl Camera {
             new_size.width as f32,
             new_size.height as f32,
             0.0,
-            1.0,  // znear
-            -1.0, // zfar
+            2.0,  // znear
+            -2.0, // zfar
         );
     }
 
