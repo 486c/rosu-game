@@ -20,5 +20,5 @@ tracy-client = { version = "0.16.5", default-features = true }
 ultraviolet = { version = "0.9.2", features = ["bytemuck"] }
 rosu-map = { git = "https://github.com/MaxOhn/rosu-map.git" }
 wgpu = "0.18.0"
-winit = { version = "0.28.7" }
+winit = { version = "0.28.7", default-features = false, feautres = ["x11"] }
 smallvec = "1.13.2"

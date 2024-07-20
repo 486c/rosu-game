@@ -276,7 +276,11 @@ impl OsuRenderer {
                                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                                     operation: wgpu::BlendOperation::Add,
                                 },
-                                alpha: wgpu::BlendComponent::OVER,
+                                alpha: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
                             }),
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
@@ -290,13 +294,13 @@ impl OsuRenderer {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: Some(wgpu::DepthStencilState {
+                    depth_stencil: None/*Some(wgpu::DepthStencilState {
                         format: DepthTexture::DEPTH_FORMAT,
-                        depth_write_enabled: true,
+                        depth_write_enabled: false,
                         depth_compare: wgpu::CompareFunction::Always, // 1.
                         stencil: wgpu::StencilState::default(),     // 2.
                         bias: wgpu::DepthBiasState::default(),
-                    }),
+                    })*/,
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         mask: !0,
@@ -353,16 +357,15 @@ impl OsuRenderer {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: Some(wgpu::DepthStencilState {
+                    depth_stencil: None,/*Some(wgpu::DepthStencilState {
                         format: DepthTexture::DEPTH_FORMAT,
-                        depth_write_enabled: true,
+                        depth_write_enabled: false,
                         depth_compare: wgpu::CompareFunction::Always, // 1.
                         stencil: wgpu::StencilState::default(),     // 2.
                         bias: wgpu::DepthBiasState {
-                            clamp: 1.0,
                             ..Default::default()
                         },
-                    }),
+                    })*/
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         mask: !0,
@@ -523,7 +526,7 @@ impl OsuRenderer {
                                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                                     operation: wgpu::BlendOperation::Add,
                                 },
-                                alpha: wgpu::BlendComponent::OVER,
+                                alpha: wgpu::BlendComponent::REPLACE,
                             }),
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
@@ -539,7 +542,7 @@ impl OsuRenderer {
                     },
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DepthTexture::DEPTH_FORMAT,
-                        depth_write_enabled: true,
+                        depth_write_enabled: false,
                         depth_compare: wgpu::CompareFunction::Always, // 1.
                         stencil: wgpu::StencilState::default(),     // 2.
                         bias: wgpu::DepthBiasState {
@@ -626,13 +629,14 @@ impl OsuRenderer {
         queue: &[usize], 
         objects: &[Object]
     ) {
+        let _span = tracy_client::span!("osu_renderer prepare_objects2");
 
         // Calculating Z values for current queue
         let total = queue.len() as f32;
         let step = 1.0 / total;
         let mut curr_val = 0.0;
 
-        for current_index in queue {
+        for current_index in queue.iter().rev() {
             assert!(curr_val <= 1.0);
 
             //println!("z val: {}", curr_val);
@@ -641,6 +645,7 @@ impl OsuRenderer {
 
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
+                    let _span = tracy_client::span!("osu_renderer prepare_objects2::circle");
                     let start_time = object.start_time - preempt as f64;
                     let end_time = start_time + fadein as f64;
                     let alpha = ((time - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
@@ -666,7 +671,7 @@ impl OsuRenderer {
                         ));
                 },
                 hit_objects::ObjectKind::Slider(slider) => {
-                    let _span = tracy_client::span!("osu_renderer prepare_object_for_render::slider");
+                    let _span = tracy_client::span!("osu_renderer prepare_objects2::circle");
 
                     let start_time = slider.start_time - preempt as f64;
                     let end_time = start_time + fadein as f64;
@@ -1242,7 +1247,7 @@ impl OsuRenderer {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
@@ -1331,14 +1336,14 @@ impl OsuRenderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                depth_stencil_attachment: None/*Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
-                }),
+                })*/,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
@@ -1394,12 +1399,12 @@ impl OsuRenderer {
         let _span = tracy_client::span!("osu_renderer render_objects");
 
         let hitcircles_encoder = self.render_hitcircles(&view)?;
-        let sliders_encoder = self.render_sliders(&view)?;
+        //let sliders_encoder = self.render_sliders(&view)?;
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
         self.graphics
             .queue
-            .submit([sliders_encoder.finish(), hitcircles_encoder.finish()]);
+            .submit([hitcircles_encoder.finish()]);
         drop(span);
 
         self.clear_buffers();

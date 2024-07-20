@@ -34,7 +34,7 @@ fn main() {
 
     let mut osu_state = OsuState::new(window, state);
 
-    osu_state.open_beatmap("tests/mayday.osu");
+    osu_state.open_beatmap("tests/bebra.osu");
     //osu_state.set_time(194046.5);
     //osu_state.set_time(30000.0);
 

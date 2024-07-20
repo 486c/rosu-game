@@ -221,11 +221,15 @@ impl OsuState {
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_state render");
 
+        let span = tracy_client::span!("osu_state render::get_current_texture");
         let output = self.osu_renderer.get_graphics().get_current_texture()?;
+        drop(span);
 
+        let span = tracy_client::span!("osu_state render::create_view");
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        drop(span);
 
         self.osu_renderer.render_objects(&view)?;
 
