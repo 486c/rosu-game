@@ -4,7 +4,7 @@ struct CameraUniform {
     view: mat4x4<f32>,
 };
 
-@group(1) @binding(0)
+@group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
 struct VertexInput {
@@ -51,19 +51,32 @@ fn vs_main(
 
 
 // Fragment shader
-@group(0) @binding(0)
-var texture: texture_2d<f32>;
-@group(0) @binding(1)
-var texture_sampler: sampler;
+//@group(0) @binding(0)
+//var texture: texture_2d<f32>;
+//@group(0) @binding(1)
+//var texture_sampler: sampler;
 
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	var out = textureSample(texture, texture_sampler, in.uv);
+	let circle_color = vec3<f32>(1.0, 1.0, 1.0);
+	let thickness = 0.05;
+	let fade = 0.001;
 
-	out.w = out.w * in.alpha;
+	let uv = in.uv * 2.0 - 1.0;
+
+	let distance = 1.0 - length(uv);
+	var color = vec3<f32>(smoothstep(0.0, fade, distance));
+	color *= vec3<f32>(smoothstep(thickness + fade, thickness, distance));
+
+	if (color.r == 0.0) {
+		discard;
+	}
+
+	var out = vec4<f32>(color, in.alpha);
+	out.r = out.r * circle_color.r;
+	out.g = out.g * circle_color.g;
+	out.b = out.b * circle_color.b;
 
 	return out;
-	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
-	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
 }

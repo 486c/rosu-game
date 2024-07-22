@@ -34,7 +34,7 @@ fn main() {
 
     let mut osu_state = OsuState::new(window, state);
 
-    osu_state.open_beatmap("tests/mayday.osu");
+    osu_state.open_beatmap("tests/test2.osu");
     //osu_state.set_time(194046.5);
     //osu_state.set_time(30000.0);
 
@@ -51,8 +51,6 @@ fn main() {
                         match osu_state.render() {
                             Ok(_) => break 'blk,
                             Err(wgpu::SurfaceError::Lost) => println!("Surface Lost"),
-                            //osu_state.resize(&osu_state.state.size.clone()),
-                            //osu_state.state.resize(osu_state.state.size),
                             Err(wgpu::SurfaceError::OutOfMemory) => elwf.set_exit(),
                             Err(e) => eprintln!("{:?}", e),
                         }

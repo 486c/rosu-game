@@ -20,7 +20,7 @@ impl Graphics {
             features: wgpu::Features::default(),
             limits: wgpu::Limits::default(),
         };
-        let power_preferences = wgpu::PowerPreference::default();
+        let power_preferences = wgpu::PowerPreference::HighPerformance;
         //let present_mode = PresentMode::Fifo;
         let present_mode = PresentMode::Immediate;
 

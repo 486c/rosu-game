@@ -248,7 +248,7 @@ impl OsuRenderer {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("approach circle pipeline Layout"),
                     bind_group_layouts: &[
-                        &approach_circle_texture.bind_group_layout,
+                        //&approach_circle_texture.bind_group_layout,
                         &camera_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
@@ -737,6 +737,7 @@ impl OsuRenderer {
                         alpha: body_alpha as f32,
                     });
 
+
                     self.approach_circle_instance_data
                         .push(ApproachCircleInstance::new(
                                 slider.pos.x,
@@ -744,6 +745,14 @@ impl OsuRenderer {
                                 curr_val,
                                 approach_alpha as f32,
                                 approach_scale as f32,
+                        ));
+
+                    self.hit_circle_instance_data
+                        .push(HitCircleInstance::new(
+                                slider.pos.x,
+                                slider.pos.y,
+                                curr_val,
+                                if approach_alpha > 0.0 { body_alpha as f32 } else { 0.0 }, // TODO XD
                         ));
 
                     // That's tricky part. Since every slider have a according
@@ -1361,15 +1370,7 @@ impl OsuRenderer {
 
             // APPROACH CIRCLES
             render_pass.set_pipeline(&self.approach_circle_pipeline);
-            render_pass.set_bind_group(
-                // TODO ???
-                0,
-                &self.approach_circle_texture.bind_group,
-                &[],
-            );
-
-            render_pass.set_bind_group(1, &self.approach_circle_texture.bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
 
             render_pass.set_vertex_buffer(1, self.approach_circle_instance_buffer.slice(..));
 
