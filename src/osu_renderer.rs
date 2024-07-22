@@ -540,18 +540,8 @@ impl OsuRenderer {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DepthTexture::DEPTH_FORMAT,
-                        depth_write_enabled: false,
-                        depth_compare: wgpu::CompareFunction::Always, // 1.
-                        stencil: wgpu::StencilState::default(),     // 2.
-                        bias: wgpu::DepthBiasState {
-                            clamp: 1.0,
-                            ..Default::default()
-                        },
-                    }),
+                    depth_stencil: None,
                     multisample: wgpu::MultisampleState {
-                        count: 1,
                         ..Default::default()
                     },
                     multiview: None,
@@ -1244,14 +1234,14 @@ impl OsuRenderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                depth_stencil_attachment: None/*Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
-                }),
+                })*/,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
@@ -1399,12 +1389,12 @@ impl OsuRenderer {
         let _span = tracy_client::span!("osu_renderer render_objects");
 
         let hitcircles_encoder = self.render_hitcircles(&view)?;
-        //let sliders_encoder = self.render_sliders(&view)?;
+        let sliders_encoder = self.render_sliders(&view)?;
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
         self.graphics
             .queue
-            .submit([hitcircles_encoder.finish()]);
+            .submit([sliders_encoder.finish(), hitcircles_encoder.finish()]);
         drop(span);
 
         self.clear_buffers();

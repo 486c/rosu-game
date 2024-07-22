@@ -63,7 +63,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 	out.w = out.w * in.alpha;
 
-
 	return out;
 	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
 	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
