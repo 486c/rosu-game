@@ -63,8 +63,6 @@ fn main() {
                         match osu_state.render() {
                             Ok(_) => break 'blk,
                             Err(wgpu::SurfaceError::Lost) => println!("Surface Lost"),
-                            //osu_state.resize(&osu_state.state.size.clone()),
-                            //osu_state.state.resize(osu_state.state.size),
                             Err(wgpu::SurfaceError::OutOfMemory) => elwf.set_exit(),
                             Err(e) => eprintln!("{:?}", e),
                         }
