@@ -1,6 +1,7 @@
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use egui::Slider;
+use rodio::Sink;
 use rosu_map::Beatmap;
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -37,6 +38,8 @@ pub struct OsuState {
     pub window: Window,
     pub egui: EguiState,
 
+    pub sink: Sink,
+
     osu_renderer: OsuRenderer,
 
     current_beatmap: Option<Beatmap>,
@@ -55,7 +58,7 @@ pub struct OsuState {
 }
 
 impl OsuState {
-    pub fn new(window: Window, graphics: Graphics) -> Self {
+    pub fn new(window: Window, graphics: Graphics, sink: Sink) -> Self {
         let egui = EguiState::new(&graphics, &window);
         let osu_renderer = OsuRenderer::new(graphics);
 
@@ -67,6 +70,7 @@ impl OsuState {
             window,
             current_beatmap: None,
             egui,
+            sink,
             osu_clock: Timer::new(),
             objects_queue: Vec::with_capacity(20),
             hit_objects: Vec::new(),
@@ -131,32 +135,38 @@ impl OsuState {
             if let Some(beatmap) = &self.current_beatmap {
                 ui.add(egui::Label::new(format!("{}", self.osu_clock.get_time())));
 
-                ui.add(
+                if ui.add(
                     Slider::new(
                         &mut self.osu_clock.last_time,
                         1.0..=(beatmap.hit_objects.last().unwrap().start_time),
                     )
                     .step_by(1.0),
-                );
+                ).changed() {
+                    self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
+                };
 
                 if !self.osu_clock.is_paused() {
                     if ui.add(egui::Button::new("pause")).clicked() {
                         self.osu_clock.pause();
+                        self.sink.pause();
                     }
                 } else {
                     if ui.add(egui::Button::new("unpause")).clicked() {
                         self.osu_clock.unpause();
+                        self.sink.play();
                     }
 
 
                     if ui.add(egui::Button::new("<")).clicked() {
                         self.osu_clock.set_time(self.osu_clock.get_time() - 1.0);
+                        self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
                     }
 
                     if ui.add(egui::Button::new(">")).clicked() {
                         self.osu_clock.set_time(self.osu_clock.get_time() + 1.0);
+                        self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
                     }
-                } 
+                }
 
 
             }

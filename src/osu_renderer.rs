@@ -294,13 +294,13 @@ impl OsuRenderer {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: None/*Some(wgpu::DepthStencilState {
-                        format: DepthTexture::DEPTH_FORMAT,
-                        depth_write_enabled: false,
-                        depth_compare: wgpu::CompareFunction::Always, // 1.
-                        stencil: wgpu::StencilState::default(),     // 2.
-                        bias: wgpu::DepthBiasState::default(),
-                    })*/,
+                    depth_stencil: None, /*Some(wgpu::DepthStencilState {
+                                             format: DepthTexture::DEPTH_FORMAT,
+                                             depth_write_enabled: false,
+                                             depth_compare: wgpu::CompareFunction::Always, // 1.
+                                             stencil: wgpu::StencilState::default(),     // 2.
+                                             bias: wgpu::DepthBiasState::default(),
+                                         })*/
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         mask: !0,
@@ -357,15 +357,15 @@ impl OsuRenderer {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: None,/*Some(wgpu::DepthStencilState {
-                        format: DepthTexture::DEPTH_FORMAT,
-                        depth_write_enabled: false,
-                        depth_compare: wgpu::CompareFunction::Always, // 1.
-                        stencil: wgpu::StencilState::default(),     // 2.
-                        bias: wgpu::DepthBiasState {
-                            ..Default::default()
-                        },
-                    })*/
+                    depth_stencil: None, /*Some(wgpu::DepthStencilState {
+                                             format: DepthTexture::DEPTH_FORMAT,
+                                             depth_write_enabled: false,
+                                             depth_compare: wgpu::CompareFunction::Always, // 1.
+                                             stencil: wgpu::StencilState::default(),     // 2.
+                                             bias: wgpu::DepthBiasState {
+                                                 ..Default::default()
+                                             },
+                                         })*/
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         mask: !0,
@@ -612,12 +612,12 @@ impl OsuRenderer {
     }
 
     pub fn prepare_objects2(
-        &mut self, 
+        &mut self,
         time: f64,
         preempt: f32,
         fadein: f32,
-        queue: &[usize], 
-        objects: &[Object]
+        queue: &[usize],
+        objects: &[Object],
     ) {
         let _span = tracy_client::span!("osu_renderer prepare_objects2");
 
@@ -645,29 +645,39 @@ impl OsuRenderer {
                     let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);
 
                     self.hit_circle_instance_data.push(HitCircleInstance::new(
-                            circle.pos.x,
-                            circle.pos.y,
-                            curr_val,
-                            alpha as f32,
+                        circle.pos.x,
+                        circle.pos.y,
+                        curr_val,
+                        alpha as f32,
                     ));
 
                     self.approach_circle_instance_data
                         .push(ApproachCircleInstance::new(
-                                circle.pos.x,
-                                circle.pos.y,
-                                curr_val,
-                                alpha as f32,
-                                approach_scale as f32,
+                            circle.pos.x,
+                            circle.pos.y,
+                            curr_val,
+                            alpha as f32,
+                            approach_scale as f32,
                         ));
-                },
+                }
                 hit_objects::ObjectKind::Slider(slider) => {
                     let _span = tracy_client::span!("osu_renderer prepare_objects2::circle");
+
 
                     let start_time = slider.start_time - preempt as f64;
                     let end_time = start_time + fadein as f64;
 
+                    let alpha = ((time - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
+
+                    self.hit_circle_instance_data.push(HitCircleInstance::new(
+                        slider.pos.x,
+                        slider.pos.y,
+                        curr_val,
+                        alpha as f32,
+                    ));
+
                     let mut body_alpha =
-                        ((time - start_time) / (end_time - start_time)).clamp(0.0, 0.95);
+                    ((time - start_time) / (end_time - start_time)).clamp(0.0, 0.95);
 
                     // FADEOUT
                     if time >= object.start_time + slider.duration
@@ -739,11 +749,11 @@ impl OsuRenderer {
 
                     self.approach_circle_instance_data
                         .push(ApproachCircleInstance::new(
-                                slider.pos.x,
-                                slider.pos.y,
-                                curr_val,
-                                approach_alpha as f32,
-                                approach_scale as f32,
+                            slider.pos.x,
+                            slider.pos.y,
+                            curr_val,
+                            approach_alpha as f32,
+                            approach_scale as f32,
                         ));
 
                     // That's tricky part. Since every slider have a according
@@ -751,20 +761,18 @@ impl OsuRenderer {
                     // So we are pushing all textures to the "queue" so we can iterate on it later
                     if let Some(render) = &slider.render {
                         self.slider_to_screen_textures.push((
-                                render.texture.clone(),
-                                render.quad.clone(),
-                                follow_circle,
+                            render.texture.clone(),
+                            render.quad.clone(),
+                            follow_circle,
                         ))
                     } else {
                         panic!("Texture and quad should be present");
                     };
-
-                },
+                }
             }
 
             curr_val += step;
         }
-
     }
 
     pub fn get_graphics(&self) -> &Graphics {
@@ -1098,7 +1106,7 @@ impl OsuRenderer {
     pub fn write_buffers(&mut self) {
         let _span = tracy_client::span!("osu_renderer write buffers");
         //println!("==============");
-        
+
         /*
         // TODO remove later
         let total = self.hit_circle_instance_data.len() as f32;
@@ -1122,7 +1130,7 @@ impl OsuRenderer {
             &self.hit_circle_instance_data,
             HitCircleInstance
         );
-        
+
         buffer_write_or_init!(
             self.graphics.queue,
             self.graphics.device,
@@ -1173,7 +1181,7 @@ impl OsuRenderer {
         match &obj.kind {
             hit_objects::ObjectKind::Circle(circle) => {
                 let _span = tracy_client::span!("osu_renderer prepare_object_for_render::circle");
-                
+
                 /*
                 let start_time = obj.start_time - preempt as f64;
                 let end_time = start_time + fadein as f64;
@@ -1199,8 +1207,7 @@ impl OsuRenderer {
                     ));
                 */
             }
-            hit_objects::ObjectKind::Slider(slider) => {
-            }
+            hit_objects::ObjectKind::Slider(slider) => {}
         }
     }
 
@@ -1234,14 +1241,14 @@ impl OsuRenderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None/*Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                })*/,
+                depth_stencil_attachment: None, /*Some(wgpu::RenderPassDepthStencilAttachment {
+                                                    view: &self.depth_texture.view,
+                                                    depth_ops: Some(wgpu::Operations {
+                                                        load: wgpu::LoadOp::Load,
+                                                        store: wgpu::StoreOp::Store,
+                                                    }),
+                                                    stencil_ops: None,
+                                                })*/
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
@@ -1258,7 +1265,6 @@ impl OsuRenderer {
                 self.hit_circle_index_buffer.slice(..), // DOCS
                 wgpu::IndexFormat::Uint16,
             );
-
 
             for (i, (texture, vertex_buffer, _follow)) in
                 self.slider_to_screen_textures.iter().enumerate().rev()
@@ -1286,9 +1292,9 @@ impl OsuRenderer {
             );
 
             render_pass.draw_indexed(
-                0..QUAD_INDECIES.len() as u32, 
-                0, 
-                0..self.follow_points_instance_data.len() as u32
+                0..QUAD_INDECIES.len() as u32,
+                0,
+                0..self.follow_points_instance_data.len() as u32,
             );
         }
 
@@ -1326,14 +1332,14 @@ impl OsuRenderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None/*Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                })*/,
+                depth_stencil_attachment: None, /*Some(wgpu::RenderPassDepthStencilAttachment {
+                                                    view: &self.depth_texture.view,
+                                                    depth_ops: Some(wgpu::Operations {
+                                                        load: wgpu::LoadOp::Load,
+                                                        store: wgpu::StoreOp::Store,
+                                                    }),
+                                                    stencil_ops: None,
+                                                })*/
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
