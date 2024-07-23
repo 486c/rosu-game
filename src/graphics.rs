@@ -1,24 +1,26 @@
+use std::sync::Arc;
+
 use futures::executor::block_on;
 use wgpu::{Instance, InstanceDescriptor, PresentMode, RequestAdapterOptions, SurfaceTexture};
 use winit::window::Window;
 
-pub struct Graphics {
-    pub surface: wgpu::Surface,
+pub struct Graphics<'g> {
+    pub surface: wgpu::Surface<'g>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub size: winit::dpi::PhysicalSize<u32>,
 }
 
-impl Graphics {
-    pub fn new(window: &Window) -> Self {
+impl<'g> Graphics<'g> {
+    pub fn new(window: Arc<Window>) -> Self {
         let _span = tracy_client::span!("wgpu init");
 
         let supported_backend = wgpu::Backends::VULKAN;
         let device_descriptor = wgpu::DeviceDescriptor {
             label: None,
-            features: wgpu::Features::default(),
-            limits: wgpu::Limits::default(),
+            required_features: wgpu::Features::default(),
+            required_limits: wgpu::Limits::default(),
         };
         let power_preferences = wgpu::PowerPreference::HighPerformance;
         //let present_mode = PresentMode::Fifo;
@@ -33,7 +35,7 @@ impl Graphics {
             gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
         });
 
-        let surface = unsafe { instance.create_surface(&window) }.unwrap();
+        let surface = instance.create_surface(window).unwrap();
 
         let adapter_options = RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
@@ -74,6 +76,7 @@ impl Graphics {
             present_mode,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
+            desired_maximum_frame_latency: 1,
         };
 
         surface.configure(&device, &config);

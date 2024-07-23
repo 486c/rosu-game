@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufReader};
+use std::{fs::File, io::BufReader, sync::Arc};
 
 use graphics::Graphics;
 use osu_state::OsuState;
@@ -26,14 +26,17 @@ mod vertex;
 fn main() {
     let _client = tracy_client::Client::start();
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().expect("Failed to initialize event loop");
+
     let window = WindowBuilder::new()
         //.with_resizable(false)
         .with_inner_size(LogicalSize::new(800, 600))
         .build(&event_loop)
         .unwrap();
 
-    let state = Graphics::new(&window);
+    let window = Arc::new(window);
+
+    let state = Graphics::new(window.clone());
 
     let file = BufReader::new(File::open("tests/mayday/audio.mp3").unwrap());
     let source = Decoder::new(file).unwrap();
@@ -43,7 +46,7 @@ fn main() {
     sink.pause();
     sink.append(source);
 
-    let mut osu_state = OsuState::new(window, state, sink);
+    let mut osu_state = OsuState::new(window.clone(), state, sink);
 
     osu_state.open_beatmap("tests/mayday/mayday.osu");
 
@@ -53,23 +56,11 @@ fn main() {
     //osu_state.open_beatmap("tests/single_slider.osu");
     //osu_state.open_beatmap("tests/linear_sliders.osu");
 
-    let _ = event_loop.run(move |event, _, elwf| {
+    let _ = event_loop.run(move |event, elwf| {
         let _span = tracy_client::span!("event_loop");
 
         match event {
-            Event::RedrawRequested(window_id) => {
-                if window_id == osu_state.window.id() {
-                    'blk: loop {
-                        match osu_state.render() {
-                            Ok(_) => break 'blk,
-                            Err(wgpu::SurfaceError::Lost) => println!("Surface Lost"),
-                            Err(wgpu::SurfaceError::OutOfMemory) => elwf.set_exit(),
-                            Err(e) => eprintln!("{:?}", e),
-                        }
-                    }
-                }
-            }
-            Event::MainEventsCleared => {
+            Event::AboutToWait => {
                 osu_state.update();
                 osu_state.window.request_redraw();
             }
@@ -77,20 +68,31 @@ fn main() {
                 event,
                 window_id: _,
             } => {
-                osu_state.egui.on_window_event(&event);
+                osu_state.egui.on_window_event(&event, &window);
+
+
 
                 match event {
                     WindowEvent::CloseRequested => {
-                        elwf.set_exit();
+                        elwf.exit();
                     }
                     WindowEvent::Resized(physical_size) => {
                         osu_state.resize(&physical_size);
-                        //osu_state.state.resize(physical_size)
                     }
-                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        osu_state.resize(new_inner_size);
-                        //osu_state.state.resize(*new_inner_size);
+                    WindowEvent::RedrawRequested => {
+                        'blk: loop {
+                            match osu_state.render() {
+                                Ok(_) => break 'blk,
+                                Err(wgpu::SurfaceError::Lost) => println!("Surface Lost"),
+                                Err(wgpu::SurfaceError::OutOfMemory) => elwf.exit(),
+                                Err(e) => eprintln!("{:?}", e),
+                            }
+                        }
                     }
+                    //WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        //osu_state.resize(new_inner_size);
+                        ////osu_state.state.resize(*new_inner_size);
+                    //}
                     //WindowEvent::RedrawRequested => {
                     //}
                     _ => {}

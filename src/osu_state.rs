@@ -1,4 +1,4 @@
-use std::{path::Path, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use egui::Slider;
 use rodio::Sink;
@@ -34,13 +34,13 @@ fn calculate_hit_window(od: f32) -> (f32, f32, f32) {
     (80.0 - 6.0 * od, 140.0 - 8.0 * od, 200.0 - 10.0 * od)
 }
 
-pub struct OsuState {
-    pub window: Window,
+pub struct OsuState<'s> {
+    pub window: Arc<Window>,
     pub egui: EguiState,
 
     pub sink: Sink,
 
-    osu_renderer: OsuRenderer,
+    osu_renderer: OsuRenderer<'s>,
 
     current_beatmap: Option<Beatmap>,
     preempt: f32,
@@ -57,8 +57,8 @@ pub struct OsuState {
     // TODO remove
 }
 
-impl OsuState {
-    pub fn new(window: Window, graphics: Graphics, sink: Sink) -> Self {
+impl<'s> OsuState<'s> {
+    pub fn new(window: Arc<Window>, graphics: Graphics<'s>, sink: Sink) -> Self {
         let egui = EguiState::new(&graphics, &window);
         let osu_renderer = OsuRenderer::new(graphics);
 
@@ -129,9 +129,9 @@ impl OsuState {
 
         let input = self.egui.state.take_egui_input(&self.window);
 
-        self.egui.context.begin_frame(input);
+        self.egui.state.egui_ctx().begin_frame(input);
 
-        egui::Window::new("Window").show(&self.egui.context, |ui| {
+        egui::Window::new("Window").show(&self.egui.state.egui_ctx(), |ui| {
             if let Some(beatmap) = &self.current_beatmap {
                 ui.add(egui::Label::new(format!("{}", self.osu_clock.get_time())));
 
@@ -172,11 +172,10 @@ impl OsuState {
             }
         });
 
-        let output = self.egui.context.end_frame();
+        let output = self.egui.state.egui_ctx().end_frame();
 
         self.egui.state.handle_platform_output(
             &self.window,
-            &self.egui.context,
             output.platform_output.to_owned(),
         );
 

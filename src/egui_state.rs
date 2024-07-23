@@ -1,17 +1,14 @@
 use egui_demo_lib::DemoWindows;
-use egui_wgpu::Renderer;
+use egui_wgpu::{Renderer, ScreenDescriptor};
 use wgpu::{Device, CommandEncoder};
 use winit::{window::Window, event::WindowEvent};
 
 use crate::graphics::Graphics;
 
 pub struct EguiState {
-    pub context: egui::Context,
     pub state: egui_winit::State,
     pub renderer: Renderer,
     //pub render_pass: RenderPass,
-
-    pub demo_app: DemoWindows,
 
     pub output: Option<egui::FullOutput>,
 }
@@ -21,11 +18,8 @@ impl EguiState {
 
         let context = egui::Context::default();
 
-        // context.set_zoom_factor(0.5);
-
-        //context.set_pixels_per_point(window.scale_factor() as f32);
-
         let winit_state = egui_winit::State::new(
+            context,
             Default::default(),
             window,
             None,
@@ -40,15 +34,9 @@ impl EguiState {
             1
         );
 
-        let demo_app = egui_demo_lib::DemoWindows::default();
-
         EguiState {
             renderer: egui_renderer,
-            context,
             state: winit_state,
-            //render_pass,
-            demo_app,
-
             output: None,
         }
     }
@@ -56,10 +44,11 @@ impl EguiState {
     pub fn on_window_event(
         &mut self,
         event: &WindowEvent,
+        window: &Window,
     ) {
         // TODO handle
         let _ = self.state.on_window_event(
-            &self.context, event
+            window, event
         );
     }
 
@@ -87,14 +76,14 @@ impl EguiState {
 
         let shapes = egui_output.shapes.as_slice();
         // TODO -1 alloc
-        let paint_jobs = self.context.tessellate(
+        let paint_jobs = self.state.egui_ctx().tessellate(
             shapes.to_vec(), 
-            self.context.pixels_per_point(),
+            self.state.egui_ctx().pixels_per_point(),
         );
 
-        let screen_descriptor = egui_wgpu::renderer::ScreenDescriptor {
+        let screen_descriptor = ScreenDescriptor {
             size_in_pixels: [graphics.config.width, graphics.config.height],
-            pixels_per_point: self.context.pixels_per_point()
+            pixels_per_point: self.state.egui_ctx().pixels_per_point()
         };
 
         self.renderer.update_buffers(

@@ -71,9 +71,9 @@ fn calc_playfield_scale_factor(screen_w: f32, screen_h: f32) -> f32 {
     return scale_factor;
 }
 
-pub struct OsuRenderer {
+pub struct OsuRenderer<'or> {
     // Graphics State
-    graphics: Graphics,
+    graphics: Graphics<'or>,
 
     // State
     scale: f32,
@@ -130,8 +130,8 @@ pub struct OsuRenderer {
     depth_texture: DepthTexture,
 }
 
-impl OsuRenderer {
-    pub fn new(graphics: Graphics) -> Self {
+impl<'or> OsuRenderer<'or> {
+    pub fn new(graphics: Graphics<'or>) -> Self {
         let hit_circle_texture = Texture::from_path("skin/hitcircle.png", &graphics);
 
         let approach_circle_texture = Texture::from_path("skin/approachcircle.png", &graphics);
@@ -264,6 +264,7 @@ impl OsuRenderer {
                         module: &approach_circle_shader,
                         entry_point: "vs_main",
                         buffers: &[Vertex::desc(), ApproachCircleInstance::desc()],
+                        compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &approach_circle_shader,
@@ -284,6 +285,7 @@ impl OsuRenderer {
                             }),
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
+                        compilation_options: Default::default(),
                     }),
                     primitive: wgpu::PrimitiveState {
                         topology: wgpu::PrimitiveTopology::TriangleList,
@@ -331,8 +333,10 @@ impl OsuRenderer {
                         module: &hit_circle_shader,
                         entry_point: "vs_main",
                         buffers: &[Vertex::desc(), HitCircleInstance::desc()],
+                        compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
+                        compilation_options: Default::default(),
                         module: &hit_circle_shader,
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
@@ -423,9 +427,11 @@ impl OsuRenderer {
                         module: &slider_shader,
                         entry_point: "vs_main",
                         buffers: &[Vertex::desc(), SliderInstance::desc()],
+                        compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &slider_shader,
+                        compilation_options: Default::default(),
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
                             format: graphics.config.format,
@@ -511,11 +517,13 @@ impl OsuRenderer {
                     label: Some("slider to screen render pipeline23"),
                     layout: Some(&slider_to_screen_pipeline_layout),
                     vertex: wgpu::VertexState {
+                        compilation_options: Default::default(),
                         module: &slider_to_screen_shader,
                         entry_point: "vs_main",
                         buffers: &[Vertex::desc(), SliderInstance::desc()],
                     },
                     fragment: Some(wgpu::FragmentState {
+                        compilation_options: Default::default(),
                         module: &slider_to_screen_shader,
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
