@@ -1,5 +1,8 @@
+use std::{fs::File, io::BufReader};
+
 use graphics::Graphics;
 use osu_state::OsuState;
+use rodio::{Decoder, OutputStream, Sink};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -32,9 +35,18 @@ fn main() {
 
     let state = Graphics::new(&window);
 
-    let mut osu_state = OsuState::new(window, state);
+    let file = BufReader::new(File::open("tests/shit/fickle.mp3").unwrap());
+    let source = Decoder::new(file).unwrap();
 
-    osu_state.open_beatmap("tests/test2.osu");
+    let (stream, stream_handle) = OutputStream::try_default().unwrap();
+    let sink = Sink::try_new(&stream_handle).unwrap();
+    sink.pause();
+    sink.append(source);
+
+    let mut osu_state = OsuState::new(window, state, sink);
+
+    osu_state.open_beatmap("tests/shit/fickle.osu");
+
     //osu_state.set_time(194046.5);
     //osu_state.set_time(30000.0);
 
