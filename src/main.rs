@@ -35,7 +35,7 @@ fn main() {
 
     let state = Graphics::new(&window);
 
-    let file = BufReader::new(File::open("tests/shit/fickle.mp3").unwrap());
+    let file = BufReader::new(File::open("tests/mayday/audio.mp3").unwrap());
     let source = Decoder::new(file).unwrap();
 
     let (stream, stream_handle) = OutputStream::try_default().unwrap();
@@ -45,7 +45,7 @@ fn main() {
 
     let mut osu_state = OsuState::new(window, state, sink);
 
-    osu_state.open_beatmap("tests/shit/fickle.osu");
+    osu_state.open_beatmap("tests/mayday/mayday.osu");
 
     //osu_state.set_time(194046.5);
     //osu_state.set_time(30000.0);

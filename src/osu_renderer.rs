@@ -667,15 +667,6 @@ impl OsuRenderer {
                     let start_time = slider.start_time - preempt as f64;
                     let end_time = start_time + fadein as f64;
 
-                    let alpha = ((time - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
-
-                    self.hit_circle_instance_data.push(HitCircleInstance::new(
-                        slider.pos.x,
-                        slider.pos.y,
-                        curr_val,
-                        alpha as f32,
-                    ));
-
                     let mut body_alpha =
                     ((time - start_time) / (end_time - start_time)).clamp(0.0, 0.95);
 
