@@ -792,6 +792,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_file"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60f345a124846bdfe3b35a43b74bb2a485c5494c106cb646748edcd6c10bc24d"
+dependencies = [
+ "egui 0.28.1",
+]
+
+[[package]]
 name = "egui_plot"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3130,6 +3139,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "egui_demo_lib",
+ "egui_file",
  "futures",
  "image",
  "raw-window-handle",

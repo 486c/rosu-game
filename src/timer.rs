@@ -18,6 +18,8 @@ impl Timer {
         }
     }
 
+
+
     pub fn is_paused(&self) -> bool {
         self.paused == true
     }
@@ -38,6 +40,11 @@ impl Timer {
 
     pub fn set_time(&mut self, time: f64) {
         self.last_time = time;
+    }
+
+    pub fn reset_time(&mut self) {
+        self.last_time = 0.0;
+        self.paused = true;
     }
     
     /// Updates and returns current time

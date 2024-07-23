@@ -1,7 +1,8 @@
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::Arc, time::Duration};
 
 use egui::Slider;
-use rodio::Sink;
+use egui_file::FileDialog;
+use rodio::{Decoder, Sink};
 use rosu_map::Beatmap;
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -48,13 +49,15 @@ pub struct OsuState<'s> {
     hit_offset: f32,
 
     hit_objects: Vec<Object>,
-
     objects_queue: Vec<usize>,
 
     osu_clock: Timer,
-    // SLIDERS
-
-    // TODO remove
+    
+    // I hate that i have to store it right here, but i'm gonna leave it here
+    // just for easier debugging and prototyping
+    file_dialog: Option<FileDialog>,
+    difficulties: Vec<PathBuf>,
+    new_beatmap: Option<PathBuf>,
 }
 
 impl<'s> OsuState<'s> {
@@ -74,11 +77,16 @@ impl<'s> OsuState<'s> {
             osu_clock: Timer::new(),
             objects_queue: Vec::with_capacity(20),
             hit_objects: Vec::new(),
+            file_dialog: None,
+            difficulties: Vec::new(),
+            new_beatmap: None,
         }
     }
 
-    pub fn open_beatmap<P: AsRef<Path>>(&mut self, path: P) {
-        let map = match Beatmap::from_path(path) {
+    pub fn open_beatmap(&mut self, path: impl AsRef<Path>) {
+        self.osu_clock.reset_time();
+
+        let map = match Beatmap::from_path(path.as_ref()) {
             Ok(m) => m,
             Err(e) => {
                 println!("Failed to parse beatmap");
@@ -86,6 +94,21 @@ impl<'s> OsuState<'s> {
                 return;
             }
         };
+
+        // Prepare audio
+        self.sink.clear();
+
+        let beatmap_dir = path.as_ref().parent().expect("failed to get beatmap dir");
+        let audio_file = beatmap_dir.join(&map.audio_file);
+        
+        // We have to acknowlage the fact that there might be beatmaps
+        // without any audio files
+        if audio_file.is_file() {
+            let file = BufReader::new(File::open(audio_file).unwrap());
+            let source = Decoder::new(file).expect("Failed to load audio file source");
+            self.sink.append(source);
+            println!("open_beatmap: Initialized a new audio file!");
+        }
 
         let (preempt, fadein) = calculate_preempt_fadein(map.approach_rate);
         let (_x300, _x100, x50) = calculate_hit_window(map.overall_difficulty);
@@ -105,10 +128,6 @@ impl<'s> OsuState<'s> {
 
         self.current_beatmap = Some(map);
         self.apply_beatmap_transformations();
-    }
-
-    pub fn set_time(&mut self, time: f64) {
-        self.osu_clock.set_time(time);
     }
 
     pub fn apply_beatmap_transformations(&mut self) {
@@ -132,6 +151,31 @@ impl<'s> OsuState<'s> {
         self.egui.state.egui_ctx().begin_frame(input);
 
         egui::Window::new("Window").show(&self.egui.state.egui_ctx(), |ui| {
+
+            if ui.add(egui::Button::new("Select Beatmap")).clicked() {
+                let mut dialog = FileDialog::select_folder(None);
+                dialog.open();
+                self.file_dialog = Some(dialog);
+            }
+
+            if let Some(dialog) = &mut self.file_dialog {
+                if dialog.show(self.egui.state.egui_ctx()).selected() {
+                    let mut available_choices = Vec::new();
+                    if let Some(dir) = dialog.path() {
+                        for entry in std::fs::read_dir(dir).expect("failed to read dir") {
+                            let entry = entry.expect("failed to read dir entry");
+                            if let Some(ext) = entry.path().extension() {
+                                if ext == "osu" {
+                                    available_choices.push(entry.path());
+                                }
+                            }
+                        }
+
+                        self.difficulties = available_choices;
+                    }
+                }
+            }
+
             if let Some(beatmap) = &self.current_beatmap {
                 ui.add(egui::Label::new(format!("{}", self.osu_clock.get_time())));
 
@@ -152,25 +196,26 @@ impl<'s> OsuState<'s> {
                     }
                 } else {
                     if ui.add(egui::Button::new("unpause")).clicked() {
+                        self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
                         self.osu_clock.unpause();
                         self.sink.play();
                     }
-
-
-                    if ui.add(egui::Button::new("<")).clicked() {
-                        self.osu_clock.set_time(self.osu_clock.get_time() - 1.0);
-                        self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
-                    }
-
-                    if ui.add(egui::Button::new(">")).clicked() {
-                        self.osu_clock.set_time(self.osu_clock.get_time() + 1.0);
-                        self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
-                    }
                 }
-
-
             }
         });
+
+        if !self.difficulties.is_empty() {
+            egui::Window::new("Select Difficulty").show(&self.egui.state.egui_ctx(), |ui| {
+                for path in &self.difficulties {
+                    if ui.add(egui::Button::new(format!("{:#?}", path.file_name().unwrap()))).clicked() {
+                        self.new_beatmap = Some(path.to_path_buf());
+                    };
+                }
+
+            });
+
+        }
+
 
         let output = self.egui.state.egui_ctx().end_frame();
 
@@ -220,6 +265,12 @@ impl<'s> OsuState<'s> {
 
     pub fn update(&mut self) {
         let _span = tracy_client::span!("osu_state update");
+
+        if let Some(path) = &self.new_beatmap.clone() {
+            self.open_beatmap(path);
+            self.new_beatmap = None;
+            self.difficulties.clear();
+        }
 
         self.update_egui();
         let time = self.osu_clock.update();
