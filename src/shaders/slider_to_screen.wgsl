@@ -52,5 +52,8 @@ var texture_sampler: sampler;
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	var out = textureSample(texture, texture_sampler, in.uv);
 	out.w = out.w * in.alpha;
+	if (out.w == 0.0) {
+		discard;
+	}
 	return out;
 }

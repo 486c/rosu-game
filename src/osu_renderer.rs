@@ -159,6 +159,15 @@ impl<'or> OsuRenderer<'or> {
 
         let quad_verticies = Vertex::quad_centered(1.0, 1.0);
 
+        let all_depth = 
+            Some(wgpu::DepthStencilState {
+                format: DepthTexture::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual, // 1.
+                stencil: wgpu::StencilState::default(),     // 2.
+                bias: wgpu::DepthBiasState::default(),
+            });
+
         let hit_circle_vertex_buffer =
             graphics
                 .device
@@ -296,13 +305,7 @@ impl<'or> OsuRenderer<'or> {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: None, /*Some(wgpu::DepthStencilState {
-                                             format: DepthTexture::DEPTH_FORMAT,
-                                             depth_write_enabled: false,
-                                             depth_compare: wgpu::CompareFunction::Always, // 1.
-                                             stencil: wgpu::StencilState::default(),     // 2.
-                                             bias: wgpu::DepthBiasState::default(),
-                                         })*/
+                    depth_stencil: all_depth.clone(),
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         mask: !0,
@@ -361,15 +364,7 @@ impl<'or> OsuRenderer<'or> {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: None, /*Some(wgpu::DepthStencilState {
-                                             format: DepthTexture::DEPTH_FORMAT,
-                                             depth_write_enabled: false,
-                                             depth_compare: wgpu::CompareFunction::Always, // 1.
-                                             stencil: wgpu::StencilState::default(),     // 2.
-                                             bias: wgpu::DepthBiasState {
-                                                 ..Default::default()
-                                             },
-                                         })*/
+                    depth_stencil: all_depth.clone(),
                     multisample: wgpu::MultisampleState {
                         count: 1,
                         mask: !0,
@@ -548,7 +543,7 @@ impl<'or> OsuRenderer<'or> {
                         unclipped_depth: false,
                         conservative: false,
                     },
-                    depth_stencil: None,
+                    depth_stencil: all_depth,
                     multisample: wgpu::MultisampleState {
                         ..Default::default()
                     },
@@ -634,7 +629,7 @@ impl<'or> OsuRenderer<'or> {
         let step = 1.0 / total;
         let mut curr_val = 0.0;
 
-        for current_index in queue.iter().rev() {
+        for current_index in queue.iter() {
             assert!(curr_val <= 1.0);
 
             //println!("z val: {}", curr_val);
@@ -663,7 +658,7 @@ impl<'or> OsuRenderer<'or> {
                         .push(ApproachCircleInstance::new(
                             circle.pos.x,
                             circle.pos.y,
-                            curr_val,
+                            0.0,
                             alpha as f32,
                             approach_scale as f32,
                         ));
@@ -751,7 +746,7 @@ impl<'or> OsuRenderer<'or> {
                         .push(ApproachCircleInstance::new(
                             slider.pos.x,
                             slider.pos.y,
-                            curr_val,
+                            0.0,
                             approach_alpha as f32,
                             approach_scale as f32,
                         ));
@@ -1221,45 +1216,10 @@ impl<'or> OsuRenderer<'or> {
 
     /// Render all sliders from the queue
     pub fn render_sliders(
-        &mut self,
-        view: &TextureView,
-    ) -> Result<CommandEncoder, wgpu::SurfaceError> {
+        &'or self,
+        render_pass: &mut wgpu::RenderPass<'or>,
+    ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer render_sliders");
-
-        let mut encoder =
-            self.graphics
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("sliders & followpoints encoder"),
-                });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("slider render pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 0.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None, /*Some(wgpu::RenderPassDepthStencilAttachment {
-                                                    view: &self.depth_texture.view,
-                                                    depth_ops: Some(wgpu::Operations {
-                                                        load: wgpu::LoadOp::Load,
-                                                        store: wgpu::StoreOp::Store,
-                                                    }),
-                                                    stencil_ops: None,
-                                                })*/
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
 
             // Sanity check
             assert_eq!(
@@ -1304,54 +1264,16 @@ impl<'or> OsuRenderer<'or> {
                 0,
                 0..self.follow_points_instance_data.len() as u32,
             );
-        }
 
-        Ok(encoder)
+        Ok(())
     }
 
     pub fn render_hitcircles(
-        &mut self,
-        view: &TextureView,
-    ) -> Result<CommandEncoder, wgpu::SurfaceError> {
+        &'or self,
+        render_pass: &mut wgpu::RenderPass<'or>,
+    ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer render_hitcircles");
-        let mut encoder =
-            self.graphics
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("HitCircles encoder"),
-                });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("slider render pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        /*
-                        wgpu::Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 0.0,
-                        }),
-                        */
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None, /*Some(wgpu::RenderPassDepthStencilAttachment {
-                                                    view: &self.depth_texture.view,
-                                                    depth_ops: Some(wgpu::Operations {
-                                                        load: wgpu::LoadOp::Load,
-                                                        store: wgpu::StoreOp::Store,
-                                                    }),
-                                                    stencil_ops: None,
-                                                })*/
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
+ 
             // HIT CIRCLES
             render_pass.set_pipeline(&self.hit_circle_pipeline);
             render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
@@ -1384,9 +1306,8 @@ impl<'or> OsuRenderer<'or> {
                 0,
                 0..self.approach_circle_instance_data.len() as u32,
             );
-        }
 
-        Ok(encoder)
+            Ok(())
     }
 
     /// Render all objects from internal buffers
@@ -1394,13 +1315,48 @@ impl<'or> OsuRenderer<'or> {
     pub fn render_objects(&mut self, view: &TextureView) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer render_objects");
 
-        let hitcircles_encoder = self.render_hitcircles(&view)?;
-        let sliders_encoder = self.render_sliders(&view)?;
+        //let hitcircles_encoder = self.render_hitcircles(&view)?;
+        //let sliders_encoder = self.render_sliders(&view)?;
+
+
+        let mut encoder =
+            self.graphics
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("HitObjects encoder"),
+                });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("slider render pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None, 
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            self.render_sliders(&mut render_pass)?;
+            self.render_hitcircles(&mut render_pass)?;
+        }
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
         self.graphics
             .queue
-            .submit([sliders_encoder.finish(), hitcircles_encoder.finish()]);
+            .submit([encoder.finish()]);
         drop(span);
 
         self.clear_buffers();
