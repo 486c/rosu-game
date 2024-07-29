@@ -232,9 +232,7 @@ impl<'s> OsuState<'s> {
     pub fn prepare_objects(&mut self, time: f64) {
         let _span = tracy_client::span!("osu_state prepare objects");
 
-        self.objects_queue.clear();
-
-        for (i, obj) in self.hit_objects.iter_mut().enumerate() {
+        for (i, obj) in self.hit_objects.iter_mut().enumerate().rev() {
             if !obj.is_visible(time, self.preempt) {
                 continue;
             }
@@ -291,7 +289,10 @@ impl<'s> OsuState<'s> {
             .create_view(&wgpu::TextureViewDescriptor::default());
         drop(span);
 
-        self.osu_renderer.render_objects(&view)?;
+        self.osu_renderer.render_objects(
+            &view,
+            &self.objects_queue, &self.hit_objects
+        )?;
 
         let graphics = self.osu_renderer.get_graphics();
 
@@ -310,6 +311,10 @@ impl<'s> OsuState<'s> {
         let span = tracy_client::span!("osu_state render::present");
         output.present();
         drop(span);
+
+        // Clearing objects queue only after they successfully rendered
+        self.objects_queue.clear();
+
 
         Ok(())
     }

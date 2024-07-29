@@ -91,7 +91,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 	if (in.uv.x < OUTER_SHADOW_SIZE - transition_size) {
 		let delta: f32 = in.uv.x / (OUTER_SHADOW_SIZE - transition_size);
-		out_color = mix(vec4<f32>(0.0, 0.0, 0.0, 0.0), outer_shadow_color, delta);
+		//out_color = mix(vec4<f32>(0.0, 0.0, 0.0, 0.0), outer_shadow_color, delta);
 	}
 
 	if (in.uv.x > OUTER_SHADOW_SIZE - transition_size && in.uv.x < OUTER_SHADOW_SIZE + transition_size) {

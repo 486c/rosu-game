@@ -159,14 +159,14 @@ impl<'or> OsuRenderer<'or> {
 
         let quad_verticies = Vertex::quad_centered(1.0, 1.0);
 
-        let all_depth = 
-            Some(wgpu::DepthStencilState {
-                format: DepthTexture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual, // 1.
-                stencil: wgpu::StencilState::default(),     // 2.
-                bias: wgpu::DepthBiasState::default(),
-            });
+        let all_depth = None;
+            //Some(wgpu::DepthStencilState {
+                //format: DepthTexture::DEPTH_FORMAT,
+                //depth_write_enabled: true,
+                //depth_compare: wgpu::CompareFunction::LessEqual, // 1.
+                //stencil: wgpu::StencilState::default(),     // 2.
+                //bias: wgpu::DepthBiasState::default(),
+            //});
 
         let hit_circle_vertex_buffer =
             graphics
@@ -1108,23 +1108,6 @@ impl<'or> OsuRenderer<'or> {
 
     pub fn write_buffers(&mut self) {
         let _span = tracy_client::span!("osu_renderer write buffers");
-        //println!("==============");
-
-        /*
-        // TODO remove later
-        let total = self.hit_circle_instance_data.len() as f32;
-        //let step = 1.0 / ((1.0 - 0.0) / (total - 1.0));
-        let step = 2.0 / total;
-        let mut curr_val = -1.0;
-        for hitobject in &mut self.hit_circle_instance_data {
-            assert!(curr_val <= 1.0);
-            hitobject.pos[2] = curr_val;
-            println!("z: {curr_val}: step: {step}: total: {total}");
-            curr_val += step;
-        }
-        */
-
-        //self.hit_circle_instance_data = self.hit_circle_instance_data.clone().into_iter().rev().collect();
 
         buffer_write_or_init!(
             self.graphics.queue,
@@ -1169,150 +1152,14 @@ impl<'or> OsuRenderer<'or> {
         self.follow_points_instance_data.clear();
     }
 
-    /// Prepares object for render
-    /// HitCircle:
-    ///     1. Prepare hit & approach circles instances
-    /// Slider:
-    ///
-    pub fn prepare_object_for_render(
-        &mut self,
-        obj: &Object,
-        time: f64,
-        preempt: f32,
-        fadein: f32,
-    ) {
-        match &obj.kind {
-            hit_objects::ObjectKind::Circle(circle) => {
-                let _span = tracy_client::span!("osu_renderer prepare_object_for_render::circle");
-
-                /*
-                let start_time = obj.start_time - preempt as f64;
-                let end_time = start_time + fadein as f64;
-                let alpha = ((time - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
-
-                let approach_progress = (time - start_time) / (obj.start_time - start_time);
-
-                let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);
-
-                self.hit_circle_instance_data.push(HitCircleInstance::new(
-                    circle.pos.x,
-                    circle.pos.y,
-                    0.0,
-                    alpha as f32,
-                ));
-
-                self.approach_circle_instance_data
-                    .push(ApproachCircleInstance::new(
-                        circle.pos.x,
-                        circle.pos.y,
-                        alpha as f32,
-                        approach_scale as f32,
-                    ));
-                */
-            }
-            hit_objects::ObjectKind::Slider(slider) => {}
-        }
-    }
-
-    /// Render all sliders from the queue
-    pub fn render_sliders(
-        &'or self,
-        render_pass: &mut wgpu::RenderPass<'or>,
-    ) -> Result<(), wgpu::SurfaceError> {
-        let _span = tracy_client::span!("osu_renderer render_sliders");
-
-            // Sanity check
-            assert_eq!(
-                self.slider_to_screen_instance_data.len(),
-                self.slider_to_screen_textures.len()
-            );
-
-            render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
-            render_pass.set_vertex_buffer(1, self.slider_to_screen_instance_buffer.slice(..));
-            render_pass.set_index_buffer(
-                self.hit_circle_index_buffer.slice(..), // DOCS
-                wgpu::IndexFormat::Uint16,
-            );
-
-            for (i, (texture, vertex_buffer, _follow)) in
-                self.slider_to_screen_textures.iter().enumerate().rev()
-            {
-                let instance = i as u32..i as u32 + 1;
-
-                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-
-                render_pass.set_bind_group(0, &texture.bind_group, &[]);
-
-                // First draw a slider body
-                render_pass.draw_indexed(0..QUAD_INDECIES.len() as u32, 0, instance);
-            }
-
-            render_pass.set_pipeline(&self.hit_circle_pipeline);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(0, &self.follow_point_texture.bind_group, &[]);
-
-            render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, self.follow_points_instance_buffer.slice(..));
-            render_pass.set_index_buffer(
-                self.hit_circle_index_buffer.slice(..),
-                wgpu::IndexFormat::Uint16,
-            );
-
-            render_pass.draw_indexed(
-                0..QUAD_INDECIES.len() as u32,
-                0,
-                0..self.follow_points_instance_data.len() as u32,
-            );
-
-        Ok(())
-    }
-
-    pub fn render_hitcircles(
-        &'or self,
-        render_pass: &mut wgpu::RenderPass<'or>,
-    ) -> Result<(), wgpu::SurfaceError> {
-        let _span = tracy_client::span!("osu_renderer render_hitcircles");
- 
-            // HIT CIRCLES
-            render_pass.set_pipeline(&self.hit_circle_pipeline);
-            render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
-
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-
-            render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
-
-            render_pass.set_vertex_buffer(1, self.hit_circle_instance_buffer.slice(..));
-
-            render_pass.set_index_buffer(
-                self.hit_circle_index_buffer.slice(..),
-                wgpu::IndexFormat::Uint16,
-            );
-
-            render_pass.draw_indexed(
-                0..QUAD_INDECIES.len() as u32,
-                0,
-                0..self.hit_circle_instance_data.len() as u32,
-            );
-
-            // APPROACH CIRCLES
-            render_pass.set_pipeline(&self.approach_circle_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-
-            render_pass.set_vertex_buffer(1, self.approach_circle_instance_buffer.slice(..));
-
-            render_pass.draw_indexed(
-                0..QUAD_INDECIES.len() as u32,
-                0,
-                0..self.approach_circle_instance_data.len() as u32,
-            );
-
-            Ok(())
-    }
-
     /// Render all objects from internal buffers
     /// and clears used buffers afterwards
-    pub fn render_objects(&mut self, view: &TextureView) -> Result<(), wgpu::SurfaceError> {
+    pub fn render_objects(
+        &mut self, 
+        view: &TextureView,
+        queue: &[usize],
+        objects: &[Object],
+    ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer render_objects");
 
         //let hitcircles_encoder = self.render_hitcircles(&view)?;
@@ -1337,20 +1184,125 @@ impl<'or> OsuRenderer<'or> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None, 
-                }),
+                depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+            
+            // Here we need to manually sync gpu buffers which is written after [`prepare_objects`] is done.
+            // and visibility queue that's gets filled inside [`OsuState`] while preserving
+            // hitobjects order
+            let mut current_circle = 0;
+            let mut current_slider = 0;
 
-            self.render_sliders(&mut render_pass)?;
-            self.render_hitcircles(&mut render_pass)?;
+            for current_index in queue.iter() {
+                let object = &objects[*current_index];
+
+                match object.kind {
+                    hit_objects::ObjectKind::Circle(_) => {
+                        render_pass.set_pipeline(&self.hit_circle_pipeline);
+                        render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
+
+                        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+
+                        render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
+
+                        render_pass.set_vertex_buffer(1, self.hit_circle_instance_buffer.slice(..));
+
+                        render_pass.set_index_buffer(
+                            self.hit_circle_index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint16,
+                        );
+
+                        render_pass.draw_indexed(
+                            0..QUAD_INDECIES.len() as u32,
+                            0,
+                            current_circle..current_circle + 1,
+                        );
+
+                        current_circle += 1;
+                    },
+                    hit_objects::ObjectKind::Slider(_) => {
+                        render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
+                        render_pass.set_vertex_buffer(1, self.slider_to_screen_instance_buffer.slice(..));
+                        render_pass.set_index_buffer(
+                            self.hit_circle_index_buffer.slice(..), // DOCS
+                            wgpu::IndexFormat::Uint16,
+                        );
+
+                        let instance = current_slider as u32..current_slider as u32 + 1;
+                        let (texture, vertex_buffer, follow) = &self.slider_to_screen_textures[current_slider];
+
+                        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+
+                        render_pass.set_bind_group(0, &texture.bind_group, &[]);
+
+                        // First draw a slider body
+                        render_pass.draw_indexed(0..QUAD_INDECIES.len() as u32, 0, instance.clone());
+
+                        // follow circle
+                        if let Some(follow) = follow {
+                            render_pass.set_pipeline(&self.hit_circle_pipeline);
+                            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                            render_pass.set_bind_group(0, &self.follow_point_texture.bind_group, &[]);
+                            render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
+                            render_pass.set_vertex_buffer(1, self.follow_points_instance_buffer.slice(..));
+                            render_pass.set_index_buffer(
+                                self.hit_circle_index_buffer.slice(..),
+                                wgpu::IndexFormat::Uint16,
+                            );
+                            render_pass.draw_indexed(
+                                0..QUAD_INDECIES.len() as u32,
+                                0,
+                                *follow - 1 as u32..*follow as u32,
+                            );
+                        }
+
+                        // Hit circle on top of everything
+                        render_pass.set_pipeline(&self.hit_circle_pipeline);
+                        render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
+
+                        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+
+                        render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
+
+                        render_pass.set_vertex_buffer(1, self.hit_circle_instance_buffer.slice(..));
+
+                        render_pass.set_index_buffer(
+                            self.hit_circle_index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint16,
+                        );
+
+                        render_pass.draw_indexed(
+                            0..QUAD_INDECIES.len() as u32,
+                            0,
+                            current_circle..current_circle + 1,
+                        );
+
+                        current_slider += 1;
+                        current_circle += 1;
+                    },
+                }
+
+            }
+
+            // Approach circles should be always on top
+            render_pass.set_pipeline(&self.approach_circle_pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+
+            render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.approach_circle_instance_buffer.slice(..));
+            render_pass.set_index_buffer(
+                self.hit_circle_index_buffer.slice(..),
+                wgpu::IndexFormat::Uint16,
+            );
+
+            render_pass.draw_indexed(
+                0..QUAD_INDECIES.len() as u32,
+                0,
+                0..self.approach_circle_instance_data.len() as u32,
+            );
         }
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
