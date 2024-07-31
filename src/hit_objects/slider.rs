@@ -21,9 +21,6 @@ pub struct Slider {
     pub repeats: i32,
 
     pub render: Option<SliderRender>,
-    //pub texture: Option<Arc<Texture>>,
-    //pub quad: Option<Arc<wgpu::Buffer>>,
-    //pub bounding_box: Option<Rectangle>,
 }
 
 impl Slider {

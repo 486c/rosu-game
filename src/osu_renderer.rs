@@ -795,7 +795,7 @@ impl<'or> OsuRenderer<'or> {
             return;
         }
 
-        let bbox = slider.bounding_box((self.hit_circle_diameter / 2.0) * SLIDER_SCALE);
+        let bbox = slider.bounding_box((self.hit_circle_diameter / 2.0));
 
         let (slider_vertices, _) = Vertex::cone((self.hit_circle_diameter / 2.0) * SLIDER_SCALE);
 
