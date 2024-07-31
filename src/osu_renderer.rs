@@ -12,14 +12,7 @@ use winit::dpi::PhysicalSize;
 static SLIDER_SCALE: f32 = 2.0;
 
 use crate::{
-    camera::Camera,
-    graphics::Graphics,
-    hit_circle_instance::{ApproachCircleInstance, HitCircleInstance},
-    hit_objects::{self, slider::SliderRender, Object, SLIDER_FADEOUT_TIME},
-    math::lerp,
-    slider_instance::SliderInstance,
-    texture::{DepthTexture, Texture},
-    vertex::Vertex,
+    camera::Camera, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, SLIDER_FADEOUT_TIME}, math::lerp, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex
 };
 
 macro_rules! buffer_write_or_init {
@@ -1159,6 +1152,7 @@ impl<'or> OsuRenderer<'or> {
         view: &TextureView,
         queue: &[usize],
         objects: &[Object],
+        skin: &SkinManager,
     ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer render_objects");
 
@@ -1201,7 +1195,8 @@ impl<'or> OsuRenderer<'or> {
                 match object.kind {
                     hit_objects::ObjectKind::Circle(_) => {
                         render_pass.set_pipeline(&self.hit_circle_pipeline);
-                        render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
+                        //render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
+                        render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
 
                         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 
@@ -1261,7 +1256,8 @@ impl<'or> OsuRenderer<'or> {
 
                         // Hit circle on top of everything
                         render_pass.set_pipeline(&self.hit_circle_pipeline);
-                        render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
+                        //render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
+                        render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
 
                         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 

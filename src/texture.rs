@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{io::Cursor, path::Path};
 use image::{imageops::FilterType, io::Reader as ImageReader, DynamicImage, GenericImageView};
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension};
 
@@ -6,9 +6,7 @@ use crate::graphics::Graphics;
 
 
 pub struct DepthTexture {
-    pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
-    pub sampler: wgpu::Sampler,
 }
 
 impl DepthTexture {
@@ -35,7 +33,7 @@ impl DepthTexture {
         let texture = graphics.device.create_texture(&desc);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = graphics.device.create_sampler(
+        let _sampler = graphics.device.create_sampler(
             &wgpu::SamplerDescriptor {
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -50,14 +48,14 @@ impl DepthTexture {
             }
         );
 
-        Self { texture, view, sampler }
+        Self { view }
     }
 }
 
 pub struct Texture {
-    pub texture: wgpu::Texture,
-    pub view: wgpu::TextureView,
-    pub sampler: wgpu::Sampler,
+    //pub texture: wgpu::Texture,
+    //pub view: wgpu::TextureView,
+    //pub sampler: wgpu::Sampler,
     pub bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
 }
@@ -67,6 +65,19 @@ impl Texture {
         path: P, graphics: &Graphics
     ) -> Self {
         let image = ImageReader::open(path).unwrap()
+            .decode().unwrap();
+
+        let width = image.width();
+        let height = image.height();
+
+        let image = image.resize(width*2, height*2, FilterType::Lanczos3);
+
+        Self::from_image(image, graphics)
+    }
+
+    pub fn from_bytes(bytes: &[u8], graphics: &Graphics) -> Self {
+        let image = ImageReader::new(Cursor::new(bytes))
+            .with_guessed_format().unwrap()
             .decode().unwrap();
 
         let width = image.width();
@@ -148,9 +159,9 @@ impl Texture {
         );
 
         Self {
-            texture,
-            view,
-            sampler,
+            //texture,
+            //view,
+            //sampler,
             bind_group_layout,
             bind_group,
         }
@@ -261,9 +272,9 @@ impl Texture {
         );
 
         Self {
-            texture,
-            view,
-            sampler,
+            //texture,
+            //view,
+            //sampler,
             bind_group_layout,
             bind_group,
         }

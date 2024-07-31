@@ -38,7 +38,7 @@ impl<'g> Graphics<'g> {
         let surface = instance.create_surface(window).unwrap();
 
         let adapter_options = RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
+            power_preference: power_preferences,
             force_fallback_adapter: false,
             compatible_surface: Some(&surface),
         };

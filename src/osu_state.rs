@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::Arc, time::Duration};
+use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, TryRecvError}, Arc}, time::Duration};
 
 use egui::Slider;
 use egui_file::FileDialog;
@@ -7,12 +7,12 @@ use rosu_map::Beatmap;
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    egui_state::EguiState,
-    graphics::Graphics,
-    hit_objects::{Object, ObjectKind},
-    osu_renderer::OsuRenderer,
-    timer::Timer,
+    egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_renderer::OsuRenderer, skin_manager::SkinManager, timer::Timer, ui::settings::SettingsView
 };
+
+pub enum OsuStateEvent {
+    ChangeSkin(PathBuf),
+}
 
 /// Return preempt and fadein based on AR
 fn calculate_preempt_fadein(ar: f32) -> (f32, f32) {
@@ -38,8 +38,12 @@ fn calculate_hit_window(od: f32) -> (f32, f32, f32) {
 pub struct OsuState<'s> {
     pub window: Arc<Window>,
     pub egui: EguiState,
+    pub event_receiver: Receiver<OsuStateEvent>,
 
     pub sink: Sink,
+
+    skin_manager: SkinManager,
+    settings_view: SettingsView,
 
     osu_renderer: OsuRenderer<'s>,
 
@@ -63,9 +67,13 @@ pub struct OsuState<'s> {
 impl<'s> OsuState<'s> {
     pub fn new(window: Arc<Window>, graphics: Graphics<'s>, sink: Sink) -> Self {
         let egui = EguiState::new(&graphics, &window);
+        let skin_manager = SkinManager::from_path("skin", &graphics);
         let osu_renderer = OsuRenderer::new(graphics);
 
+        let (tx, event_receiver) = channel::<OsuStateEvent>();
+
         Self {
+            event_receiver,
             preempt: 0.0,
             hit_offset: 0.0,
             fadein: 0.0,
@@ -80,7 +88,14 @@ impl<'s> OsuState<'s> {
             file_dialog: None,
             difficulties: Vec::new(),
             new_beatmap: None,
+            skin_manager,
+            settings_view: SettingsView::new(tx.clone()),
         }
+    }
+
+    pub fn open_skin(&mut self, path: impl AsRef<Path>) {
+        let skin_manager = SkinManager::from_path(path, self.osu_renderer.get_graphics());
+        self.skin_manager = skin_manager;
     }
 
     pub fn open_beatmap(&mut self, path: impl AsRef<Path>) {
@@ -150,6 +165,8 @@ impl<'s> OsuState<'s> {
 
         self.egui.state.egui_ctx().begin_frame(input);
 
+        self.settings_view.window(&self.egui.state.egui_ctx());
+
         egui::Window::new("Window").show(&self.egui.state.egui_ctx(), |ui| {
 
             if ui.add(egui::Button::new("Select Beatmap")).clicked() {
@@ -216,7 +233,6 @@ impl<'s> OsuState<'s> {
 
         }
 
-
         let output = self.egui.state.egui_ctx().end_frame();
 
         self.egui.state.handle_platform_output(
@@ -264,6 +280,20 @@ impl<'s> OsuState<'s> {
     pub fn update(&mut self) {
         let _span = tracy_client::span!("osu_state update");
 
+        let event = self.event_receiver.try_recv();
+
+        match event {
+            Ok(event) => {
+                match event {
+                    OsuStateEvent::ChangeSkin(path) => {
+                        self.open_skin(path)
+                    },
+                }
+            },
+            Err(TryRecvError::Empty) => {},
+            _ => panic!("sender disconnected"),
+        }
+
         if let Some(path) = &self.new_beatmap.clone() {
             self.open_beatmap(path);
             self.new_beatmap = None;
@@ -291,7 +321,8 @@ impl<'s> OsuState<'s> {
 
         self.osu_renderer.render_objects(
             &view,
-            &self.objects_queue, &self.hit_objects
+            &self.objects_queue, &self.hit_objects,
+            &self.skin_manager,
         )?;
 
         let graphics = self.osu_renderer.get_graphics();

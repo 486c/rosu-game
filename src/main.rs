@@ -19,8 +19,10 @@ mod hit_objects;
 mod osu_renderer;
 mod osu_state;
 mod slider_instance;
+mod skin_manager;
 mod texture;
 mod timer;
+mod ui;
 mod vertex;
 
 fn main() {
