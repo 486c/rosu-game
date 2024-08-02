@@ -47,18 +47,24 @@ fn vs_main(
 // Fragment shader
 
 @group(0) @binding(0)
-var texture: texture_2d<f32>;
+var hitcircle_texture: texture_2d<f32>;
 @group(0) @binding(1)
-var texture_sampler: sampler;
+var hitrcirle_texture_sampler: sampler;
+
+@group(2) @binding(0)
+var hitcircle_overlay_texture: texture_2d<f32>;
+@group(2) @binding(1)
+var hitcircle_overlay_texture_sampler: sampler;
 
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	var out = textureSample(texture, texture_sampler, in.uv);
+	let hc = textureSample(hitcircle_texture, hitrcirle_texture_sampler, in.uv) * vec4<f32>(1.0, 0.5, 0.2, 1.0);
+	let hco = textureSample(hitcircle_overlay_texture, hitcircle_overlay_texture_sampler, in.uv);
+
+	var out = mix(hco, hc, 0.4);
 	out.w = out.w * in.alpha;
-	if (out.w == 0.0) {
-		discard;
-	}
+
 	return out;
 	//return vec4<f32>(1.0, 0.2, 0.1, in.alpha);
 }

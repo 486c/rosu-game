@@ -37,6 +37,7 @@ impl SettingsView {
     }
 
     pub fn skin_settings_ui(&mut self, ui: &mut Ui) {
+        ui.heading("Skin");
         if ui.add(Button::new("Open skin")).clicked() {
             let mut dialog = FileDialog::select_folder(None);
             dialog.open();

@@ -12,8 +12,10 @@ use winit::{
 pub mod math;
 
 mod camera;
+mod rgb;
 mod egui_state;
 mod graphics;
+mod skin_ini;
 mod hit_circle_instance;
 mod hit_objects;
 mod osu_renderer;

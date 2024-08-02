@@ -83,12 +83,11 @@ pub struct OsuRenderer<'or> {
 
     // Approach circle
     approach_circle_pipeline: RenderPipeline,
-    approach_circle_texture: Texture,
+    //approach_circle_texture: Texture,
     approach_circle_instance_buffer: wgpu::Buffer,
     approach_circle_instance_data: SmallVec<[ApproachCircleInstance; 32]>,
 
     // Hit Circle
-    hit_circle_texture: Texture,
     hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
     hit_circle_index_buffer: wgpu::Buffer,
@@ -113,7 +112,6 @@ pub struct OsuRenderer<'or> {
     slider_to_screen_instance_data: Vec<SliderInstance>,
 
     // Slider follow circle
-    follow_point_texture: Texture,
     follow_points_instance_data: Vec<HitCircleInstance>,
     follow_points_instance_buffer: wgpu::Buffer,
 
@@ -125,11 +123,7 @@ pub struct OsuRenderer<'or> {
 
 impl<'or> OsuRenderer<'or> {
     pub fn new(graphics: Graphics<'or>) -> Self {
-        let hit_circle_texture = Texture::from_path("skin/hitcircle.png", &graphics);
-
-        let approach_circle_texture = Texture::from_path("skin/approachcircle.png", &graphics);
-
-        let follow_point_texture = Texture::from_path("skin/sliderb0.png", &graphics);
+        //let approach_circle_texture = Texture::from_path("skin/approachcircle.png", &graphics);
 
         let hit_circle_shader = graphics
             .device
@@ -313,8 +307,9 @@ impl<'or> OsuRenderer<'or> {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("hitcircle pipeline Layout"),
                     bind_group_layouts: &[
-                        &hit_circle_texture.bind_group_layout,
+                        &Texture::default_bind_group_layout(&graphics, 1),
                         &camera_bind_group_layout,
+                        &Texture::default_bind_group_layout(&graphics, 1),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -576,10 +571,8 @@ impl<'or> OsuRenderer<'or> {
             camera_bind_group,
             camera_buffer,
             approach_circle_pipeline,
-            approach_circle_texture,
             approach_circle_instance_buffer,
             approach_circle_instance_data,
-            hit_circle_texture,
             hit_circle_pipeline,
             hit_circle_vertex_buffer,
             hit_circle_index_buffer,
@@ -599,7 +592,6 @@ impl<'or> OsuRenderer<'or> {
             slider_to_screen_instance_buffer,
             slider_to_screen_instance_data,
             slider_to_screen_textures: SmallVec::new(),
-            follow_point_texture,
             follow_points_instance_data,
             follow_points_instance_buffer,
             offsets: Vector2::new(0.0, 0.0),
@@ -1195,10 +1187,10 @@ impl<'or> OsuRenderer<'or> {
                 match object.kind {
                     hit_objects::ObjectKind::Circle(_) => {
                         render_pass.set_pipeline(&self.hit_circle_pipeline);
-                        //render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
-                        render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
 
+                        render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
                         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                        render_pass.set_bind_group(2, &skin.hit_circle_overlay.bind_group, &[]);
 
                         render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
 
@@ -1237,10 +1229,11 @@ impl<'or> OsuRenderer<'or> {
                         render_pass.draw_indexed(0..QUAD_INDECIES.len() as u32, 0, instance.clone());
 
                         // follow circle
+                        /*
                         if let Some(follow) = follow {
                             render_pass.set_pipeline(&self.hit_circle_pipeline);
                             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                            render_pass.set_bind_group(0, &self.follow_point_texture.bind_group, &[]);
+                            render_pass.set_bind_group(0, &skin.sliderb0.bind_group, &[]);
                             render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
                             render_pass.set_vertex_buffer(1, self.follow_points_instance_buffer.slice(..));
                             render_pass.set_index_buffer(
@@ -1253,13 +1246,14 @@ impl<'or> OsuRenderer<'or> {
                                 *follow - 1 as u32..*follow as u32,
                             );
                         }
+                        */
 
                         // Hit circle on top of everything
                         render_pass.set_pipeline(&self.hit_circle_pipeline);
                         //render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
                         render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
-
                         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                        render_pass.set_bind_group(2, &skin.hit_circle_overlay.bind_group, &[]);
 
                         render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
 
