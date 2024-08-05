@@ -52,6 +52,24 @@ impl Rgb {
             )
         })
     }
+
+    pub fn to_gpu_values(&self) -> [f32; 3] {
+        [
+            (self.r() as f32 / 255.0) as f32,
+            (self.g() as f32 / 255.0) as f32,
+            (self.b() as f32 / 255.0) as f32,
+        ]
+    }
+
+    pub fn to_egui_color(&self) -> egui::Color32 {
+        egui::Color32::from_rgb(self.r(), self.g(), self.b())
+    }
+}
+
+impl Default for Rgb {
+    fn default() -> Self {
+        Self::new(255, 255, 255)
+    }
 }
 
 #[test]

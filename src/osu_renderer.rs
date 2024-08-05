@@ -3,7 +3,7 @@ use std::{mem::size_of, sync::Arc};
 use cgmath::Vector2;
 use smallvec::SmallVec;
 use wgpu::{
-    util::DeviceExt, BindGroup, BindingType, BufferUsages, CommandEncoder, Extent3d,
+    util::DeviceExt, BindGroup, BindingType, BufferUsages, Extent3d,
     RenderPipeline, ShaderStages, TextureDescriptor, TextureDimension, TextureSampleType,
     TextureUsages, TextureView, TextureViewDimension,
 };
@@ -87,6 +87,9 @@ pub struct OsuRenderer<'or> {
     approach_circle_instance_buffer: wgpu::Buffer,
     approach_circle_instance_data: SmallVec<[ApproachCircleInstance; 32]>,
 
+    // quad textured + color
+    quad_colored_pipeline: RenderPipeline,
+
     // Hit Circle
     hit_circle_pipeline: RenderPipeline,
     hit_circle_vertex_buffer: wgpu::Buffer,
@@ -119,6 +122,8 @@ pub struct OsuRenderer<'or> {
     slider_to_screen_textures: SmallVec<[(Arc<Texture>, Arc<wgpu::Buffer>, Option<u32>); 32]>,
 
     depth_texture: DepthTexture,
+
+    last_color: usize,
 }
 
 impl<'or> OsuRenderer<'or> {
@@ -128,6 +133,10 @@ impl<'or> OsuRenderer<'or> {
         let hit_circle_shader = graphics
             .device
             .create_shader_module(wgpu::include_wgsl!("shaders/hit_circle.wgsl"));
+
+        let quad_colored_shader = graphics
+            .device
+            .create_shader_module(wgpu::include_wgsl!("shaders/quad_textured.wgsl"));
 
         let approach_circle_shader = graphics
             .device
@@ -309,7 +318,6 @@ impl<'or> OsuRenderer<'or> {
                     bind_group_layouts: &[
                         &Texture::default_bind_group_layout(&graphics, 1),
                         &camera_bind_group_layout,
-                        &Texture::default_bind_group_layout(&graphics, 1),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -360,6 +368,67 @@ impl<'or> OsuRenderer<'or> {
                     },
                     multiview: None,
                 });
+
+        let hit_circle_pipeline_layout =
+            graphics
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("hitcircle pipeline Layout"),
+                    bind_group_layouts: &[
+                        &Texture::default_bind_group_layout(&graphics, 1),
+                        &camera_bind_group_layout,
+                    ],
+                    push_constant_ranges: &[],
+                });
+
+        let quad_colored_pipeline =
+            graphics
+                .device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("quad colored render pipeline"),
+                    layout: Some(&hit_circle_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &quad_colored_shader,
+                        entry_point: "vs_main",
+                        buffers: &[Vertex::desc(), HitCircleInstance::desc()],
+                        compilation_options: Default::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        compilation_options: Default::default(),
+                        module: &quad_colored_shader,
+                        entry_point: "fs_main",
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: graphics.config.format,
+                            blend: Some(wgpu::BlendState {
+                                color: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                                alpha: wgpu::BlendComponent::OVER,
+                            }),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: Some(wgpu::Face::Back),
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        unclipped_depth: false,
+                        conservative: false,
+                    },
+                    depth_stencil: all_depth.clone(),
+                    multisample: wgpu::MultisampleState {
+                        count: 1,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
+                    multiview: None,
+                });
+
+
 
         let (slider_verticies, slider_indecies) = Vertex::cone(5.0);
         let slider_instance_data: Vec<SliderInstance> = Vec::with_capacity(10);
@@ -596,6 +665,8 @@ impl<'or> OsuRenderer<'or> {
             follow_points_instance_buffer,
             offsets: Vector2::new(0.0, 0.0),
             hit_circle_diameter: 1.0,
+            last_color: 0,
+            quad_colored_pipeline,
         }
     }
 
@@ -606,20 +677,19 @@ impl<'or> OsuRenderer<'or> {
         fadein: f32,
         queue: &[usize],
         objects: &[Object],
+        skin: &SkinManager,
     ) {
+        //println!("======");
         let _span = tracy_client::span!("osu_renderer prepare_objects2");
 
-        // Calculating Z values for current queue
-        let total = queue.len() as f32;
-        let step = 1.0 / total;
-        let mut curr_val = 0.0;
-
         for current_index in queue.iter() {
-            assert!(curr_val <= 1.0);
-
-            //println!("z val: {}", curr_val);
-
             let object = &objects[*current_index];
+
+            let color = skin.ini.colours.combo_colors.iter()
+                .cycle()
+                .skip(object.color)
+                .next()
+                .unwrap();
 
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
@@ -635,8 +705,9 @@ impl<'or> OsuRenderer<'or> {
                     self.hit_circle_instance_data.push(HitCircleInstance::new(
                         circle.pos.x,
                         circle.pos.y,
-                        curr_val,
+                        0.0,
                         alpha as f32,
+                        color,
                     ));
 
                     self.approach_circle_instance_data
@@ -713,8 +784,9 @@ impl<'or> OsuRenderer<'or> {
                         let pos = slider.curve.position_at(percentage / 100.0);
 
                         self.follow_points_instance_data.push(HitCircleInstance {
-                            pos: [pos.x + slider.pos.x, pos.y + slider.pos.y, curr_val],
+                            pos: [pos.x + slider.pos.x, pos.y + slider.pos.y, 0.0],
                             alpha: body_alpha as f32,
+                            color: color.to_gpu_values(),
                         });
 
                         follow_circle = Some(self.follow_points_instance_data.len() as u32);
@@ -722,8 +794,9 @@ impl<'or> OsuRenderer<'or> {
 
                     // BODY
                     self.slider_to_screen_instance_data.push(SliderInstance {
-                        pos: [0.0, 0.0, curr_val],
+                        pos: [0.0, 0.0, 0.0],
                         alpha: body_alpha as f32,
+                        slider_border: skin.ini.colours.slider_border.to_gpu_values(),
                     });
 
 
@@ -740,8 +813,9 @@ impl<'or> OsuRenderer<'or> {
                         .push(HitCircleInstance::new(
                                 slider.pos.x,
                                 slider.pos.y,
-                                curr_val,
+                                0.0,
                                 if approach_alpha > 0.0 { body_alpha as f32 } else { 0.0 }, // TODO XD
+                                color,
                         ));
 
                     // That's tricky part. Since every slider have a according
@@ -758,8 +832,8 @@ impl<'or> OsuRenderer<'or> {
                     };
                 }
             }
-
-            curr_val += step;
+            
+            //dbg!(color);
         }
     }
 
@@ -771,6 +845,7 @@ impl<'or> OsuRenderer<'or> {
     pub fn prepare_and_render_slider_texture(
         &mut self,
         slider: &mut crate::hit_objects::slider::Slider,
+        skin: &SkinManager,
     ) {
         // TODO optimization idea
 
@@ -780,7 +855,7 @@ impl<'or> OsuRenderer<'or> {
             return;
         }
 
-        let bbox = slider.bounding_box((self.hit_circle_diameter / 2.0));
+        let bbox = slider.bounding_box(self.hit_circle_diameter / 2.0);
 
         let (slider_vertices, _) = Vertex::cone((self.hit_circle_diameter / 2.0) * SLIDER_SCALE);
 
@@ -880,6 +955,7 @@ impl<'or> OsuRenderer<'or> {
                 y * SLIDER_SCALE,
                 0.0,
                 1.0,
+                &skin.ini.colours.slider_border,
             ));
 
             step += step_by;
@@ -1186,21 +1262,28 @@ impl<'or> OsuRenderer<'or> {
 
                 match object.kind {
                     hit_objects::ObjectKind::Circle(_) => {
-                        render_pass.set_pipeline(&self.hit_circle_pipeline);
-
+                        render_pass.set_pipeline(&self.quad_colored_pipeline);
+                        
+                        // hit circle itself
                         render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
                         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                        render_pass.set_bind_group(2, &skin.hit_circle_overlay.bind_group, &[]);
-
                         render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
-
                         render_pass.set_vertex_buffer(1, self.hit_circle_instance_buffer.slice(..));
-
                         render_pass.set_index_buffer(
                             self.hit_circle_index_buffer.slice(..),
                             wgpu::IndexFormat::Uint16,
                         );
+                        render_pass.draw_indexed(
+                            0..QUAD_INDECIES.len() as u32,
+                            0,
+                            current_circle..current_circle + 1,
+                        );
 
+                        // overlay
+                        render_pass.set_pipeline(&self.hit_circle_pipeline);
+                        render_pass.set_bind_group(0, &skin.hit_circle_overlay.bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
+                        render_pass.set_vertex_buffer(1, self.hit_circle_instance_buffer.slice(..));
                         render_pass.draw_indexed(
                             0..QUAD_INDECIES.len() as u32,
                             0,
@@ -1229,7 +1312,6 @@ impl<'or> OsuRenderer<'or> {
                         render_pass.draw_indexed(0..QUAD_INDECIES.len() as u32, 0, instance.clone());
 
                         // follow circle
-                        /*
                         if let Some(follow) = follow {
                             render_pass.set_pipeline(&self.hit_circle_pipeline);
                             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
@@ -1246,14 +1328,11 @@ impl<'or> OsuRenderer<'or> {
                                 *follow - 1 as u32..*follow as u32,
                             );
                         }
-                        */
 
                         // Hit circle on top of everything
-                        render_pass.set_pipeline(&self.hit_circle_pipeline);
-                        //render_pass.set_bind_group(0, &self.hit_circle_texture.bind_group, &[]);
+                        render_pass.set_pipeline(&self.quad_colored_pipeline);
                         render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
                         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                        render_pass.set_bind_group(2, &skin.hit_circle_overlay.bind_group, &[]);
 
                         render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
 
@@ -1264,6 +1343,16 @@ impl<'or> OsuRenderer<'or> {
                             wgpu::IndexFormat::Uint16,
                         );
 
+                        render_pass.draw_indexed(
+                            0..QUAD_INDECIES.len() as u32,
+                            0,
+                            current_circle..current_circle + 1,
+                        );
+
+                        render_pass.set_pipeline(&self.hit_circle_pipeline);
+                        render_pass.set_bind_group(0, &skin.hit_circle_overlay.bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
+                        render_pass.set_vertex_buffer(1, self.hit_circle_instance_buffer.slice(..));
                         render_pass.draw_indexed(
                             0..QUAD_INDECIES.len() as u32,
                             0,

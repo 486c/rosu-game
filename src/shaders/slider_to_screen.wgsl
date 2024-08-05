@@ -15,6 +15,7 @@ struct VertexInput {
 struct InstanceInput {
 	@location(2) pos: vec3<f32>,
 	@location(3) alpha: f32,
+	@location(4) slider_border: vec3<f32>,
 }
 
 struct VertexOutput {
@@ -52,8 +53,6 @@ var texture_sampler: sampler;
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	var out = textureSample(texture, texture_sampler, in.uv);
 	out.w = out.w * in.alpha;
-	if (out.w == 0.0) {
-		discard;
-	}
+
 	return out;
 }

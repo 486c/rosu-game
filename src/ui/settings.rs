@@ -1,9 +1,9 @@
 use std::sync::mpsc::Sender;
 
-use egui::{Button, Context, Label, Ui};
+use egui::{color_picker::show_color, Button, Context, Label, Ui};
 use egui_file::FileDialog;
 
-use crate::osu_state::OsuStateEvent;
+use crate::{osu_state::OsuStateEvent, skin_manager::SkinManager};
 
 pub struct SettingsView {
     sender: Sender<OsuStateEvent>,
@@ -17,9 +17,14 @@ impl SettingsView {
             file_dialog: None,
         }
     }
-    pub fn window(&mut self, ctx: &Context) {
+
+    pub fn window(
+        &mut self, 
+        ctx: &Context,
+        skin: &SkinManager,
+    ) {
         egui::Window::new("Settings").show(ctx, |ui| {
-            self.skin_settings_ui(ui)
+            self.skin_settings_ui(ui, skin)
         });
 
 
@@ -36,13 +41,29 @@ impl SettingsView {
         ui.add(Label::new("Settings Bebra"));
     }
 
-    pub fn skin_settings_ui(&mut self, ui: &mut Ui) {
+    pub fn skin_settings_ui(
+        &mut self, 
+        ui: &mut Ui,
+        skin: &SkinManager,
+    ) {
         ui.heading("Skin");
         if ui.add(Button::new("Open skin")).clicked() {
             let mut dialog = FileDialog::select_folder(None);
             dialog.open();
             self.file_dialog = Some(dialog);
         }
+
+        ui.label(format!("Name: {}", skin.ini.general.name));
+        ui.label(format!("Author: {}", skin.ini.general.author));
+
+        ui.collapsing("Skin colours", |ui| {
+            for (i, c) in skin.ini.colours.combo_colors.iter().enumerate() {
+                ui.group(|ui| {
+                    ui.label(format!("Colour {}: ", i));
+                    show_color(ui, c.to_egui_color(), egui::Vec2::new(10.0, 10.0));
+                });
+            }
+        });
 
     }
 

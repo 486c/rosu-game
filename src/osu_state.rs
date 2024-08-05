@@ -133,12 +133,15 @@ impl<'s> OsuState<'s> {
         self.hit_offset = x50;
 
         // Convert rosu_map object to our objects
-        let mut out_objects = Vec::with_capacity(map.hit_objects.len());
+        //let mut out_objects = Vec::with_capacity(map.hit_objects.len());
+        let out_objects = Object::from_rosu(&map.hit_objects);
+        /*
         for obj in &map.hit_objects {
             if let Some(cobj) = Object::from_rosu(obj) {
                 out_objects.push(cobj)
             }
         }
+        */
         self.hit_objects = out_objects;
 
         self.current_beatmap = Some(map);
@@ -165,7 +168,10 @@ impl<'s> OsuState<'s> {
 
         self.egui.state.egui_ctx().begin_frame(input);
 
-        self.settings_view.window(&self.egui.state.egui_ctx());
+        self.settings_view.window(
+            &self.egui.state.egui_ctx(),
+            &self.skin_manager
+        );
 
         egui::Window::new("Window").show(&self.egui.state.egui_ctx(), |ui| {
 
@@ -257,7 +263,7 @@ impl<'s> OsuState<'s> {
             match &mut obj.kind {
                 ObjectKind::Circle(_) => {}
                 ObjectKind::Slider(slider) => {
-                    self.osu_renderer.prepare_and_render_slider_texture(slider);
+                    self.osu_renderer.prepare_and_render_slider_texture(slider, &self.skin_manager);
                 }
             }
 
@@ -269,7 +275,8 @@ impl<'s> OsuState<'s> {
 
         self.osu_renderer.prepare_objects2(
             time, self.preempt, self.fadein,
-            &self.objects_queue, &self.hit_objects
+            &self.objects_queue, &self.hit_objects,
+            &self.skin_manager
         );
 
         // When we are done preparing all objects for rendering

@@ -21,7 +21,8 @@ struct InstanceInput {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
 	@location(0) uv: vec2<f32>,
-	@location(1) alpha: f32,
+	@location(1) color: vec3<f32>,
+	@location(2) alpha: f32,
 };
 
 @vertex
@@ -32,6 +33,7 @@ fn vs_main(
     var out: VertexOutput;
 	out.uv = model.uv;
 	out.alpha = instance.alpha;
+	out.color = instance.color;
 
     out.clip_position = camera.proj * camera.view
 		* vec4<f32>(
@@ -53,8 +55,10 @@ var hitcircle_texture: texture_2d<f32>;
 var hitrcirle_texture_sampler: sampler;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	var hc = textureSample(hitcircle_texture, hitrcirle_texture_sampler, in.uv);
-	hc.w = hc.w * in.alpha;
+	var hc = textureSample(hitcircle_texture, hitrcirle_texture_sampler, in.uv)
+		* vec4<f32>(in.color, 1.0);
+
+	hc.a = hc.a * in.alpha;
 
 	return hc;
 }

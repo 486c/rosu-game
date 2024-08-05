@@ -19,19 +19,13 @@ impl SkinParseError {
 }
 
 #[derive(Debug, Default)]
-struct Colours {
-    colour1: Option<Rgb>,
-    colour2: Option<Rgb>,
-    colour3: Option<Rgb>,
-    colour4: Option<Rgb>,
-    colour5: Option<Rgb>,
-    colour6: Option<Rgb>,
-    colour7: Option<Rgb>,
-    colour8: Option<Rgb>,
+pub struct Colours {
+    pub combo_colors: Vec<Rgb>,
+    pub slider_border: Rgb,
 }
 
 #[derive(Debug)]
-struct General {
+pub struct General {
     pub name: String,
     pub author: String
 }
@@ -55,8 +49,15 @@ impl SkinIni {
             author: author.to_owned(),
         };
 
+
         // Colours
+
+        let slider_border = Rgb::parse(ini.get_from(Some("Colours"), "SliderBorder").unwrap_or("255, 255, 255"))
+            .unwrap();
+
         // TODO write some cool macro here?
+        let mut colors = Vec::new();
+
         let colour1 = ini.get_from(Some("Colours"), "Combo1").map_or(None, |c| Rgb::parse(c));
         let colour2 = ini.get_from(Some("Colours"), "Combo2").map_or(None, |c| Rgb::parse(c));
         let colour3 = ini.get_from(Some("Colours"), "Combo3").map_or(None, |c| Rgb::parse(c));
@@ -66,15 +67,41 @@ impl SkinIni {
         let colour7 = ini.get_from(Some("Colours"), "Combo7").map_or(None, |c| Rgb::parse(c));
         let colour8 = ini.get_from(Some("Colours"), "Combo8").map_or(None, |c| Rgb::parse(c));
 
+        if let Some(c) = colour1 {
+            colors.push(c);
+        }
+
+        if let Some(c) = colour2 {
+            colors.push(c);
+        }
+
+        if let Some(c) = colour3 {
+            colors.push(c);
+        }
+
+        if let Some(c) = colour4 {
+            colors.push(c);
+        }
+
+        if let Some(c) = colour5 {
+            colors.push(c);
+        }
+
+        if let Some(c) = colour6 {
+            colors.push(c);
+        }
+
+        if let Some(c) = colour7 {
+            colors.push(c);
+        }
+
+        if let Some(c) = colour8 {
+            colors.push(c);
+        }
+
         let colours = Colours {
-            colour1,
-            colour2,
-            colour3,
-            colour4,
-            colour5,
-            colour6,
-            colour7,
-            colour8,
+            slider_border,
+            combo_colors: colors,
         };
 
         Ok(Self {
@@ -92,7 +119,7 @@ impl Default for SkinIni {
         };
 
         let colours = Colours {
-            colour1: Some(Rgb::new(255, 255, 255)),
+            combo_colors: vec![Rgb::new(255, 255, 255)],
             ..Default::default()
         };
 
@@ -101,19 +128,4 @@ impl Default for SkinIni {
             general,
         }
     }
-}
-
-#[test]
-fn test_color_parse() {
-    let s = "254, 255, 255";
-    let parsed = Rgb::parse(s).unwrap();
-    assert_eq!(parsed.r(), 254);
-    assert_eq!(parsed.g(), 255);
-    assert_eq!(parsed.b(), 255);
-
-    let s = "254,  255,  10   ";
-    let parsed = Rgb::parse(s).unwrap();
-    assert_eq!(parsed.r(), 254);
-    assert_eq!(parsed.g(), 255);
-    assert_eq!(parsed.b(), 10);
 }

@@ -24,6 +24,7 @@ macro_rules! load_or_fallback {
 /// If texture requested image is not found will fallback to the 
 /// default skin
 pub struct SkinManager {
+    pub ini: SkinIni,
     pub hit_circle: Texture,
     pub hit_circle_overlay: Texture,
     pub sliderb0: Texture,
@@ -51,7 +52,6 @@ impl SkinManager {
 
         };
 
-        dbg!(skin_ini);
         // We need to handle two situations:
         // 1. Hit Circle Overlay is present =>
         //     Load it and use it
@@ -66,6 +66,7 @@ impl SkinManager {
         let sliderb0 = load_or_fallback!(path, "sliderb0.png", graphics);
 
         Self {
+            ini: skin_ini,
             hit_circle,
             hit_circle_overlay,
             sliderb0,
