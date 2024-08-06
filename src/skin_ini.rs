@@ -18,10 +18,11 @@ impl SkinParseError {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Colours {
     pub combo_colors: Vec<Rgb>,
     pub slider_border: Rgb,
+    pub slider_body: Rgb,
 }
 
 #[derive(Debug)]
@@ -51,9 +52,14 @@ impl SkinIni {
 
 
         // Colours
-
         let slider_border = Rgb::parse(ini.get_from(Some("Colours"), "SliderBorder").unwrap_or("255, 255, 255"))
             .unwrap();
+
+        let slider_body = Rgb::parse(ini.get_from(Some("Colours"), "SliderTrackOverride").unwrap_or("0, 0, 0"))
+            .unwrap();
+
+
+        //SliderTrackOverride
 
         // TODO write some cool macro here?
         let mut colors = Vec::new();
@@ -99,8 +105,13 @@ impl SkinIni {
             colors.push(c);
         }
 
+        if colors.is_empty() {
+            colors.push(Rgb::new(255, 255, 255))
+        }
+
         let colours = Colours {
             slider_border,
+            slider_body,
             combo_colors: colors,
         };
 
@@ -120,7 +131,8 @@ impl Default for SkinIni {
 
         let colours = Colours {
             combo_colors: vec![Rgb::new(255, 255, 255)],
-            ..Default::default()
+            slider_border: Rgb::new(255, 255, 255),
+            slider_body: Rgb::new(0, 0, 0),
         };
 
         Self {

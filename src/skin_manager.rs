@@ -34,8 +34,18 @@ impl SkinManager {
     pub fn from_path(path: impl AsRef<Path>, graphics: &Graphics) -> Self {
 
         let skin_ini = {
+            let path = {
+                if path.as_ref().join("skin.ini").exists() {
+                    path.as_ref().join("skin.ini")
+                } else if path.as_ref().join("Skin.ini").exists() {
+                    path.as_ref().join("Skin.ini")
+                } else {
+                    path.as_ref().join("FIXMESOMEDAYPLS.ini")
+                }
+            };
+
             let skin_ini_bytes = std::fs::read(
-                path.as_ref().join("skin.ini")
+                path
             );
 
             match skin_ini_bytes {

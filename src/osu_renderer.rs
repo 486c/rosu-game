@@ -797,6 +797,7 @@ impl<'or> OsuRenderer<'or> {
                         pos: [0.0, 0.0, 0.0],
                         alpha: body_alpha as f32,
                         slider_border: skin.ini.colours.slider_border.to_gpu_values(),
+                        slider_body: skin.ini.colours.slider_body.to_gpu_values(),
                     });
 
 
@@ -956,6 +957,7 @@ impl<'or> OsuRenderer<'or> {
                 0.0,
                 1.0,
                 &skin.ini.colours.slider_border,
+                &skin.ini.colours.slider_body,
             ));
 
             step += step_by;

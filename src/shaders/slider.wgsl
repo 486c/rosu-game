@@ -16,6 +16,7 @@ struct InstanceInput {
 	@location(2) pos: vec2<f32>,
 	@location(3) alpha: f32,
 	@location(4) slider_border: vec3<f32>,
+	@location(5) slider_body: vec3<f32>,
 }
 
 struct VertexOutput {
@@ -23,6 +24,7 @@ struct VertexOutput {
 	@location(0) uv: vec2<f32>,
 	@location(1) alpha: f32,
 	@location(2) slider_border: vec3<f32>,
+	@location(3) slider_body: vec3<f32>,
 };
 
 @vertex
@@ -34,6 +36,7 @@ fn vs_main(
 	out.uv = model.uv;
 	out.alpha = instance.alpha;
 	out.slider_border = instance.slider_border;
+	out.slider_body = instance.slider_body;
 
     out.clip_position = camera.proj
 	 	* vec4<f32>(model.pos.x + instance.pos.x, model.pos.y + instance.pos.y, model.pos.z, 1.0);
@@ -85,10 +88,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let border_size = DEFAULT_BORDER_SIZE * border_size_multiplier;
 	let transition_size = DEFAULT_TRANSITION_SIZE;
 
-	var border_color = vec4<f32>(in.slider_border, 0.7);
+	var border_color = vec4<f32>(in.slider_border, 1.0);
 	let outer_shadow_color = vec4<f32>(0.0, 0.0, 0.0, 0.25);
 
-	let bodyColor = vec4<f32>(0.0, 0.0, 0.0, 0.7);
+	let bodyColor = vec4<f32>(in.slider_body, 0.7);
 	var inner_body_color = get_inner_body_color(bodyColor);
 	var outer_body_color = get_outer_body_color(bodyColor);
 

@@ -23,9 +23,14 @@ impl SettingsView {
         ctx: &Context,
         skin: &SkinManager,
     ) {
-        egui::Window::new("Settings").show(ctx, |ui| {
-            self.skin_settings_ui(ui, skin)
-        });
+        egui::Window::new("Settings")
+            .max_width(150.0)
+            .default_width(150.0)
+            .min_width(150.0)
+            .resizable(true)
+            .show(ctx, |ui| {
+                self.skin_settings_ui(ui, skin)
+            });
 
 
         if let Some(dialog) = &mut self.file_dialog {
@@ -46,6 +51,8 @@ impl SettingsView {
         ui: &mut Ui,
         skin: &SkinManager,
     ) {
+
+        ui.set_min_width(150.0);
         ui.heading("Skin");
         if ui.add(Button::new("Open skin")).clicked() {
             let mut dialog = FileDialog::select_folder(None);
@@ -57,12 +64,30 @@ impl SettingsView {
         ui.label(format!("Author: {}", skin.ini.general.author));
 
         ui.collapsing("Skin colours", |ui| {
-            for (i, c) in skin.ini.colours.combo_colors.iter().enumerate() {
-                ui.group(|ui| {
-                    ui.label(format!("Colour {}: ", i));
-                    show_color(ui, c.to_egui_color(), egui::Vec2::new(10.0, 10.0));
-                });
-            }
+            ui.collapsing("Combo colours", |ui| {
+                for (i, c) in skin.ini.colours.combo_colors.iter().enumerate() {
+                    ui.group(|ui| {
+                        ui.label(format!("Colour {}: ", i));
+                        show_color(ui, c.to_egui_color(), egui::Vec2::new(30.0, 10.0));
+                    });
+                }
+            });
+
+            ui.collapsing("Slider colours", |ui| {
+                ui.label("Slider border color:");
+                show_color(
+                    ui, 
+                    skin.ini.colours.slider_border.to_egui_color(),
+                    egui::Vec2::new(30.0, 10.0)
+                );
+
+                ui.label("Slider body color:");
+                show_color(
+                    ui, 
+                    skin.ini.colours.slider_body.to_egui_color(),
+                    egui::Vec2::new(30.0, 10.0)
+                );
+            });
         });
 
     }

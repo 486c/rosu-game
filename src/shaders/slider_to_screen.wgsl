@@ -16,6 +16,7 @@ struct InstanceInput {
 	@location(2) pos: vec3<f32>,
 	@location(3) alpha: f32,
 	@location(4) slider_border: vec3<f32>,
+	@location(5) slider_body: vec3<f32>,
 }
 
 struct VertexOutput {

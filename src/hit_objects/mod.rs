@@ -85,8 +85,6 @@ impl Object {
                 }),
                 _ => {},
             };
-
-            println!("{}", color_index);
         };
 
         objects
