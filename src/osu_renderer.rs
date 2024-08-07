@@ -871,8 +871,8 @@ impl<'or> OsuRenderer<'or> {
         );
         let slider_bounding_box = bbox.clone();
 
-        let bbox_width = bbox.width() * 2.0;
-        let bbox_height = bbox.height() * 2.0;
+        let bbox_width = bbox.width() * SLIDER_SCALE;
+        let bbox_height = bbox.height() * SLIDER_SCALE;
 
         let depth_texture =
             DepthTexture::new(&self.graphics, bbox_width as u32, bbox_height as u32, 1);
@@ -939,18 +939,13 @@ impl<'or> OsuRenderer<'or> {
         let n_segments = curve.dist() / 2.5;
         let step_by = (100.0 / n_segments as f64) / 100.0;
 
-        let mut step = 0.0;
-
-        while step <= 1.0 {
-            let p = curve.position_at(step);
-
-            // translating a bounding box coordinates to our coordinates that starts at (0,0)
-            let x = p.x + slider.pos.x;
-            let x = 0.0 + (x - bbox.top_left.x);
-
-            let y = p.y + slider.pos.y;
-            let y = 0.0 + (y - bbox.top_left.y);
-
+        let mut start = 0.0;
+        let mut end = 1.0;
+        
+        while start <= end {
+            let p = curve.position_at(start);
+            let x = 0.0 + ((p.x + slider.pos.x) - bbox.top_left.x);
+            let y = 0.0 + ((p.y + slider.pos.y) - bbox.top_left.y);
             self.slider_instance_data.push(SliderInstance::new(
                 x * SLIDER_SCALE,
                 y * SLIDER_SCALE,
@@ -960,7 +955,20 @@ impl<'or> OsuRenderer<'or> {
                 &skin.ini.colours.slider_body,
             ));
 
-            step += step_by;
+            let p = curve.position_at(end);
+            let x = 0.0 + ((p.x + slider.pos.x) - bbox.top_left.x);
+            let y = 0.0 + ((p.y + slider.pos.y) - bbox.top_left.y);
+            self.slider_instance_data.push(SliderInstance::new(
+                x * SLIDER_SCALE,
+                y * SLIDER_SCALE,
+                0.0,
+                1.0,
+                &skin.ini.colours.slider_border,
+                &skin.ini.colours.slider_body,
+            ));
+
+            end -= step_by;
+            start += step_by;
         }
 
         let mut origin = Vector2::new(slider.pos.x, slider.pos.y);

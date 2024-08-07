@@ -52,7 +52,7 @@ fn main() {
 
     let mut osu_state = OsuState::new(window.clone(), state, sink);
 
-    osu_state.open_beatmap("tests/test2.osu");
+    osu_state.open_beatmap("tests/mayday/mayday.osu");
 
     //osu_state.set_time(194046.5);
     //osu_state.set_time(30000.0);
