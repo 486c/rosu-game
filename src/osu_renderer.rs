@@ -12,7 +12,7 @@ use winit::dpi::PhysicalSize;
 static SLIDER_SCALE: f32 = 2.0;
 
 use crate::{
-    camera::Camera, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, SLIDER_FADEOUT_TIME}, math::lerp, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, SLIDER_FADEOUT_TIME}, math::lerp, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex
 };
 
 macro_rules! buffer_write_or_init {
@@ -121,13 +121,17 @@ pub struct OsuRenderer<'or> {
     // Slider body queue
     slider_to_screen_textures: SmallVec<[(Arc<Texture>, Arc<wgpu::Buffer>, Option<u32>); 32]>,
 
+    // Slider settings
+    slider_settings_buffer: wgpu::Buffer,
+    slider_settings_bind_group: BindGroup,
+
     depth_texture: DepthTexture,
 
     last_color: usize,
 }
 
 impl<'or> OsuRenderer<'or> {
-    pub fn new(graphics: Graphics<'or>) -> Self {
+    pub fn new(graphics: Graphics<'or>, config: &Config) -> Self {
         //let approach_circle_texture = Texture::from_path("skin/approachcircle.png", &graphics);
 
         let hit_circle_shader = graphics
@@ -245,6 +249,43 @@ impl<'or> OsuRenderer<'or> {
                     resource: camera_buffer.as_entire_binding(),
                 }],
                 label: Some("camera_bind_group"),
+            });
+
+
+        let slider_settings_buffer = graphics
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("uniform_buffer"),
+                    contents: bytemuck::bytes_of(&config.slider),
+                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                });
+
+        let slider_settings_bind_group_layout =
+            graphics
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                    label: Some("slider_settings bind group layout"),
+                });
+
+        let slider_settings_bind_group = graphics
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &slider_settings_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: slider_settings_buffer.as_entire_binding(),
+                }],
+                label: Some("slider_settings bind group"),
             });
 
         let approach_circle_pipeline_layout =
@@ -465,7 +506,10 @@ impl<'or> OsuRenderer<'or> {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("slider test pipeline Layout"),
-                    bind_group_layouts: &[&camera_bind_group_layout],
+                    bind_group_layouts: &[
+                        &camera_bind_group_layout,
+                        &slider_settings_bind_group_layout,
+                    ],
                     push_constant_ranges: &[],
                 });
 
@@ -667,10 +711,21 @@ impl<'or> OsuRenderer<'or> {
             hit_circle_diameter: 1.0,
             last_color: 0,
             quad_colored_pipeline,
+            slider_settings_buffer,
+            slider_settings_bind_group,
         }
     }
 
-    pub fn prepare_objects2(
+    pub fn prepare(
+        &self,
+        config: &Config,
+    ) {
+        self.graphics
+            .queue
+            .write_buffer(&self.slider_settings_buffer, 0, bytemuck::bytes_of(&config.slider));
+    }
+
+    pub fn prepare_objects(
         &mut self,
         time: f64,
         preempt: f32,
@@ -847,12 +902,13 @@ impl<'or> OsuRenderer<'or> {
         &mut self,
         slider: &mut crate::hit_objects::slider::Slider,
         skin: &SkinManager,
+        config: &Config
     ) {
         // TODO optimization idea
 
         let _span = tracy_client::span!("osu_renderer prepare_and_render_slider_texture");
 
-        if !slider.render.is_none() {
+        if !slider.render.is_none() && config.store_slider_textures {
             return;
         }
 
@@ -869,6 +925,7 @@ impl<'or> OsuRenderer<'or> {
             &self.slider_verticies,
             Vertex
         );
+
         let slider_bounding_box = bbox.clone();
 
         let bbox_width = bbox.width() * SLIDER_SCALE;
@@ -1030,6 +1087,7 @@ impl<'or> OsuRenderer<'or> {
             render_pass.set_pipeline(&self.slider_pipeline);
 
             render_pass.set_bind_group(0, &camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.slider_settings_bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.slider_vertex_buffer.slice(..));
 
@@ -1154,13 +1212,11 @@ impl<'or> OsuRenderer<'or> {
             1,
         );
 
-        // TODO Recreate buffers
         self.graphics
             .queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera)); // TODO
 
         // Slider to screen
-
         self.slider_to_screen_verticies = Vertex::quad_positional(
             0.0,
             0.0,

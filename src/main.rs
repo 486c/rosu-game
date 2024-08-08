@@ -20,6 +20,7 @@ mod hit_circle_instance;
 mod hit_objects;
 mod osu_renderer;
 mod osu_state;
+mod config;
 mod slider_instance;
 mod skin_manager;
 mod texture;

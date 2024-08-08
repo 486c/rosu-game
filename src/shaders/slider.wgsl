@@ -1,11 +1,16 @@
 // Vertex shader
-struct CameraUniform {
-	proj: mat4x4<f32>,
-	view: mat4x4<f32>,
-};
+
+
+struct SliderSettingsUniform {
+    border_feather: f32,
+    border_size_multiplier: f32,
+    body_color_saturation: f32,
+    body_alpha_multiplier: f32
+}
 
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
+
 
 struct VertexInput {
 	@location(0) pos: vec3<f32>,
@@ -47,11 +52,13 @@ fn vs_main(
 
 
 // Fragment shader
+struct CameraUniform {
+	proj: mat4x4<f32>,
+	view: mat4x4<f32>
+};
 
-//@group(0) @binding(0)
-//var texture: texture_2d<f32>;
-//@group(0) @binding(1)
-//var texture_sampler: sampler;
+@group(1) @binding(0)
+var<uniform> slider_settings: SliderSettingsUniform;
 
 const DEFAULT_TRANSITION_SIZE: f32 = 0.011;
 const DEFAULT_BORDER_SIZE: f32 = 0.11;
@@ -83,17 +90,27 @@ fn get_outer_body_color(body_color: vec4<f32>) -> vec4<f32> {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	var out_color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
 
-	let border_size_multiplier = 1.0;
+	let border_size_multiplier = slider_settings.border_size_multiplier;
 
-	let border_size = DEFAULT_BORDER_SIZE * border_size_multiplier;
+	let border_size = (DEFAULT_BORDER_SIZE + slider_settings.border_feather) * border_size_multiplier;
+
 	let transition_size = DEFAULT_TRANSITION_SIZE;
 
 	var border_color = vec4<f32>(in.slider_border, 1.0);
 	let outer_shadow_color = vec4<f32>(0.0, 0.0, 0.0, 0.25);
 
-	let bodyColor = vec4<f32>(in.slider_body, 0.7);
+	let bodyColor = vec4<f32>(in.slider_body, 0.7 * slider_settings.body_alpha_multiplier);
+
 	var inner_body_color = get_inner_body_color(bodyColor);
 	var outer_body_color = get_outer_body_color(bodyColor);
+
+	inner_body_color.r *= slider_settings.body_color_saturation;
+	inner_body_color.g *= slider_settings.body_color_saturation;
+	inner_body_color.b *= slider_settings.body_color_saturation;
+
+	outer_body_color.r *= slider_settings.body_color_saturation;
+	outer_body_color.g *= slider_settings.body_color_saturation;
+	outer_body_color.b *= slider_settings.body_color_saturation;
 
 	if (in.uv.x < OUTER_SHADOW_SIZE - transition_size) {
 		let delta: f32 = in.uv.x / (OUTER_SHADOW_SIZE - transition_size);

@@ -1,9 +1,9 @@
 use std::sync::mpsc::Sender;
 
-use egui::{color_picker::show_color, Button, Context, Label, Ui};
+use egui::{color_picker::show_color, Button, Context, Label, Slider, Ui};
 use egui_file::FileDialog;
 
-use crate::{osu_state::OsuStateEvent, skin_manager::SkinManager};
+use crate::{config::Config, osu_state::OsuStateEvent, skin_manager::SkinManager};
 
 pub struct SettingsView {
     sender: Sender<OsuStateEvent>,
@@ -22,6 +22,7 @@ impl SettingsView {
         &mut self, 
         ctx: &Context,
         skin: &SkinManager,
+        config: &mut Config,
     ) {
         egui::Window::new("Settings")
             .max_width(150.0)
@@ -29,7 +30,10 @@ impl SettingsView {
             .min_width(150.0)
             .resizable(true)
             .show(ctx, |ui| {
-                self.skin_settings_ui(ui, skin)
+                self.ui(ui, config);
+                ui.separator();
+                self.skin_settings_ui(ui, skin);
+                ui.separator();
             });
 
 
@@ -42,8 +46,28 @@ impl SettingsView {
         }
     }
 
-    pub fn ui(&self, ui: &mut Ui) {
-        ui.add(Label::new("Settings Bebra"));
+    pub fn ui(&self, ui: &mut Ui, config: &mut Config) {
+        ui.checkbox(&mut config.store_slider_textures, "Store slider textures");
+
+        ui.add(Slider::new(
+            &mut config.slider.border_feather,
+            0.0..=2.0
+        ).text("Slider border feather"));
+
+        ui.add(Slider::new(
+            &mut config.slider.border_size_multiplier,
+            0.0..=2.0
+        ).text("Slider border size"));
+
+        ui.add(Slider::new(
+            &mut config.slider.body_color_saturation,
+            0.0..=2.0
+        ).text("Slider body color saturation"));
+
+        ui.add(Slider::new(
+            &mut config.slider.body_alpha_multiplier,
+            0.0..=2.0
+        ).text("Slider body alpha multiplier"));
     }
 
     pub fn skin_settings_ui(
@@ -52,7 +76,7 @@ impl SettingsView {
         skin: &SkinManager,
     ) {
 
-        ui.set_min_width(150.0);
+        ui.set_min_width(250.0);
         ui.heading("Skin");
         if ui.add(Button::new("Open skin")).clicked() {
             let mut dialog = FileDialog::select_folder(None);

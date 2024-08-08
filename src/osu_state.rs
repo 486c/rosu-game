@@ -7,7 +7,7 @@ use rosu_map::Beatmap;
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_renderer::OsuRenderer, skin_manager::SkinManager, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_renderer::OsuRenderer, skin_manager::SkinManager, timer::Timer, ui::settings::SettingsView
 };
 
 pub enum OsuStateEvent {
@@ -43,6 +43,7 @@ pub struct OsuState<'s> {
     pub sink: Sink,
 
     skin_manager: SkinManager,
+    config: Config,
     settings_view: SettingsView,
 
     osu_renderer: OsuRenderer<'s>,
@@ -68,7 +69,8 @@ impl<'s> OsuState<'s> {
     pub fn new(window: Arc<Window>, graphics: Graphics<'s>, sink: Sink) -> Self {
         let egui = EguiState::new(&graphics, &window);
         let skin_manager = SkinManager::from_path("skin", &graphics);
-        let osu_renderer = OsuRenderer::new(graphics);
+        let config = Config::default();
+        let osu_renderer = OsuRenderer::new(graphics, &config);
 
         let (tx, event_receiver) = channel::<OsuStateEvent>();
 
@@ -89,6 +91,7 @@ impl<'s> OsuState<'s> {
             difficulties: Vec::new(),
             new_beatmap: None,
             skin_manager,
+            config,
             settings_view: SettingsView::new(tx.clone()),
         }
     }
@@ -170,7 +173,8 @@ impl<'s> OsuState<'s> {
 
         self.settings_view.window(
             &self.egui.state.egui_ctx(),
-            &self.skin_manager
+            &self.skin_manager,
+            &mut self.config,
         );
 
         egui::Window::new("Window").show(&self.egui.state.egui_ctx(), |ui| {
@@ -263,7 +267,7 @@ impl<'s> OsuState<'s> {
             match &mut obj.kind {
                 ObjectKind::Circle(_) => {}
                 ObjectKind::Slider(slider) => {
-                    self.osu_renderer.prepare_and_render_slider_texture(slider, &self.skin_manager);
+                    self.osu_renderer.prepare_and_render_slider_texture(slider, &self.skin_manager, &self.config);
                 }
             }
 
@@ -273,10 +277,15 @@ impl<'s> OsuState<'s> {
                 //.prepare_object_for_render(obj, time, self.preempt, self.fadein);
         }
 
-        self.osu_renderer.prepare_objects2(
+        self.osu_renderer.prepare_objects(
             time, self.preempt, self.fadein,
             &self.objects_queue, &self.hit_objects,
             &self.skin_manager
+        );
+
+        // Syncing osu state settings with the osu renderer
+        self.osu_renderer.prepare(
+            &self.config
         );
 
         // When we are done preparing all objects for rendering
