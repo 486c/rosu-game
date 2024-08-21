@@ -55,17 +55,17 @@ fn main() {
 
     let state = Graphics::new(window.clone());
 
-    let file = BufReader::new(File::open("tests/mayday/audio.mp3").unwrap());
-    let source = Decoder::new(file).unwrap();
+    //let file = BufReader::new(File::open("tests/mayday/audio.mp3").unwrap());
+    //let source = Decoder::new(file).unwrap();
 
     let (stream, stream_handle) = OutputStream::try_default().unwrap();
     let sink = Sink::try_new(&stream_handle).unwrap();
     sink.pause();
-    sink.append(source);
+    //sink.append(source);
 
     let mut osu_state = OsuState::new(window.clone(), state, sink);
 
-    osu_state.open_beatmap("tests/mayday/mayday.osu");
+    //osu_state.open_beatmap("tests/mayday/mayday.osu");
 
     //osu_state.set_time(194046.5);
     //osu_state.set_time(30000.0);
@@ -105,6 +105,23 @@ fn main() {
                                 Err(e) => eprintln!("{:?}", e),
                             }
                         }
+                    }
+                    WindowEvent::KeyboardInput{ event, ..} => {
+                        match event.physical_key {
+                            winit::keyboard::PhysicalKey::Code(key_code) => {
+                                match event.state {
+                                    winit::event::ElementState::Pressed => {
+                                        osu_state.on_pressed_down(key_code);
+                                    },
+                                    winit::event::ElementState::Released => {
+                                    },
+                                }
+                            },
+                            winit::keyboard::PhysicalKey::Unidentified(_) => 
+                                tracing::warn!("Got undefined keyboard input"),
+                        }
+
+
                     }
                     //WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                         //osu_state.resize(new_inner_size);

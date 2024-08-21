@@ -65,7 +65,7 @@ impl EguiState {
         let (graphics_width, graphics_height) = graphics.get_surface_size();
 
         if self.output.is_none() {
-            println!("None");
+            //println!("None");
             return Ok(());
         }
 

@@ -36,7 +36,7 @@ macro_rules! buffer_write_or_init {
     }};
 }
 
-const QUAD_INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
+pub const QUAD_INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 const OSU_COORDS_WIDTH: f32 = 512.0;
 const OSU_COORDS_HEIGHT: f32 = 384.0;
@@ -131,7 +131,7 @@ pub struct OsuRenderer<'or> {
 }
 
 impl<'or> OsuRenderer<'or> {
-    pub fn new(graphics: Graphics<'or>, config: &Config) -> Self {
+    pub fn new(graphics: Arc<Graphics<'or>>, config: &Config) -> Self {
         //let approach_circle_texture = Texture::from_path("skin/approachcircle.png", &graphics);
 
         let (graphics_width, graphics_height) = graphics.get_surface_size();
@@ -680,7 +680,7 @@ impl<'or> OsuRenderer<'or> {
             calc_playfield_scale_factor(graphics.size.width as f32, graphics.size.height as f32);
 
         Self {
-            graphics: Arc::new(graphics),
+            graphics,
             scale,
             quad_verticies,
             camera,
@@ -896,8 +896,8 @@ impl<'or> OsuRenderer<'or> {
         }
     }
 
-    pub fn get_graphics(&self) -> &Graphics {
-        &self.graphics
+    pub fn get_graphics(&self) -> Arc<Graphics> {
+        self.graphics.clone()
     }
 
     /// Render slider to the **texture** not screen
@@ -978,11 +978,13 @@ impl<'or> OsuRenderer<'or> {
 
         self.slider_instance_data.clear();
 
+        let (slider_texture_width, slider_texture_height) = (bbox_width as u32, bbox_height as u32);
+
         let slider_texture_not_sampled = self.graphics.device.create_texture(&TextureDescriptor {
             label: Some("SLIDER RENDER TEXTURE"),
             size: Extent3d {
-                width: bbox_width as u32,
-                height: bbox_height as u32,
+                width: slider_texture_width,
+                height: slider_texture_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -1114,6 +1116,8 @@ impl<'or> OsuRenderer<'or> {
         let slider_texture = Arc::new(Texture::from_texture(
             slider_texture_not_sampled,
             &self.graphics,
+            slider_texture_width,
+            slider_texture_height,
             1,
         ));
 
@@ -1295,10 +1299,6 @@ impl<'or> OsuRenderer<'or> {
         skin: &SkinManager,
     ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer render_objects");
-
-        //let hitcircles_encoder = self.render_hitcircles(&view)?;
-        //let sliders_encoder = self.render_sliders(&view)?;
-
 
         let mut encoder =
             self.graphics

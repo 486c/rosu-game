@@ -1,13 +1,14 @@
-use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, TryRecvError}, Arc}, time::Duration};
+use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc}, time::Duration};
 
-use egui::Slider;
+use egui::{RawInput, Slider};
 use egui_file::FileDialog;
 use rodio::{Decoder, Sink};
 use rosu_map::Beatmap;
-use winit::{dpi::PhysicalSize, window::Window};
+use wgpu::TextureView;
+use winit::{dpi::PhysicalSize, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_db::BeatmapEntry, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 
 pub enum OsuStates {
@@ -16,7 +17,9 @@ pub enum OsuStates {
 }
 
 pub enum OsuStateEvent {
+    ToSongSelection,
     ChangeSkin(PathBuf),
+    StartBeatmap(BeatmapEntry),
 }
 
 /// Return preempt and fadein based on AR
@@ -44,11 +47,12 @@ pub struct OsuState<'s> {
     pub window: Arc<Window>,
     pub egui: EguiState,
     pub event_receiver: Receiver<OsuStateEvent>,
+    pub event_sender: Sender<OsuStateEvent>,
 
     pub sink: Sink,
 
     pub current_state: OsuStates,
-    pub song_select: SongSelectionState,
+    pub song_select: SongSelectionState<'s>,
 
     skin_manager: SkinManager,
     config: Config,
@@ -78,9 +82,13 @@ impl<'s> OsuState<'s> {
         let egui = EguiState::new(&graphics, &window);
         let skin_manager = SkinManager::from_path("skin", &graphics);
         let config = Config::default();
-        let osu_renderer = OsuRenderer::new(graphics, &config);
+        let graphics = Arc::new(graphics);
 
-        let (tx, event_receiver) = channel::<OsuStateEvent>();
+        let osu_renderer = OsuRenderer::new(graphics.clone(), &config);
+
+        let (event_sender, event_receiver) = channel::<OsuStateEvent>();
+
+        let song_select = SongSelectionState::new(graphics.clone(), event_sender.clone());
 
         Self {
             event_receiver,
@@ -100,19 +108,21 @@ impl<'s> OsuState<'s> {
             new_beatmap: None,
             skin_manager,
             config,
-            settings_view: SettingsView::new(tx.clone()),
+            settings_view: SettingsView::new(event_sender.clone()),
             current_state: OsuStates::SongSelection,
-            song_select: SongSelectionState::new(),
+            song_select,
+            event_sender,
         }
     }
 
     pub fn open_skin(&mut self, path: impl AsRef<Path>) {
-        let skin_manager = SkinManager::from_path(path, self.osu_renderer.get_graphics());
+        let skin_manager = SkinManager::from_path(path, &self.osu_renderer.get_graphics());
         self.skin_manager = skin_manager;
     }
 
     pub fn open_beatmap(&mut self, path: impl AsRef<Path>) {
         self.osu_clock.reset_time();
+        self.osu_clock.unpause();
 
         let map = match Beatmap::from_path(path.as_ref()) {
             Ok(m) => m,
@@ -159,6 +169,8 @@ impl<'s> OsuState<'s> {
 
         self.current_beatmap = Some(map);
         self.apply_beatmap_transformations();
+
+        self.sink.play();
     }
 
     pub fn apply_beatmap_transformations(&mut self) {
@@ -172,13 +184,24 @@ impl<'s> OsuState<'s> {
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
         self.osu_renderer.on_resize(new_size);
+        self.song_select.on_resize(new_size);
     }
 
-    pub fn update_egui(&mut self) {
+    pub fn on_pressed_down(&self, key_code: KeyCode) {
+        match self.current_state {
+            OsuStates::Playing => {
+                if key_code == KeyCode::Escape {
+                    let _ = self.event_sender.send(OsuStateEvent::ToSongSelection);
+                }
+            },
+            OsuStates::SongSelection => {},
+        }
+    }
+
+    pub fn update_egui(&mut self, input: RawInput) {
         let _span = tracy_client::span!("osu_state update egui");
 
-
-        //self.egui.state.egui_ctx().begin_frame(input);
+        self.egui.state.egui_ctx().begin_frame(input);
 
         self.settings_view.window(
             &self.egui.state.egui_ctx(),
@@ -314,6 +337,16 @@ impl<'s> OsuState<'s> {
                     OsuStateEvent::ChangeSkin(path) => {
                         self.open_skin(path)
                     },
+                    OsuStateEvent::StartBeatmap(entry) => {
+                        tracing::info!("Request to enter beatmap");
+                        self.open_beatmap(entry.path);
+                        self.current_state = OsuStates::Playing;
+                    },
+                    OsuStateEvent::ToSongSelection => {
+                        self.osu_clock.reset_time();
+                        self.sink.clear();
+                        self.current_state = OsuStates::SongSelection;
+                    },
                 }
             },
             Err(TryRecvError::Empty) => {},
@@ -331,7 +364,6 @@ impl<'s> OsuState<'s> {
                     self.difficulties.clear();
                 }
 
-                self.update_egui();
                 let time = self.osu_clock.update();
 
                 self.prepare_objects(time);
@@ -343,80 +375,59 @@ impl<'s> OsuState<'s> {
 
     }
 
-    pub fn render_playing(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let _span = tracy_client::span!("osu_state render");
-
-        let span = tracy_client::span!("osu_state render::get_current_texture");
-        let output = self.osu_renderer.get_graphics().get_current_texture()?;
-        drop(span);
-
-        let span = tracy_client::span!("osu_state render::create_view");
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        drop(span);
-
-        self.osu_renderer.render_objects(
-            &view,
-            &self.objects_queue, &self.hit_objects,
-            &self.skin_manager,
-        )?;
-
+    pub fn render_egui(&mut self, view: &TextureView) -> Result<(), wgpu::SurfaceError> {
         let graphics = self.osu_renderer.get_graphics();
-
         let mut encoder = graphics
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
 
-        self.egui.render(graphics, &mut encoder, &view)?;
+        self.egui.render(&graphics, &mut encoder, &view)?;
 
-        let span = tracy_client::span!("osu_state queue::submit");
         graphics.queue.submit(std::iter::once(encoder.finish()));
-        drop(span);
-
-        let span = tracy_client::span!("osu_state render::present");
-        output.present();
-        drop(span);
-
-        // Clearing objects queue only after they successfully rendered
-        self.objects_queue.clear();
 
         Ok(())
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        //let graphics = self.osu_renderer.get_graphics();
         let output = self.osu_renderer.get_graphics().get_current_texture()?;
 
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let graphics = self.osu_renderer.get_graphics();
+//
         let egui_input = self.egui.state.take_egui_input(&self.window);
-
-        let mut encoder = graphics
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
 
         match self.current_state {
             OsuStates::Playing => {
-                //self.render_playing()?;
-                todo!();
+                // TODO THIS SHOULN'T BE HERE, fix when dicided what to
+                // do with egui_input thing
+                self.update_egui(egui_input);
+
+                self.osu_renderer.render_objects(
+                    &view,
+                    &self.objects_queue, &self.hit_objects,
+                    &self.skin_manager,
+                )?;
+
+                // Clearing objects queue only after they successfully rendered
+                self.objects_queue.clear();
+                self.render_egui(&view)?;
+
+                //self.render_playing(&view);
             },
             OsuStates::SongSelection => {
-                let egui_output = self.song_select.render(egui_input, self.egui.state.egui_ctx());
+                let egui_output = self.song_select.render(
+                    egui_input, 
+                    self.egui.state.egui_ctx(),
+                    &view
+                );
+                self.render_egui(&view)?;
                 self.egui.output = Some(egui_output)
             },
         }
-
-
-        self.egui.render(graphics, &mut encoder, &view)?;
-
-        graphics.queue.submit(std::iter::once(encoder.finish()));
 
         output.present();
 

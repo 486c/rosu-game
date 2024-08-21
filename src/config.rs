@@ -19,9 +19,9 @@ impl Default for Config {
             store_slider_textures: true,
             slider: SliderConfig {
                 border_feather: 0.1,
-                border_size_multiplier: 1.0,
-                body_color_saturation: 1.0,
-                body_alpha_multiplier: 1.0,
+                border_size_multiplier: 0.65,
+                body_color_saturation: 0.62,
+                body_alpha_multiplier: 0.65,
             },
         }
     }

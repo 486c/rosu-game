@@ -1,10 +1,13 @@
-use std::{sync::mpsc::{Receiver, Sender}, time::Duration};
+use std::{sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
 
 use egui::{scroll_area::ScrollBarVisibility, Align, Color32, Label, Margin, RichText, Stroke};
 use egui_extras::{Size, StripBuilder};
+use image::DynamicImage;
 use rosu_map::Beatmap;
+use wgpu::{util::DeviceExt, BufferUsages, TextureView};
+use winit::dpi::PhysicalSize;
 
-use crate::osu_db::{BeatmapEntry, OsuDatabase};
+use crate::{camera::Camera, graphics::Graphics, hit_circle_instance::HitCircleInstance, osu_db::{BeatmapEntry, OsuDatabase}, osu_renderer::QUAD_INDECIES, osu_state::OsuStateEvent, rgb::Rgb, texture::Texture, vertex::Vertex};
 
 
 const CARD_INNER_MARGIN: Margin = Margin {
@@ -17,11 +20,13 @@ const CARD_INNER_MARGIN: Margin = Margin {
 
 enum SongSelectionEvents {
     SelectBeatmap(BeatmapEntry),
-    LoadedBeatmap(Beatmap),
+    LoadedBeatmap{ beatmap: Beatmap, image: DynamicImage },
+    StartBeatmap(BeatmapEntry),
 }
 
-pub struct SongSelectionState {
+pub struct SongSelectionState<'ss> {
     db: OsuDatabase,
+    graphics: Arc<Graphics<'ss>>,
 
     // Min & Max row that we currently need to draw
     min: usize,
@@ -31,14 +36,171 @@ pub struct SongSelectionState {
     current: usize,
 
     current_beatmap: Option<Beatmap>,
+    current_background_image: Option<Texture>,
 
     inner_tx: Sender<SongSelectionEvents>,
     inner_rx: Receiver<SongSelectionEvents>,
+
+    state_tx: Sender<OsuStateEvent>,
+
+    // wgpu stuff
+    camera: Camera,
+    camera_bind_group: wgpu::BindGroup,
+    camera_buffer: wgpu::Buffer,
+    quad_vertex_buffer: wgpu::Buffer,
+    quad_index_buffer: wgpu::Buffer,
+    quad_pipeline: wgpu::RenderPipeline,
+    quad_instance_data: Vec<HitCircleInstance>,
+    quad_instance_buffer: wgpu::Buffer,
 }
 
-impl SongSelectionState {
-    pub fn new() -> Self {
+impl<'ss> SongSelectionState<'ss> {
+    pub fn new(graphics: Arc<Graphics<'ss>>, state_tx: Sender<OsuStateEvent>) -> Self {
         let (inner_tx, inner_rx) = std::sync::mpsc::channel();
+
+        let quad_shader = graphics
+            .device
+            .create_shader_module(wgpu::include_wgsl!("shaders/hit_circle.wgsl"));
+
+        let surface_config = graphics.get_surface_config();
+
+        let camera = Camera::new(
+            surface_config.width as f32,
+            surface_config.height as f32,
+            1.0,
+        );
+
+        let quad_index_buffer =
+            graphics
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("hit_circle_index_buffer"),
+                    contents: bytemuck::cast_slice(QUAD_INDECIES),
+                    usage: BufferUsages::INDEX,
+                });
+
+        let quad_vertex_buffer =
+            graphics
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("hit_circle_buffer"),
+                    contents: bytemuck::cast_slice(&Vertex::quad_centered(1.0, 1.0)),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                });
+
+        let camera_buffer = graphics
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("uniform_buffer"),
+                contents: bytemuck::bytes_of(&camera),
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            });
+
+        let camera_bind_group_layout =
+            graphics
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                    label: Some("camera_bind_group_layout"),
+                });
+
+        let quad_instance_data = vec![
+            HitCircleInstance::new(
+                surface_config.width as f32 / 2.0,
+                surface_config.height as f32 / 2.0,
+                1.0,
+                1.0,
+                &Rgb::new(0, 0, 0),
+            )
+        ];
+
+        let quad_instance_buffer =
+            graphics
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("quad Instance Buffer"),
+                    contents: bytemuck::cast_slice(&quad_instance_data),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                });
+
+        let camera_bind_group = graphics
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &camera_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                }],
+                label: Some("camera_bind_group"),
+            });
+
+        let quad_pipeline_layout =
+            graphics
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("hitcircle pipeline Layout"),
+                    bind_group_layouts: &[
+                        &Texture::default_bind_group_layout(&graphics, 1),
+                        &camera_bind_group_layout,
+                    ],
+                    push_constant_ranges: &[],
+                });
+
+        let quad_pipeline =
+            graphics
+                .device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("hit_circle render pipeline"),
+                    layout: Some(&quad_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &quad_shader,
+                        entry_point: "vs_main",
+                        buffers: &[Vertex::desc(), HitCircleInstance::desc()],
+                        compilation_options: Default::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        compilation_options: Default::default(),
+                        module: &quad_shader,
+                        entry_point: "fs_main",
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: surface_config.format,
+                            blend: Some(wgpu::BlendState {
+                                color: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                                alpha: wgpu::BlendComponent::OVER,
+                            }),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: Some(wgpu::Face::Back),
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        unclipped_depth: false,
+                        conservative: false,
+                    },
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState {
+                        count: 1,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
+                    multiview: None,
+                });
 
         Self {
             db: OsuDatabase::new().unwrap(), // TODO: REMOVE UNRAP
@@ -48,6 +210,17 @@ impl SongSelectionState {
             inner_tx,
             inner_rx,
             current_beatmap: None,
+            graphics,
+            current_background_image: None,
+            camera,
+            camera_bind_group,
+            quad_pipeline,
+            quad_instance_data,
+            quad_instance_buffer,
+            quad_vertex_buffer,
+            quad_index_buffer,
+            camera_buffer,
+            state_tx,
         }
     }
     
@@ -59,25 +232,90 @@ impl SongSelectionState {
         std::thread::spawn(move || {
             let parsed_beatmap = Beatmap::from_path(&path).unwrap();
             let bg_filename = parsed_beatmap.background_file.clone();
-            let _bg_path = path.parent()
+            let bg_path = path.parent()
                 .unwrap()
                 .join(&bg_filename);
         
-            /*
             let img = image::open(bg_path).unwrap();
             let img = img.blur(5.0);
-            let rgba_image = img.to_rgba8();
 
-            let image = egui::ColorImage::from_rgba_unmultiplied(
-                [img.width() as usize, img.height() as usize],
-                &rgba_image,
-            );
-            */
-
-            tx.send(SongSelectionEvents::LoadedBeatmap(
-                parsed_beatmap
-            ))
+            tx.send(SongSelectionEvents::LoadedBeatmap{
+                beatmap: parsed_beatmap,
+                image: img,
+            })
         });
+    }
+
+
+    pub fn on_resize(&mut self, new_size: &PhysicalSize<u32>) {
+        if let Some(bg_img) = &self.current_background_image {
+            self.resize_background_vertex(bg_img.width, bg_img.height);
+        }
+
+        self.camera.resize(new_size);
+
+        self.quad_instance_data.clear();
+        self.quad_instance_data.push(
+            HitCircleInstance::new(
+                new_size.width as f32 / 2.0,
+                new_size.height as f32 / 2.0,
+                1.0,
+                1.0,
+                &Rgb::new(0, 0, 0),
+            )
+        );
+
+        self.graphics
+            .queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera));
+
+        self.graphics
+            .queue
+            .write_buffer(&self.quad_instance_buffer, 0, bytemuck::cast_slice(&self.quad_instance_data));
+    }
+    
+    fn resize_background_vertex(&self, width: f32, height: f32) {
+        let image_width = width;
+        let image_height = height;
+
+        let (graphics_width, graphics_height) = self.graphics.get_surface_size();
+        let (graphics_width, graphics_height) = (graphics_width as f32, graphics_height as f32);
+
+        let (mut to_width, mut to_height) = (graphics_width, graphics_height);
+
+        let image_ratio = image_width as f32 / image_height as f32;
+        let surface_ratio = graphics_width as f32 / graphics_height as f32;
+
+        let (width, height) = (graphics_height * image_ratio, graphics_width / image_ratio);
+
+        if surface_ratio < image_ratio {
+            to_width = width;
+        } else {
+            to_height = height
+        };
+
+
+        self.graphics
+            .queue
+            .write_buffer(&self.quad_vertex_buffer, 0, bytemuck::cast_slice(
+                &Vertex::quad_centered(to_width, to_height)
+            ));
+
+        tracing::info!("Resized background image vertex, width: {}, height: {}", image_width, image_height);
+    }
+
+    fn load_background(&mut self, image: DynamicImage) {
+        self.resize_background_vertex(image.width() as f32, image.height() as f32);
+
+        let texture = Texture::from_image(
+            image,
+            &self.graphics
+        );
+
+
+
+        self.current_background_image = Some(texture);
+
     }
 
     pub fn update(&mut self) {
@@ -87,8 +325,12 @@ impl SongSelectionState {
                     SongSelectionEvents::SelectBeatmap(entry) => {
                         self.open_beatmap(&entry);
                     },
-                    SongSelectionEvents::LoadedBeatmap(b) => {
-                        self.current_beatmap = Some(b)
+                    SongSelectionEvents::LoadedBeatmap{ beatmap, image }  => {
+                        self.load_background(image);
+                        self.current_beatmap = Some(beatmap);
+                    },
+                    SongSelectionEvents::StartBeatmap(entry) => {
+                        let _ = self.state_tx.send(OsuStateEvent::StartBeatmap(entry));
                     },
                 }
             },
@@ -99,6 +341,54 @@ impl SongSelectionState {
                 },
             },
         }
+    }
+
+    pub fn render_background(&self, view: &TextureView) {
+        let mut encoder =
+            self.graphics
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("HitObjects encoder"),
+                });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("slider render pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            if let Some(texture) = &self.current_background_image {
+                render_pass.set_pipeline(&self.quad_pipeline);
+                render_pass.set_bind_group(0, &texture.bind_group, &[]);
+                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
+                render_pass.set_vertex_buffer(1, self.quad_instance_buffer.slice(..));
+                render_pass.set_index_buffer(
+                    self.quad_index_buffer.slice(..),
+                    wgpu::IndexFormat::Uint16,
+                );
+
+                render_pass.draw_indexed(
+                    0..QUAD_INDECIES.len() as u32,
+                    0,
+                    0..1,
+                );
+            }
+        }
+
+        self.graphics
+            .queue
+            .submit([encoder.finish()]);
     }
 
     pub fn render_beatmap_card_info(&mut self, ui: &mut egui::Ui) {
@@ -184,10 +474,11 @@ impl SongSelectionState {
                     });
                 }
             });
-
     }
 
-    pub fn render(&mut self, input: egui::RawInput, ctx: &egui::Context) -> egui::FullOutput {
+    pub fn render(&mut self, input: egui::RawInput, ctx: &egui::Context, view: &TextureView) -> egui::FullOutput {
+        self.render_background(view);
+
         ctx.begin_frame(input);
 
         egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |ui| {
@@ -285,8 +576,20 @@ impl SongSelectionState {
 
                                 if sense.clicked() {
                                     self.current = id;
+
                                     let _ = 
-                                        self.inner_tx.send(SongSelectionEvents::SelectBeatmap(beatmap.clone())); // TODO handle this shit
+                                        self.inner_tx.send(
+                                            SongSelectionEvents::SelectBeatmap(beatmap.clone())
+                                        ); // TODO handle this shit
+
+                                    res.response.scroll_to_me(Some(Align::Center));
+                                }
+
+                                if sense.double_clicked() {
+                                    self.current = id;
+                                    let _ = self.inner_tx.send(
+                                        SongSelectionEvents::StartBeatmap(beatmap.clone())
+                                    );
                                     res.response.scroll_to_me(Some(Align::Center));
                                 }
                             };

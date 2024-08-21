@@ -58,6 +58,8 @@ pub struct Texture {
     //pub sampler: wgpu::Sampler,
     pub bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
+    pub width: f32,
+    pub height: f32,
 }
 
 impl Texture {
@@ -117,7 +119,7 @@ impl Texture {
             })
     }
 
-    pub fn from_texture(texture: wgpu::Texture, graphics: &Graphics, sample_count: u32) -> Self {
+    pub fn from_texture(texture: wgpu::Texture, graphics: &Graphics, width: u32, height: u32, sample_count: u32) -> Self {
         let view = texture.create_view(
             &wgpu::TextureViewDescriptor::default()
         );
@@ -159,9 +161,8 @@ impl Texture {
         );
 
         Self {
-            //texture,
-            //view,
-            //sampler,
+            width: width as f32,
+            height: height as f32,
             bind_group_layout,
             bind_group,
         }
@@ -275,6 +276,8 @@ impl Texture {
             //texture,
             //view,
             //sampler,
+            width: dimensions.0 as f32,
+            height: dimensions.1 as f32,
             bind_group_layout,
             bind_group,
         }
