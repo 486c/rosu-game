@@ -26,10 +26,12 @@ impl EguiState {
             None,
         );
 
+        let surface_config = graphics.get_surface_config();
+
 
         let egui_renderer = Renderer::new(
             &graphics.device, 
-            graphics.config.format,
+            surface_config.format,
             None, 
             1
         );
@@ -60,6 +62,8 @@ impl EguiState {
     ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("egui_state render");
 
+        let (graphics_width, graphics_height) = graphics.get_surface_size();
+
         if self.output.is_none() {
             println!("None");
             return Ok(());
@@ -82,7 +86,7 @@ impl EguiState {
         );
 
         let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: [graphics.config.width, graphics.config.height],
+            size_in_pixels: [graphics_width, graphics_height],
             pixels_per_point: self.state.egui_ctx().pixels_per_point()
         };
 

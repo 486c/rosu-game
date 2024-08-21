@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use futures::executor::block_on;
 use wgpu::{Instance, InstanceDescriptor, PresentMode, RequestAdapterOptions, SurfaceTexture};
@@ -8,7 +8,7 @@ pub struct Graphics<'g> {
     pub surface: wgpu::Surface<'g>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    pub config: wgpu::SurfaceConfiguration,
+    pub config: Mutex<wgpu::SurfaceConfiguration>,
     pub size: winit::dpi::PhysicalSize<u32>,
 }
 
@@ -82,7 +82,7 @@ impl<'g> Graphics<'g> {
         surface.configure(&device, &config);
 
         return Graphics {
-            config,
+            config: Mutex::new(config),
             device,
             queue,
             size,
@@ -90,14 +90,29 @@ impl<'g> Graphics<'g> {
         };
     }
 
-    pub fn resize(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
+    pub fn resize(&self, new_size: &winit::dpi::PhysicalSize<u32>) {
         let _span = tracy_client::span!("wgpu resize");
         if new_size.width > 0 && new_size.height > 0 {
-            self.size = *new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-            self.surface.configure(&self.device, &self.config);
+            let mut lock = self.config.lock().unwrap();
+            //self.size = *new_size;
+
+            lock.width = new_size.width;
+            lock.height = new_size.height;
+
+            self.surface.configure(&self.device, &lock);
         }
+    }
+
+    pub fn get_surface_size(&self) -> (u32, u32) {
+        let lock = self.config.lock().unwrap();
+
+        (lock.width, lock.height)
+    }
+
+    pub fn get_surface_config(&self) -> wgpu::SurfaceConfiguration {
+        let lock = self.config.lock().unwrap();
+
+        lock.clone()
     }
 
     pub fn get_current_texture(&self) -> Result<SurfaceTexture, wgpu::SurfaceError> {

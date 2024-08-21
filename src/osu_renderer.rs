@@ -66,7 +66,7 @@ fn calc_playfield_scale_factor(screen_w: f32, screen_h: f32) -> f32 {
 
 pub struct OsuRenderer<'or> {
     // Graphics State
-    graphics: Graphics<'or>,
+    graphics: Arc<Graphics<'or>>,
 
     // State
     scale: f32,
@@ -134,6 +134,9 @@ impl<'or> OsuRenderer<'or> {
     pub fn new(graphics: Graphics<'or>, config: &Config) -> Self {
         //let approach_circle_texture = Texture::from_path("skin/approachcircle.png", &graphics);
 
+        let (graphics_width, graphics_height) = graphics.get_surface_size();
+        let surface_config = graphics.get_surface_config();
+
         let hit_circle_shader = graphics
             .device
             .create_shader_module(wgpu::include_wgsl!("shaders/hit_circle.wgsl"));
@@ -155,7 +158,7 @@ impl<'or> OsuRenderer<'or> {
             .create_shader_module(wgpu::include_wgsl!("shaders/slider_to_screen.wgsl"));
 
         let depth_texture =
-            DepthTexture::new(&graphics, graphics.config.width, graphics.config.height, 1);
+            DepthTexture::new(&graphics, graphics_width, graphics_height, 1);
 
         let quad_verticies = Vertex::quad_centered(1.0, 1.0);
 
@@ -210,8 +213,8 @@ impl<'or> OsuRenderer<'or> {
 
         /* Camera stuff */
         let camera = Camera::new(
-            graphics.config.width as f32,
-            graphics.config.height as f32,
+            graphics_width as f32,
+            graphics_height as f32,
             1.0,
         );
 
@@ -316,7 +319,7 @@ impl<'or> OsuRenderer<'or> {
                         module: &approach_circle_shader,
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
-                            format: graphics.config.format,
+                            format: surface_config.format,
                             blend: Some(wgpu::BlendState {
                                 color: wgpu::BlendComponent {
                                     src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -380,7 +383,7 @@ impl<'or> OsuRenderer<'or> {
                         module: &hit_circle_shader,
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
-                            format: graphics.config.format,
+                            format: surface_config.format,
                             blend: Some(wgpu::BlendState {
                                 color: wgpu::BlendComponent {
                                     src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -439,7 +442,7 @@ impl<'or> OsuRenderer<'or> {
                         module: &quad_colored_shader,
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
-                            format: graphics.config.format,
+                            format: surface_config.format,
                             blend: Some(wgpu::BlendState {
                                 color: wgpu::BlendComponent {
                                     src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -530,7 +533,7 @@ impl<'or> OsuRenderer<'or> {
                         compilation_options: Default::default(),
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
-                            format: graphics.config.format,
+                            format: surface_config.format,
                             blend: None,
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
@@ -623,7 +626,7 @@ impl<'or> OsuRenderer<'or> {
                         module: &slider_to_screen_shader,
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
-                            format: graphics.config.format,
+                            format: surface_config.format,
                             blend: Some(wgpu::BlendState {
                                 color: wgpu::BlendComponent {
                                     src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -677,7 +680,7 @@ impl<'or> OsuRenderer<'or> {
             calc_playfield_scale_factor(graphics.size.width as f32, graphics.size.height as f32);
 
         Self {
-            graphics,
+            graphics: Arc::new(graphics),
             scale,
             quad_verticies,
             camera,
@@ -904,9 +907,8 @@ impl<'or> OsuRenderer<'or> {
         skin: &SkinManager,
         config: &Config
     ) {
-        // TODO optimization idea
-
         let _span = tracy_client::span!("osu_renderer prepare_and_render_slider_texture");
+        let surface_config = self.graphics.get_surface_config();
 
         if !slider.render.is_none() && config.store_slider_textures {
             return;
@@ -986,9 +988,9 @@ impl<'or> OsuRenderer<'or> {
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: self.graphics.config.format,
+            format: surface_config.format,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-            view_formats: &[self.graphics.config.format],
+            view_formats: &[surface_config.format],
         });
 
         // Preparing instances
@@ -1186,6 +1188,10 @@ impl<'or> OsuRenderer<'or> {
     pub fn on_resize(&mut self, new_size: &PhysicalSize<u32>) {
         self.graphics.resize(new_size);
 
+        let (graphics_width, graphics_height) = self.graphics.get_surface_size();
+
+
+
         // Calculate playfield scale
         self.scale = calc_playfield_scale_factor(new_size.width as f32, new_size.height as f32);
 
@@ -1207,8 +1213,8 @@ impl<'or> OsuRenderer<'or> {
         self.camera.transform(self.scale, offsets);
         self.depth_texture = DepthTexture::new(
             &self.graphics,
-            self.graphics.config.width,
-            self.graphics.config.height,
+            graphics_width,
+            graphics_height,
             1,
         );
 
@@ -1220,8 +1226,8 @@ impl<'or> OsuRenderer<'or> {
         self.slider_to_screen_verticies = Vertex::quad_positional(
             0.0,
             0.0,
-            self.graphics.config.width as f32,
-            self.graphics.config.height as f32,
+            graphics_width as f32,
+            graphics_height as f32,
         );
 
         buffer_write_or_init!(
