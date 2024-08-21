@@ -3,6 +3,7 @@ use std::{fs::File, io::BufReader, sync::Arc};
 use graphics::Graphics;
 use osu_state::OsuState;
 use rodio::{Decoder, OutputStream, Sink};
+use tracing_subscriber::layer::Filter;
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -27,9 +28,20 @@ mod texture;
 mod timer;
 mod ui;
 mod vertex;
+mod screen;
+mod song_select_state;
+mod osu_db;
 
 fn main() {
     let _client = tracy_client::Client::start();
+
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_target(false)
+        .with_thread_names(true)
+        .init();
+
+    tracing::info!("Starting rosu-game!");
 
     let event_loop = EventLoop::new().expect("Failed to initialize event loop");
 

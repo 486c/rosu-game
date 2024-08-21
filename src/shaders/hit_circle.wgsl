@@ -46,7 +46,6 @@ fn vs_main(
 
 
 // Fragment shader
-
 @group(0) @binding(0)
 var hitcircle_texture: texture_2d<f32>;
 @group(0) @binding(1)

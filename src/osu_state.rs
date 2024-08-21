@@ -7,8 +7,13 @@ use rosu_map::Beatmap;
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_renderer::OsuRenderer, skin_manager::SkinManager, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
+
+pub enum OsuStates {
+    Playing,
+    SongSelection,
+}
 
 pub enum OsuStateEvent {
     ChangeSkin(PathBuf),
@@ -41,6 +46,9 @@ pub struct OsuState<'s> {
     pub event_receiver: Receiver<OsuStateEvent>,
 
     pub sink: Sink,
+
+    pub current_state: OsuStates,
+    pub song_select: SongSelectionState,
 
     skin_manager: SkinManager,
     config: Config,
@@ -93,6 +101,8 @@ impl<'s> OsuState<'s> {
             skin_manager,
             config,
             settings_view: SettingsView::new(tx.clone()),
+            current_state: OsuStates::SongSelection,
+            song_select: SongSelectionState::new(),
         }
     }
 
@@ -167,9 +177,8 @@ impl<'s> OsuState<'s> {
     pub fn update_egui(&mut self) {
         let _span = tracy_client::span!("osu_state update egui");
 
-        let input = self.egui.state.take_egui_input(&self.window);
 
-        self.egui.state.egui_ctx().begin_frame(input);
+        //self.egui.state.egui_ctx().begin_frame(input);
 
         self.settings_view.window(
             &self.egui.state.egui_ctx(),
@@ -296,8 +305,9 @@ impl<'s> OsuState<'s> {
     pub fn update(&mut self) {
         let _span = tracy_client::span!("osu_state update");
 
+        
+        // Recv all events
         let event = self.event_receiver.try_recv();
-
         match event {
             Ok(event) => {
                 match event {
@@ -310,19 +320,30 @@ impl<'s> OsuState<'s> {
             _ => panic!("sender disconnected"),
         }
 
-        if let Some(path) = &self.new_beatmap.clone() {
-            self.open_beatmap(path);
-            self.new_beatmap = None;
-            self.difficulties.clear();
+        // egui inputs
+        //let input = self.egui.state.take_egui_input(&self.window);
+
+        match self.current_state {
+            OsuStates::Playing => {
+                if let Some(path) = &self.new_beatmap.clone() {
+                    self.open_beatmap(path);
+                    self.new_beatmap = None;
+                    self.difficulties.clear();
+                }
+
+                self.update_egui();
+                let time = self.osu_clock.update();
+
+                self.prepare_objects(time);
+            },
+            OsuStates::SongSelection => {
+                self.song_select.update();
+            },
         }
 
-        self.update_egui();
-        let time = self.osu_clock.update();
-
-        self.prepare_objects(time);
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render_playing(&mut self) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_state render");
 
         let span = tracy_client::span!("osu_state render::get_current_texture");
@@ -362,6 +383,42 @@ impl<'s> OsuState<'s> {
         // Clearing objects queue only after they successfully rendered
         self.objects_queue.clear();
 
+        Ok(())
+    }
+
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.osu_renderer.get_graphics().get_current_texture()?;
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let graphics = self.osu_renderer.get_graphics();
+        let egui_input = self.egui.state.take_egui_input(&self.window);
+
+        let mut encoder = graphics
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        match self.current_state {
+            OsuStates::Playing => {
+                //self.render_playing()?;
+                todo!();
+            },
+            OsuStates::SongSelection => {
+                let egui_output = self.song_select.render(egui_input, self.egui.state.egui_ctx());
+                self.egui.output = Some(egui_output)
+            },
+        }
+
+
+        self.egui.render(graphics, &mut encoder, &view)?;
+
+        graphics.queue.submit(std::iter::once(encoder.finish()));
+
+        output.present();
 
         Ok(())
     }
