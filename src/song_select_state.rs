@@ -1,11 +1,13 @@
-use std::{sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
+use std::{fs::File, io::BufReader, sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
 
-use egui::{scroll_area::ScrollBarVisibility, Align, Color32, Label, Margin, RichText, Stroke};
+use egui::{scroll_area::ScrollBarVisibility, Align, Color32, Label, Margin, Pos2, Rect, RichText, Stroke};
 use egui_extras::{Size, StripBuilder};
 use image::DynamicImage;
+use rand::Rng;
+use rodio::Decoder;
 use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
-use winit::dpi::PhysicalSize;
+use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
 use crate::{camera::Camera, graphics::Graphics, hit_circle_instance::HitCircleInstance, osu_db::{BeatmapEntry, OsuDatabase}, osu_renderer::QUAD_INDECIES, osu_state::OsuStateEvent, rgb::Rgb, texture::Texture, vertex::Vertex};
 
@@ -17,10 +19,12 @@ const CARD_INNER_MARGIN: Margin = Margin {
     bottom: 0.0,
 };
 
+const ROW_HEIGHT: f32 = 72.0;
+
 
 enum SongSelectionEvents {
     SelectBeatmap(BeatmapEntry),
-    LoadedBeatmap{ beatmap: Beatmap, image: DynamicImage },
+    LoadedBeatmap{ beatmap: Beatmap, image: DynamicImage, audio_source: Decoder<BufReader<File>> },
     StartBeatmap(BeatmapEntry),
 }
 
@@ -34,6 +38,9 @@ pub struct SongSelectionState<'ss> {
 
     // Current selected row
     current: usize,
+
+    // Stupid states
+    need_scroll_to: Option<usize>,
 
     current_beatmap: Option<Beatmap>,
     current_background_image: Option<Texture>,
@@ -221,6 +228,7 @@ impl<'ss> SongSelectionState<'ss> {
             quad_index_buffer,
             camera_buffer,
             state_tx,
+            need_scroll_to: None,
         }
     }
     
@@ -228,20 +236,34 @@ impl<'ss> SongSelectionState<'ss> {
     fn open_beatmap(&self, beatmap: &BeatmapEntry) {
         let tx = self.inner_tx.clone();
         let path = beatmap.path.clone();
-
+        
+        // 1. Parse .osu file
+        // 2. Load and decode image & apply blur
+        // 3. Load and decode audio file
         std::thread::spawn(move || {
             let parsed_beatmap = Beatmap::from_path(&path).unwrap();
+
             let bg_filename = parsed_beatmap.background_file.clone();
+            let audio_filename = parsed_beatmap.audio_file.clone();
+
             let bg_path = path.parent()
                 .unwrap()
                 .join(&bg_filename);
+
+            let audio_path = path.parent()
+                .unwrap()
+                .join(audio_filename);
         
             let img = image::open(bg_path).unwrap();
             let img = img.blur(5.0);
 
+            let audio_file = BufReader::new(File::open(audio_path).unwrap());
+            let audio_source = Decoder::new(audio_file).unwrap();
+
             tx.send(SongSelectionEvents::LoadedBeatmap{
                 beatmap: parsed_beatmap,
                 image: img,
+                audio_source,
             })
         });
     }
@@ -272,6 +294,32 @@ impl<'ss> SongSelectionState<'ss> {
         self.graphics
             .queue
             .write_buffer(&self.quad_instance_buffer, 0, bytemuck::cast_slice(&self.quad_instance_data));
+    }
+
+    pub fn on_pressed_down(&mut self, key_code: KeyCode) {
+        if key_code == KeyCode::Enter {
+            let current_in_cache = self.current - self.min;
+
+            let _ = self.inner_tx.send(
+                SongSelectionEvents::StartBeatmap(self.db.cache[current_in_cache].clone())
+            );
+        }
+
+        if key_code == KeyCode::F2 {
+            let mut rng = rand::thread_rng();
+
+            let random_beatmap = rng.gen_range(0..self.db.beatmaps_amount());
+
+            self.need_scroll_to = Some(random_beatmap);
+        }
+
+        if key_code == KeyCode::ArrowDown {
+            self.need_scroll_to = Some(self.current + 1);
+        }
+
+        if key_code == KeyCode::ArrowUp {
+            self.need_scroll_to = Some(self.current - 1);
+        }
     }
     
     fn resize_background_vertex(&self, width: f32, height: f32) {
@@ -325,8 +373,14 @@ impl<'ss> SongSelectionState<'ss> {
                     SongSelectionEvents::SelectBeatmap(entry) => {
                         self.open_beatmap(&entry);
                     },
-                    SongSelectionEvents::LoadedBeatmap{ beatmap, image }  => {
+                    SongSelectionEvents::LoadedBeatmap{ beatmap, image, audio_source }  => {
                         self.load_background(image);
+
+                        let _ = self.state_tx.send(OsuStateEvent::PlaySound(
+                            beatmap.preview_time,
+                            audio_source
+                        ));
+
                         self.current_beatmap = Some(beatmap);
                     },
                     SongSelectionEvents::StartBeatmap(entry) => {
@@ -524,19 +578,42 @@ impl<'ss> SongSelectionState<'ss> {
                             });
                     });
 
-                    strip.cell(|ui| {
-                        let row_height = 72.0;
 
+
+                    strip.cell(|ui| {
                         egui::ScrollArea::vertical()
                         .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
                         .show_viewport(ui, |ui, rect| {
-                            let min_row = (rect.min.y / row_height).floor() as usize;
-                            let max_row = (rect.max.y / row_height).floor() as usize;
-                            let total_height = 64.0 * self.db.beatmaps_amount() as f32;
-
+                            let total_height = ROW_HEIGHT * self.db.beatmaps_amount() as f32;
                             ui.set_height(total_height);
+                            
+                            // Handling custom scrolling event
+                            // Cases:
+                            //     1. Pressed F2 so we got random beatmap
+                            //     2. Pressed ArrowDown/Up so we increment by 1
+                            if let Some(need_scroll_to) = self.need_scroll_to.take() {
+                                let current_y = self.current as f32 * ROW_HEIGHT;
 
-                            let fill_top = (min_row - 0) as f32 * (row_height);
+                                let scroll_y = need_scroll_to as f32 * ROW_HEIGHT;
+                                
+                                let scroll_y = scroll_y - current_y;
+                                self.current = need_scroll_to;
+                                
+                                ui.scroll_with_delta(
+                                    egui::Vec2::new(0.0, -1.0 * scroll_y)
+                                );
+
+                                let entry = self.db.get_beatmap_by_index(need_scroll_to);
+                                let _ = self.inner_tx.send(
+                                    SongSelectionEvents::SelectBeatmap(entry)
+                                );
+                            }
+
+                            let min_row = (rect.min.y / ROW_HEIGHT).floor() as usize;
+                            let max_row = (rect.max.y / ROW_HEIGHT).floor() as usize;
+
+
+                            let fill_top = (min_row - 0) as f32 * (ROW_HEIGHT);
                             egui::Frame::none()
                                 .show(ui, |ui| {
                                     ui.set_height(fill_top);
@@ -553,7 +630,7 @@ impl<'ss> SongSelectionState<'ss> {
                                 let res = egui::Frame::default()
                                     .inner_margin(CARD_INNER_MARGIN)
                                     .outer_margin(0.0)
-                                    .fill(Color32::from_rgba_unmultiplied(0, 0, 0, 160))
+                                    .fill(Color32::from_rgba_unmultiplied(0, 0, 0, 220))
                                     .stroke({
                                         if self.current == id {
                                             Stroke::new(1.0, Color32::RED)

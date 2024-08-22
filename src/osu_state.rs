@@ -20,6 +20,7 @@ pub enum OsuStateEvent {
     ToSongSelection,
     ChangeSkin(PathBuf),
     StartBeatmap(BeatmapEntry),
+    PlaySound(i32, Decoder<BufReader<File>>),
 }
 
 /// Return preempt and fadein based on AR
@@ -187,14 +188,16 @@ impl<'s> OsuState<'s> {
         self.song_select.on_resize(new_size);
     }
 
-    pub fn on_pressed_down(&self, key_code: KeyCode) {
+    pub fn on_pressed_down(&mut self, key_code: KeyCode) {
         match self.current_state {
             OsuStates::Playing => {
                 if key_code == KeyCode::Escape {
                     let _ = self.event_sender.send(OsuStateEvent::ToSongSelection);
                 }
             },
-            OsuStates::SongSelection => {},
+            OsuStates::SongSelection => {
+                self.song_select.on_pressed_down(key_code);
+            },
         }
     }
 
@@ -346,6 +349,12 @@ impl<'s> OsuState<'s> {
                         self.osu_clock.reset_time();
                         self.sink.clear();
                         self.current_state = OsuStates::SongSelection;
+                    },
+                    OsuStateEvent::PlaySound(start_at, audio_source) => {
+                        self.sink.clear();
+                        self.sink.append(audio_source);
+                        self.sink.try_seek(Duration::from_millis(start_at.try_into().unwrap_or(0))).unwrap();
+                        self.sink.play();
                     },
                 }
             },

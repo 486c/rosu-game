@@ -3360,6 +3360,7 @@ dependencies = [
  "image",
  "r2d2",
  "r2d2_sqlite",
+ "rand",
  "raw-window-handle",
  "rodio",
  "rosu-map",

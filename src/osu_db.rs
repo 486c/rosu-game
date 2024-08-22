@@ -2,7 +2,7 @@ use std::{fs, path::{self, Path, PathBuf}, sync::{Arc, RwLock}};
 
 use r2d2_sqlite::SqliteConnectionManager;
 use r2d2::Pool;
-use rosu_map::Beatmap;
+use rosu_map::{section::general::GameMode, Beatmap};
 use rusqlite::{params, Connection};
 
 const DB_PATH: &str = "./rosu.db";
@@ -17,6 +17,24 @@ pub struct BeatmapEntry {
     pub creator: String,
     pub version: String,
     pub path: PathBuf,
+}
+
+impl TryFrom<&rusqlite::Row<'_>> for BeatmapEntry {
+    type Error = rusqlite::Error;
+
+    fn try_from(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
+        let path: String = row.get(7)?;
+        Ok(Self {
+            id: row.get(0)?,
+            beatmap_id: row.get(1)?,
+            beatmapset_id: row.get(2)?,
+            title: row.get(3)?,
+            artist: row.get(4)?,
+            creator: row.get(5)?,
+            version: row.get(6)?,
+            path: PathBuf::from(path),
+        })
+    }
 }
 
 pub struct OsuDatabase {
@@ -101,6 +119,10 @@ impl OsuDatabase {
                         if ext == "osu" {
                             let beatmap = Beatmap::from_path(entry.path()).unwrap();
 
+                            if beatmap.mode != GameMode::Osu {
+                                continue
+                            }
+
                             // raw entry
                             let entry = BeatmapEntry {
                                 id: 0,
@@ -158,6 +180,16 @@ impl OsuDatabase {
         amount
     }
 
+    pub fn get_beatmap_by_index(&mut self, index: usize) -> BeatmapEntry {
+        const QUERY: &str = "SELECT * FROM beatmaps WHERE id = ?1";
+
+        let entry = self.conn.get().unwrap().query_row(QUERY, [index], |row| {
+            BeatmapEntry::try_from(row)
+        }).unwrap();
+
+        entry
+    }
+
     pub fn load_beatmaps_range(&mut self, min: usize, max: usize) {
         const QUERY: &str = 
             "select * from beatmaps order by id ASC LIMIT ?1 OFFSET ?2";
@@ -167,17 +199,7 @@ impl OsuDatabase {
         let mut stmt = conn.prepare(QUERY).unwrap();
 
         let rows = stmt.query_map(params![max - min, min], |row| {
-            let path: String = row.get(7)?;
-            Ok(BeatmapEntry {
-                id: row.get(0)?,
-                beatmap_id: row.get(1)?,
-                beatmapset_id: row.get(2)?,
-                title: row.get(3)?,
-                artist: row.get(4)?,
-                creator: row.get(5)?,
-                version: row.get(6)?,
-                path: PathBuf::from(path),
-            })
+            BeatmapEntry::try_from(row)
         }).unwrap();
 
         self.cache.clear();
