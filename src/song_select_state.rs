@@ -1,10 +1,11 @@
-use std::{fs::File, io::BufReader, sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
+use std::{fs::File, io::{BufReader, Cursor, Read}, sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
 
 use egui::{scroll_area::ScrollBarVisibility, Align, Color32, Label, Margin, Pos2, Rect, RichText, Stroke};
 use egui_extras::{Size, StripBuilder};
 use image::DynamicImage;
+use md5::Digest;
 use rand::Rng;
-use rodio::Decoder;
+use rodio::{source::UniformSourceIterator, Decoder, Source};
 use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
@@ -22,9 +23,31 @@ const CARD_INNER_MARGIN: Margin = Margin {
 const ROW_HEIGHT: f32 = 72.0;
 
 
+// TODO move to some other place
+pub struct CurrentBeatmap {
+    beatmap: Beatmap,
+    beatmap_hash: md5::Digest,
+}
+
+pub struct CurrentBackground {
+    texture: Texture,
+    image_hash: md5::Digest,
+}
+
+pub struct CurrentAudio {
+    audio_hash: md5::Digest,
+}
+
 enum SongSelectionEvents {
     SelectBeatmap(BeatmapEntry),
-    LoadedBeatmap{ beatmap: Beatmap, image: DynamicImage, audio_source: Decoder<BufReader<File>> },
+    LoadedBeatmap{ 
+        beatmap: Beatmap, 
+        beatmap_md5: Digest,
+        image: DynamicImage,
+        image_md5: Digest,
+        audio_source: Box<dyn Source<Item = f32> + Send + Sync>,
+        audio_md5: Digest
+    },
     StartBeatmap(BeatmapEntry),
 }
 
@@ -42,12 +65,16 @@ pub struct SongSelectionState<'ss> {
     // Stupid states
     need_scroll_to: Option<usize>,
 
-    current_beatmap: Option<Beatmap>,
-    current_background_image: Option<Texture>,
+    current_beatmap: Option<CurrentBeatmap>,
+    current_background_image: Option<CurrentBackground>,
+    current_audio: Option<CurrentAudio>,
 
+    // Inner for SongSelection state senders, used by
+    // components inside song selection
     inner_tx: Sender<SongSelectionEvents>,
     inner_rx: Receiver<SongSelectionEvents>,
-
+    
+    // Events sender for "god" state
     state_tx: Sender<OsuStateEvent>,
 
     // wgpu stuff
@@ -229,6 +256,7 @@ impl<'ss> SongSelectionState<'ss> {
             camera_buffer,
             state_tx,
             need_scroll_to: None,
+            current_audio: None,
         }
     }
     
@@ -241,7 +269,14 @@ impl<'ss> SongSelectionState<'ss> {
         // 2. Load and decode image & apply blur
         // 3. Load and decode audio file
         std::thread::spawn(move || {
-            let parsed_beatmap = Beatmap::from_path(&path).unwrap();
+            // Beatmap stuff
+            let mut beatmap_file = File::open(&path).unwrap();
+            let mut beatmap_buffer = Vec::new();
+            beatmap_file.read_to_end(&mut beatmap_buffer).unwrap();
+
+            let beatmap_md5 = md5::compute(&beatmap_buffer);
+
+            let parsed_beatmap = Beatmap::from_bytes(&beatmap_buffer).unwrap();
 
             let bg_filename = parsed_beatmap.background_file.clone();
             let audio_filename = parsed_beatmap.audio_file.clone();
@@ -254,24 +289,43 @@ impl<'ss> SongSelectionState<'ss> {
                 .unwrap()
                 .join(audio_filename);
         
-            let img = image::open(bg_path).unwrap();
-            let img = img.blur(5.0);
+            // BG image stuff
+            let mut bg_file = File::open(bg_path).unwrap();
+            let mut bg_buffer = Vec::new();
+            bg_file.read_to_end(&mut bg_buffer).unwrap();
 
-            let audio_file = BufReader::new(File::open(audio_path).unwrap());
-            let audio_source = Decoder::new(audio_file).unwrap();
+            let bg_md5 = md5::compute(&bg_buffer);
+        
+            let img = image::load_from_memory(&bg_buffer).unwrap();
+            let img = img.blur(5.0);
+            
+            // Audio file stuff
+            let mut audio_file = File::open(audio_path).unwrap();
+            let mut audio_buffer = Vec::new();
+            audio_file.read_to_end(&mut audio_buffer).unwrap();
+
+            let audio_md5 = md5::compute(&audio_buffer);
+
+            let audio_file = Cursor::new(audio_buffer);
+
+            let audio_source = UniformSourceIterator::new(Decoder::new(audio_file).unwrap(), 2, 48000)
+                .fade_in(Duration::from_millis(150));
 
             tx.send(SongSelectionEvents::LoadedBeatmap{
                 beatmap: parsed_beatmap,
+                beatmap_md5,
                 image: img,
-                audio_source,
+                image_md5: bg_md5,
+                audio_source: Box::new(audio_source),
+                audio_md5
             })
         });
     }
 
 
     pub fn on_resize(&mut self, new_size: &PhysicalSize<u32>) {
-        if let Some(bg_img) = &self.current_background_image {
-            self.resize_background_vertex(bg_img.width, bg_img.height);
+        if let Some(bg) = &self.current_background_image {
+            self.resize_background_vertex(bg.texture.width, bg.texture.height);
         }
 
         self.camera.resize(new_size);
@@ -352,7 +406,15 @@ impl<'ss> SongSelectionState<'ss> {
         tracing::info!("Resized background image vertex, width: {}, height: {}", image_width, image_height);
     }
 
-    fn load_background(&mut self, image: DynamicImage) {
+    fn load_background(&mut self, image: DynamicImage, md5: Digest) {
+        // Do not preform any operations if background is the same
+        if let Some(current_background) = &self.current_background_image {
+            if current_background.image_hash == md5 {
+                tracing::info!("Background already cached, doing nothing");
+                return;
+            }
+        }
+
         self.resize_background_vertex(image.width() as f32, image.height() as f32);
 
         let texture = Texture::from_image(
@@ -360,10 +422,35 @@ impl<'ss> SongSelectionState<'ss> {
             &self.graphics
         );
 
+        let current_background_image = CurrentBackground {
+            texture,
+            image_hash: md5,
+        };
 
+        self.current_background_image = Some(current_background_image);
+    }
 
-        self.current_background_image = Some(texture);
+    fn load_audio(
+        &mut self, 
+        audio_source: Box<dyn Source<Item = f32> + Send + Sync>, 
+        md5: md5::Digest,
+        beatmap: &Beatmap,
+    ) {
+        // If current audio is the same do nothing
+        if let Some(current_audio) = &self.current_audio {
+            if current_audio.audio_hash == md5 {
+                return;
+            }
+        };
 
+        let _ = self.state_tx.send(OsuStateEvent::PlaySound(
+                beatmap.preview_time,
+                audio_source,
+        ));
+
+        self.current_audio = Some(CurrentAudio {
+            audio_hash: md5,
+        })
     }
 
     pub fn update(&mut self) {
@@ -373,15 +460,16 @@ impl<'ss> SongSelectionState<'ss> {
                     SongSelectionEvents::SelectBeatmap(entry) => {
                         self.open_beatmap(&entry);
                     },
-                    SongSelectionEvents::LoadedBeatmap{ beatmap, image, audio_source }  => {
-                        self.load_background(image);
+                    SongSelectionEvents::LoadedBeatmap{ beatmap, image, audio_source, image_md5, audio_md5, beatmap_md5 }  => {
+                        self.load_background(image, image_md5);
+                        self.load_audio(audio_source, audio_md5, &beatmap);
 
-                        let _ = self.state_tx.send(OsuStateEvent::PlaySound(
-                            beatmap.preview_time,
-                            audio_source
-                        ));
+                        let current_beatmap = CurrentBeatmap {
+                            beatmap,
+                            beatmap_hash: beatmap_md5,
+                        };
 
-                        self.current_beatmap = Some(beatmap);
+                        self.current_beatmap = Some(current_beatmap);
                     },
                     SongSelectionEvents::StartBeatmap(entry) => {
                         let _ = self.state_tx.send(OsuStateEvent::StartBeatmap(entry));
@@ -423,7 +511,7 @@ impl<'ss> SongSelectionState<'ss> {
 
             if let Some(texture) = &self.current_background_image {
                 render_pass.set_pipeline(&self.quad_pipeline);
-                render_pass.set_bind_group(0, &texture.bind_group, &[]);
+                render_pass.set_bind_group(0, &texture.texture.bind_group, &[]);
                 render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
                 render_pass.set_vertex_buffer(1, self.quad_instance_buffer.slice(..));
@@ -456,10 +544,15 @@ impl<'ss> SongSelectionState<'ss> {
                 ui.set_width(ui.available_rect_before_wrap().width());
                 ui.set_height(ui.available_rect_before_wrap().height());
                 if let Some(b) = &mut self.current_beatmap {
-                    ui.add(Label::new(RichText::new(format!("{} - {} [{}]", &b.artist, &b.title, &b.version)).heading()).selectable(false));
-                    ui.add(Label::new(format!("Mapped by {}", &b.creator)).selectable(false));
+                    ui.add(Label::new(RichText::new(
+                            format!(
+                                "{} - {} [{}]", 
+                                &b.beatmap.artist, &b.beatmap.title, &b.beatmap.version
+                            )
+                    ).heading()).selectable(false));
+                    ui.add(Label::new(format!("Mapped by {}", &b.beatmap.creator)).selectable(false));
 
-                    let last_hitobject_time = if let Some(obj) = b.hit_objects.last_mut() {
+                    let last_hitobject_time = if let Some(obj) = b.beatmap.hit_objects.last_mut() {
                         obj.end_time() as u64
                     } else {
                         0
@@ -478,7 +571,7 @@ impl<'ss> SongSelectionState<'ss> {
                         let mut max: f64 = f64::MIN;
                         let mut min: f64 = f64::MAX;
 
-                        for point in &b.control_points.timing_points {
+                        for point in &b.beatmap.control_points.timing_points {
                             let bpm = 1.0 / point.beat_len * 1000.0 * 60.0;
 
                             max = max.max(bpm);
@@ -492,25 +585,25 @@ impl<'ss> SongSelectionState<'ss> {
                         "Length: {} BPM: {:.0}-{:.0} Objects: {}",
                         length_str, 
                         bpm_min, bpm_max,
-                        b.hit_objects.len() 
+                        b.beatmap.hit_objects.len() 
                     );
                     ui.add(Label::new(RichText::new(&text).strong()).selectable(false));
 
-                    let circles = b.hit_objects.iter().filter(|h| {
+                    let circles = b.beatmap.hit_objects.iter().filter(|h| {
                         match h.kind {
                             rosu_map::section::hit_objects::HitObjectKind::Circle(_) => true,
                             _ => false,
                         }
                     }).count();
 
-                    let sliders = b.hit_objects.iter().filter(|h| {
+                    let sliders = b.beatmap.hit_objects.iter().filter(|h| {
                         match h.kind {
                             rosu_map::section::hit_objects::HitObjectKind::Slider(_) => true,
                             _ => false,
                         }
                     }).count();
 
-                    let spinners = b.hit_objects.iter().filter(|h| {
+                    let spinners = b.beatmap.hit_objects.iter().filter(|h| {
                         match h.kind {
                             rosu_map::section::hit_objects::HitObjectKind::Spinner(_) => true,
                             _ => false,
@@ -520,7 +613,7 @@ impl<'ss> SongSelectionState<'ss> {
                     ui.add(Label::new(format!("Circles: {} Slider: {} Spinners: {}", circles, sliders, spinners)).selectable(false));
                     ui.add(Label::new(format!(
                                 "CS:{:.2} AR:{:.2} OD:{:.2} HP:{:.2} Stars:TODO", 
-                                b.circle_size, b.approach_rate, b.overall_difficulty, b.hp_drain_rate
+                                b.beatmap.circle_size, b.beatmap.approach_rate, b.beatmap.overall_difficulty, b.beatmap.hp_drain_rate
                     )).selectable(false));
                 } else {
                     ui.centered_and_justified(|ui| {
@@ -630,7 +723,7 @@ impl<'ss> SongSelectionState<'ss> {
                                 let res = egui::Frame::default()
                                     .inner_margin(CARD_INNER_MARGIN)
                                     .outer_margin(0.0)
-                                    .fill(Color32::from_rgba_unmultiplied(0, 0, 0, 220))
+                                    .fill(Color32::from_rgba_unmultiplied(0, 0, 0, 250))
                                     .stroke({
                                         if self.current == id {
                                             Stroke::new(1.0, Color32::RED)

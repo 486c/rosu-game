@@ -2,7 +2,7 @@ use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel,
 
 use egui::{RawInput, Slider};
 use egui_file::FileDialog;
-use rodio::{Decoder, Sink};
+use rodio::{Decoder, Sink, Source};
 use rosu_map::Beatmap;
 use wgpu::TextureView;
 use winit::{dpi::PhysicalSize, keyboard::KeyCode, window::Window};
@@ -10,6 +10,7 @@ use winit::{dpi::PhysicalSize, keyboard::KeyCode, window::Window};
 use crate::{
     config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_db::BeatmapEntry, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
+
 
 pub enum OsuStates {
     Playing,
@@ -20,7 +21,7 @@ pub enum OsuStateEvent {
     ToSongSelection,
     ChangeSkin(PathBuf),
     StartBeatmap(BeatmapEntry),
-    PlaySound(i32, Decoder<BufReader<File>>),
+    PlaySound(i32, Box<dyn Source<Item = f32> + Send + Sync>),
 }
 
 /// Return preempt and fadein based on AR
@@ -347,7 +348,7 @@ impl<'s> OsuState<'s> {
                     },
                     OsuStateEvent::ToSongSelection => {
                         self.osu_clock.reset_time();
-                        self.sink.clear();
+                        //self.sink.clear();
                         self.current_state = OsuStates::SongSelection;
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {

@@ -87,8 +87,6 @@ fn main() {
             } => {
                 osu_state.egui.on_window_event(&event, &window);
 
-
-
                 match event {
                     WindowEvent::CloseRequested => {
                         elwf.exit();

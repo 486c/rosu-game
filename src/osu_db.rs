@@ -181,7 +181,7 @@ impl OsuDatabase {
     }
 
     pub fn get_beatmap_by_index(&mut self, index: usize) -> BeatmapEntry {
-        const QUERY: &str = "SELECT * FROM beatmaps WHERE id = ?1";
+        const QUERY: &str = "SELECT * FROM beatmaps ORDER BY id ASC LIMIT ?1 OFFSET ?1";
 
         let entry = self.conn.get().unwrap().query_row(QUERY, [index], |row| {
             BeatmapEntry::try_from(row)
