@@ -28,6 +28,7 @@ pub struct SkinManager {
     pub hit_circle: Texture,
     pub hit_circle_overlay: Texture,
     pub sliderb0: Texture,
+    pub cursor: Texture
 }
 
 impl SkinManager {
@@ -74,12 +75,14 @@ impl SkinManager {
 
         let _approach_circle = load_or_fallback!(path, "approachcircle.png", graphics);
         let sliderb0 = load_or_fallback!(path, "sliderb0.png", graphics);
+        let cursor = load_or_fallback!(path, "cursor.png", graphics);
 
         Self {
             ini: skin_ini,
             hit_circle,
             hit_circle_overlay,
             sliderb0,
+            cursor,
         }
     }
 }

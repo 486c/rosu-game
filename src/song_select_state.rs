@@ -22,10 +22,29 @@ const CARD_INNER_MARGIN: Margin = Margin {
 
 const ROW_HEIGHT: f32 = 72.0;
 
+// A struct that contains beatmap metadata
+// Build only once when loading beatmap because
+// calculating all the stuff + reallocating new strings
+pub struct BeatmapCardInfoMetadata {
+    // Artist - Title [Difficutly name]
+    beatmap_header: String,
+    // Mapped by Name
+    mapped_by: String,
+
+    // Length: 1 BPM: 128-128 Objects: 1337
+    length_info: String,
+    
+    // Circles: 1 Sliders: 1 Spinners: 1
+    objects_count: String,
+
+    // CS: 1 AR: 2 OD: 3 HP: 4 Start: 4
+    difficutly_info: String,
+}
 
 // TODO move to some other place
 pub struct CurrentBeatmap {
     beatmap: Beatmap,
+    metadata: BeatmapCardInfoMetadata,
     beatmap_hash: md5::Digest,
 }
 
@@ -81,6 +100,8 @@ pub struct SongSelectionState<'ss> {
     camera: Camera,
     camera_bind_group: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
+
+    // Quad rendering (basically used only to render background image)
     quad_vertex_buffer: wgpu::Buffer,
     quad_index_buffer: wgpu::Buffer,
     quad_pipeline: wgpu::RenderPipeline,
@@ -257,6 +278,78 @@ impl<'ss> SongSelectionState<'ss> {
             state_tx,
             need_scroll_to: None,
             current_audio: None,
+        }
+    }
+
+    fn calculate_beatmap_metadata(&self, b: &mut Beatmap) -> BeatmapCardInfoMetadata {
+
+        let last_hitobject_time = if let Some(obj) = b.hit_objects.last_mut() {
+            obj.end_time().clone() as u64
+        } else {
+            0
+        };
+
+        let length = Duration::from_millis(last_hitobject_time);
+
+        let length_str = format!(
+            "{:02}:{:02}",
+            length.as_secs() / 60,
+            length.as_secs() % 60
+        );
+
+        let (bpm_max, bpm_min) = {
+            let mut max: f64 = f64::MIN;
+            let mut min: f64 = f64::MAX;
+
+            for point in &b.control_points.timing_points {
+                let bpm = 1.0 / point.beat_len * 1000.0 * 60.0;
+
+                max = max.max(bpm);
+                min = max.min(bpm);
+            }
+
+            (max, min)
+        };
+
+        let length_info = format!(
+            "Length: {} BPM: {:.0}-{:.0} Objects: {}",
+            length_str, 
+            bpm_min, bpm_max,
+            b.hit_objects.len() 
+        );
+
+        let circles = b.hit_objects.iter().filter(|h| {
+            match h.kind {
+                rosu_map::section::hit_objects::HitObjectKind::Circle(_) => true,
+                _ => false,
+            }
+        }).count();
+
+        let sliders = b.hit_objects.iter().filter(|h| {
+            match h.kind {
+                rosu_map::section::hit_objects::HitObjectKind::Slider(_) => true,
+                _ => false,
+            }
+        }).count();
+
+        let spinners = b.hit_objects.iter().filter(|h| {
+            match h.kind {
+                rosu_map::section::hit_objects::HitObjectKind::Spinner(_) => true,
+                _ => false,
+            }
+        }).count();
+
+        let difficutly_info = format!(
+            "CS:{:.2} AR:{:.2} OD:{:.2} HP:{:.2} Stars: TODO",
+            b.circle_size, b.approach_rate, b.overall_difficulty, b.hp_drain_rate
+        );
+
+        BeatmapCardInfoMetadata {
+            beatmap_header: format!("{} - {} [{}]", b.artist, b.title, b.version),
+            mapped_by: format!("Mapped by {}", b.creator),
+            length_info,
+            objects_count: format!("Circles: {} Sliders: {} Spinners: {}", circles, sliders, spinners),
+            difficutly_info,
         }
     }
     
@@ -460,13 +553,16 @@ impl<'ss> SongSelectionState<'ss> {
                     SongSelectionEvents::SelectBeatmap(entry) => {
                         self.open_beatmap(&entry);
                     },
-                    SongSelectionEvents::LoadedBeatmap{ beatmap, image, audio_source, image_md5, audio_md5, beatmap_md5 }  => {
+                    SongSelectionEvents::LoadedBeatmap{ mut beatmap, image, audio_source, image_md5, audio_md5, beatmap_md5 }  => {
                         self.load_background(image, image_md5);
                         self.load_audio(audio_source, audio_md5, &beatmap);
+
+                        let metadata = self.calculate_beatmap_metadata(&mut beatmap);
 
                         let current_beatmap = CurrentBeatmap {
                             beatmap,
                             beatmap_hash: beatmap_md5,
+                            metadata,
                         };
 
                         self.current_beatmap = Some(current_beatmap);
@@ -544,77 +640,13 @@ impl<'ss> SongSelectionState<'ss> {
                 ui.set_width(ui.available_rect_before_wrap().width());
                 ui.set_height(ui.available_rect_before_wrap().height());
                 if let Some(b) = &mut self.current_beatmap {
-                    ui.add(Label::new(RichText::new(
-                            format!(
-                                "{} - {} [{}]", 
-                                &b.beatmap.artist, &b.beatmap.title, &b.beatmap.version
-                            )
-                    ).heading()).selectable(false));
-                    ui.add(Label::new(format!("Mapped by {}", &b.beatmap.creator)).selectable(false));
+                    ui.add(Label::new(RichText::new(&b.metadata.beatmap_header).heading()).selectable(false));
+                    ui.add(Label::new(&b.metadata.mapped_by).selectable(false));
 
-                    let last_hitobject_time = if let Some(obj) = b.beatmap.hit_objects.last_mut() {
-                        obj.end_time() as u64
-                    } else {
-                        0
-                    };
+                    ui.add(Label::new(RichText::new(&b.metadata.length_info).strong()).selectable(false));
 
-                    let length = 
-                        Duration::from_millis(last_hitobject_time);
-
-                    let length_str = format!(
-                        "{:02}:{:02}",
-                        length.as_secs() / 60,
-                        length.as_secs() % 60
-                    );
-
-                    let (bpm_max, bpm_min) = {
-                        let mut max: f64 = f64::MIN;
-                        let mut min: f64 = f64::MAX;
-
-                        for point in &b.beatmap.control_points.timing_points {
-                            let bpm = 1.0 / point.beat_len * 1000.0 * 60.0;
-
-                            max = max.max(bpm);
-                            min = max.min(bpm);
-                        }
-
-                        (max, min)
-                    };
-
-                    let text = format!(
-                        "Length: {} BPM: {:.0}-{:.0} Objects: {}",
-                        length_str, 
-                        bpm_min, bpm_max,
-                        b.beatmap.hit_objects.len() 
-                    );
-                    ui.add(Label::new(RichText::new(&text).strong()).selectable(false));
-
-                    let circles = b.beatmap.hit_objects.iter().filter(|h| {
-                        match h.kind {
-                            rosu_map::section::hit_objects::HitObjectKind::Circle(_) => true,
-                            _ => false,
-                        }
-                    }).count();
-
-                    let sliders = b.beatmap.hit_objects.iter().filter(|h| {
-                        match h.kind {
-                            rosu_map::section::hit_objects::HitObjectKind::Slider(_) => true,
-                            _ => false,
-                        }
-                    }).count();
-
-                    let spinners = b.beatmap.hit_objects.iter().filter(|h| {
-                        match h.kind {
-                            rosu_map::section::hit_objects::HitObjectKind::Spinner(_) => true,
-                            _ => false,
-                        }
-                    }).count();
-
-                    ui.add(Label::new(format!("Circles: {} Slider: {} Spinners: {}", circles, sliders, spinners)).selectable(false));
-                    ui.add(Label::new(format!(
-                                "CS:{:.2} AR:{:.2} OD:{:.2} HP:{:.2} Stars:TODO", 
-                                b.beatmap.circle_size, b.beatmap.approach_rate, b.beatmap.overall_difficulty, b.beatmap.hp_drain_rate
-                    )).selectable(false));
+                    ui.add(Label::new(&b.metadata.objects_count).selectable(false));
+                    ui.add(Label::new(&b.metadata.difficutly_info).selectable(false));
                 } else {
                     ui.centered_and_justified(|ui| {
                         ui.spinner();
