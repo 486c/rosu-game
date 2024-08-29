@@ -249,7 +249,9 @@ impl<'s> OsuState<'s> {
                     )
                     .step_by(1.0),
                 ).changed() {
+                    self.osu_clock.pause();
                     self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
+                    self.osu_clock.unpause();
                 };
 
                 if !self.osu_clock.is_paused() {
