@@ -42,96 +42,8 @@ pub struct BeatmapCardInfoMetadata {
     difficutly_info: String,
 }
 
-// TODO move to some other place
-pub struct CurrentBeatmap {
-    beatmap: Beatmap,
-    metadata: BeatmapCardInfoMetadata,
-    beatmap_hash: md5::Digest,
-}
-
-pub struct CurrentBackground {
-    texture: Texture,
-    image_hash: md5::Digest,
-}
-
-pub struct CurrentAudio {
-    audio_hash: md5::Digest,
-}
-
-enum SongSelectionEvents {
-    SelectBeatmap(BeatmapEntry),
-    LoadedBeatmap{ 
-        beatmap: Beatmap, 
-        beatmap_md5: Digest,
-        image: DynamicImage,
-        image_md5: Digest,
-        audio_source: Box<dyn Source<Item = f32> + Send + Sync>,
-        audio_md5: Digest
-    },
-    StartBeatmap(BeatmapEntry),
-}
-
-pub struct SongSelectionState<'ss> {
-    db: OsuDatabase,
-    graphics: Arc<Graphics<'ss>>,
-
-    // Min & Max row that we currently need to draw
-    min: usize,
-    max: usize,
-
-    // Current selected row
-    current: usize,
-
-    // Stupid states
-    need_scroll_to: Option<usize>,
-
-    current_beatmap: Option<CurrentBeatmap>,
-    current_background_image: Option<CurrentBackground>,
-    current_audio: Option<CurrentAudio>,
-
-    // Inner for SongSelection state senders, used by
-    // components inside song selection
-    inner_tx: Sender<SongSelectionEvents>,
-    inner_rx: Receiver<SongSelectionEvents>,
-    
-    // Events sender for "god" state
-    state_tx: Sender<OsuStateEvent>,
-
-    quad_renderer: QuadRenderer<'ss>,
-    quad_test_buffer: wgpu::Buffer,
-    quad_test_instance_data: Vec<QuadInstance>,
-}
-
-impl<'ss> SongSelectionState<'ss> {
-    pub fn new(graphics: Arc<Graphics<'ss>>, state_tx: Sender<OsuStateEvent>) -> Self {
-        let (inner_tx, inner_rx) = std::sync::mpsc::channel();
-
-        let quad_renderer = QuadRenderer::new(graphics.clone());
-
-        let quad_test_buffer = quad_renderer.create_instance_buffer();
-        let quad_test_instance_data = Vec::new();
-
-        Self {
-            db: OsuDatabase::new().unwrap(), // TODO: REMOVE UNRAP
-            min: 0,
-            max: 0,
-            current: 0,
-            inner_tx,
-            inner_rx,
-            current_beatmap: None,
-            graphics,
-            current_background_image: None,
-            state_tx,
-            need_scroll_to: None,
-            current_audio: None,
-            quad_renderer,
-            quad_test_buffer,
-            quad_test_instance_data,
-        }
-    }
-    
-    // TODO move to `from_beatmap` to `BeatmapCardInfoMetadata`
-    fn calculate_beatmap_metadata(&self, b: &mut Beatmap) -> BeatmapCardInfoMetadata {
+impl BeatmapCardInfoMetadata {
+    pub fn from_beatmap(b: &mut Beatmap) -> Self {
         let last_hitobject_time = if let Some(obj) = b.hit_objects.last_mut() {
             obj.end_time().clone() as u64
         } else {
@@ -193,12 +105,101 @@ impl<'ss> SongSelectionState<'ss> {
             b.circle_size, b.approach_rate, b.overall_difficulty, b.hp_drain_rate
         );
 
-        BeatmapCardInfoMetadata {
+        Self {
             beatmap_header: format!("{} - {} [{}]", b.artist, b.title, b.version),
             mapped_by: format!("Mapped by {}", b.creator),
             length_info,
             objects_count: format!("Circles: {} Sliders: {} Spinners: {}", circles, sliders, spinners),
             difficutly_info,
+        }
+    }
+}
+
+// TODO move to some other place
+pub struct CurrentBeatmap {
+    beatmap: Beatmap,
+    metadata: BeatmapCardInfoMetadata,
+    beatmap_hash: md5::Digest,
+}
+
+pub struct CurrentBackground {
+    texture: Texture,
+    image_hash: md5::Digest,
+}
+
+pub struct CurrentAudio {
+    audio_hash: md5::Digest,
+}
+
+enum SongSelectionEvents {
+    SelectBeatmap(BeatmapEntry),
+    LoadedBeatmap{ 
+        beatmap: Beatmap, 
+        beatmap_md5: Digest,
+        image: DynamicImage,
+        image_md5: Digest,
+        audio_source: Box<dyn Source<Item = f32> + Send + Sync>,
+        audio_md5: Digest
+    },
+    StartBeatmap(BeatmapEntry),
+}
+
+pub struct SongSelectionState<'ss> {
+    db: OsuDatabase,
+    graphics: Arc<Graphics<'ss>>,
+
+    // Min & Max row that we currently need to draw
+    min: usize,
+    max: usize,
+
+    // Current selected row
+    current: usize,
+
+    // Stupid states
+    need_scroll_to: Option<usize>,
+
+    current_beatmap: Option<CurrentBeatmap>,
+    current_background_image: Option<CurrentBackground>,
+    current_audio: Option<CurrentAudio>,
+
+    // SongSelection state senders, used by
+    // components inside song selection
+    inner_tx: Sender<SongSelectionEvents>,
+    inner_rx: Receiver<SongSelectionEvents>,
+    
+    // Events sender for "god" state
+    state_tx: Sender<OsuStateEvent>,
+
+    quad_renderer: QuadRenderer<'ss>,
+    quad_test_buffer: wgpu::Buffer,
+    quad_test_instance_data: Vec<QuadInstance>,
+}
+
+impl<'ss> SongSelectionState<'ss> {
+    pub fn new(graphics: Arc<Graphics<'ss>>, state_tx: Sender<OsuStateEvent>) -> Self {
+        let (inner_tx, inner_rx) = std::sync::mpsc::channel();
+
+        let quad_renderer = QuadRenderer::new(graphics.clone());
+
+        let quad_test_buffer = quad_renderer.create_instance_buffer();
+        let quad_test_instance_data = Vec::new();
+
+        Self {
+            db: OsuDatabase::new().unwrap(), // TODO: REMOVE UNRAP
+            min: 0,
+            max: 0,
+            current: 0,
+            inner_tx,
+            inner_rx,
+            current_beatmap: None,
+            graphics,
+            current_background_image: None,
+            state_tx,
+            need_scroll_to: None,
+            current_audio: None,
+            quad_renderer,
+            quad_test_buffer,
+            quad_test_instance_data,
         }
     }
     
@@ -399,7 +400,7 @@ impl<'ss> SongSelectionState<'ss> {
                         self.load_background(image, image_md5);
                         self.load_audio(audio_source, audio_md5, &beatmap);
 
-                        let metadata = self.calculate_beatmap_metadata(&mut beatmap);
+                        let metadata = BeatmapCardInfoMetadata::from_beatmap(&mut beatmap);
 
                         let current_beatmap = CurrentBeatmap {
                             beatmap,
