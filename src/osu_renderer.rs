@@ -15,6 +15,7 @@ use crate::{
     camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, SLIDER_FADEOUT_TIME}, math::lerp, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex
 };
 
+#[macro_export]
 macro_rules! buffer_write_or_init {
     ($queue:expr, $device:expr, $buffer:expr, $data:expr, $t: ty) => {{
         let data_len = $data.len() as u64;

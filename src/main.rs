@@ -31,6 +31,8 @@ mod vertex;
 mod screen;
 mod song_select_state;
 mod osu_db;
+mod quad_renderer;
+mod quad_instance;
 
 fn main() {
     let _client = tracy_client::Client::start();

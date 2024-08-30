@@ -10,7 +10,7 @@ use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
-use crate::{camera::Camera, graphics::Graphics, hit_circle_instance::HitCircleInstance, osu_db::{BeatmapEntry, OsuDatabase}, osu_renderer::QUAD_INDECIES, osu_state::OsuStateEvent, rgb::Rgb, texture::Texture, vertex::Vertex};
+use crate::{buffer_write_or_init, camera::Camera, graphics::Graphics, hit_circle_instance::HitCircleInstance, osu_db::{BeatmapEntry, OsuDatabase}, osu_renderer::QUAD_INDECIES, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, texture::Texture, vertex::Vertex};
 
 
 const CARD_INNER_MARGIN: Margin = Margin {
@@ -26,18 +26,19 @@ const ROW_HEIGHT: f32 = 72.0;
 // Build only once when loading beatmap because
 // calculating all the stuff + reallocating new strings
 pub struct BeatmapCardInfoMetadata {
-    // Artist - Title [Difficutly name]
+    /// `{} - {} [{}]`
     beatmap_header: String,
-    // Mapped by Name
+
+    /// `Mapped by {}`
     mapped_by: String,
 
-    // Length: 1 BPM: 128-128 Objects: 1337
+    /// `Length: {} BPM: {}-{} Objects: {}`
     length_info: String,
     
-    // Circles: 1 Sliders: 1 Spinners: 1
+    /// `Circles: {} Sliders: {} Spinners: {}`
     objects_count: String,
 
-    // CS: 1 AR: 2 OD: 3 HP: 4 Start: 4
+    /// `CS: {} AR: {} OD: {} HP: {} Start: {}`
     difficutly_info: String,
 }
 
@@ -96,166 +97,19 @@ pub struct SongSelectionState<'ss> {
     // Events sender for "god" state
     state_tx: Sender<OsuStateEvent>,
 
-    // wgpu stuff
-    camera: Camera,
-    camera_bind_group: wgpu::BindGroup,
-    camera_buffer: wgpu::Buffer,
-
-    // Quad rendering (basically used only to render background image)
-    quad_vertex_buffer: wgpu::Buffer,
-    quad_index_buffer: wgpu::Buffer,
-    quad_pipeline: wgpu::RenderPipeline,
-    quad_instance_data: Vec<HitCircleInstance>,
-    quad_instance_buffer: wgpu::Buffer,
+    quad_renderer: QuadRenderer<'ss>,
+    quad_test_buffer: wgpu::Buffer,
+    quad_test_instance_data: Vec<QuadInstance>,
 }
 
 impl<'ss> SongSelectionState<'ss> {
     pub fn new(graphics: Arc<Graphics<'ss>>, state_tx: Sender<OsuStateEvent>) -> Self {
         let (inner_tx, inner_rx) = std::sync::mpsc::channel();
 
-        let quad_shader = graphics
-            .device
-            .create_shader_module(wgpu::include_wgsl!("shaders/hit_circle.wgsl"));
+        let quad_renderer = QuadRenderer::new(graphics.clone());
 
-        let surface_config = graphics.get_surface_config();
-
-        let camera = Camera::new(
-            surface_config.width as f32,
-            surface_config.height as f32,
-            1.0,
-        );
-
-        let quad_index_buffer =
-            graphics
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("hit_circle_index_buffer"),
-                    contents: bytemuck::cast_slice(QUAD_INDECIES),
-                    usage: BufferUsages::INDEX,
-                });
-
-        let quad_vertex_buffer =
-            graphics
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("hit_circle_buffer"),
-                    contents: bytemuck::cast_slice(&Vertex::quad_centered(1.0, 1.0)),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                });
-
-        let camera_buffer = graphics
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("uniform_buffer"),
-                contents: bytemuck::bytes_of(&camera),
-                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            });
-
-        let camera_bind_group_layout =
-            graphics
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                    label: Some("camera_bind_group_layout"),
-                });
-
-        let quad_instance_data = vec![
-            HitCircleInstance::new(
-                surface_config.width as f32 / 2.0,
-                surface_config.height as f32 / 2.0,
-                1.0,
-                1.0,
-                &Rgb::new(0, 0, 0),
-            )
-        ];
-
-        let quad_instance_buffer =
-            graphics
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("quad Instance Buffer"),
-                    contents: bytemuck::cast_slice(&quad_instance_data),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                });
-
-        let camera_bind_group = graphics
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &camera_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                }],
-                label: Some("camera_bind_group"),
-            });
-
-        let quad_pipeline_layout =
-            graphics
-                .device
-                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("hitcircle pipeline Layout"),
-                    bind_group_layouts: &[
-                        &Texture::default_bind_group_layout(&graphics, 1),
-                        &camera_bind_group_layout,
-                    ],
-                    push_constant_ranges: &[],
-                });
-
-        let quad_pipeline =
-            graphics
-                .device
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("hit_circle render pipeline"),
-                    layout: Some(&quad_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &quad_shader,
-                        entry_point: "vs_main",
-                        buffers: &[Vertex::desc(), HitCircleInstance::desc()],
-                        compilation_options: Default::default(),
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        compilation_options: Default::default(),
-                        module: &quad_shader,
-                        entry_point: "fs_main",
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format: surface_config.format,
-                            blend: Some(wgpu::BlendState {
-                                color: wgpu::BlendComponent {
-                                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                                    operation: wgpu::BlendOperation::Add,
-                                },
-                                alpha: wgpu::BlendComponent::OVER,
-                            }),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::TriangleList,
-                        strip_index_format: None,
-                        front_face: wgpu::FrontFace::Ccw,
-                        cull_mode: Some(wgpu::Face::Back),
-                        polygon_mode: wgpu::PolygonMode::Fill,
-                        unclipped_depth: false,
-                        conservative: false,
-                    },
-                    depth_stencil: None,
-                    multisample: wgpu::MultisampleState {
-                        count: 1,
-                        mask: !0,
-                        alpha_to_coverage_enabled: false,
-                    },
-                    multiview: None,
-                });
+        let quad_test_buffer = quad_renderer.create_instance_buffer();
+        let quad_test_instance_data = Vec::new();
 
         Self {
             db: OsuDatabase::new().unwrap(), // TODO: REMOVE UNRAP
@@ -267,22 +121,17 @@ impl<'ss> SongSelectionState<'ss> {
             current_beatmap: None,
             graphics,
             current_background_image: None,
-            camera,
-            camera_bind_group,
-            quad_pipeline,
-            quad_instance_data,
-            quad_instance_buffer,
-            quad_vertex_buffer,
-            quad_index_buffer,
-            camera_buffer,
             state_tx,
             need_scroll_to: None,
             current_audio: None,
+            quad_renderer,
+            quad_test_buffer,
+            quad_test_instance_data,
         }
     }
-
+    
+    // TODO move to `from_beatmap` to `BeatmapCardInfoMetadata`
     fn calculate_beatmap_metadata(&self, b: &mut Beatmap) -> BeatmapCardInfoMetadata {
-
         let last_hitobject_time = if let Some(obj) = b.hit_objects.last_mut() {
             obj.end_time().clone() as u64
         } else {
@@ -417,30 +266,28 @@ impl<'ss> SongSelectionState<'ss> {
 
 
     pub fn on_resize(&mut self, new_size: &PhysicalSize<u32>) {
+        self.quad_renderer.resize_camera(new_size);
+
         if let Some(bg) = &self.current_background_image {
             self.resize_background_vertex(bg.texture.width, bg.texture.height);
         }
-
-        self.camera.resize(new_size);
-
-        self.quad_instance_data.clear();
-        self.quad_instance_data.push(
-            HitCircleInstance::new(
+        
+        // New quad
+        self.quad_test_instance_data.clear();
+        self.quad_test_instance_data.push(
+            QuadInstance::from_xy_pos(
                 new_size.width as f32 / 2.0,
                 new_size.height as f32 / 2.0,
-                1.0,
-                1.0,
-                &Rgb::new(0, 0, 0),
             )
         );
 
-        self.graphics
-            .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera));
-
-        self.graphics
-            .queue
-            .write_buffer(&self.quad_instance_buffer, 0, bytemuck::cast_slice(&self.quad_instance_data));
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.quad_test_buffer,
+            &self.quad_test_instance_data,
+            QuadInstance
+        );
     }
 
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
@@ -489,12 +336,7 @@ impl<'ss> SongSelectionState<'ss> {
             to_height = height
         };
 
-
-        self.graphics
-            .queue
-            .write_buffer(&self.quad_vertex_buffer, 0, bytemuck::cast_slice(
-                &Vertex::quad_centered(to_width, to_height)
-            ));
+        self.quad_renderer.resize_vertex_centered(to_width, to_height);
 
         tracing::info!("Resized background image vertex, width: {}, height: {}", image_width, image_height);
     }
@@ -582,51 +424,14 @@ impl<'ss> SongSelectionState<'ss> {
     }
 
     pub fn render_background(&self, view: &TextureView) {
-        let mut encoder =
-            self.graphics
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("HitObjects encoder"),
-                });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("slider render pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            if let Some(texture) = &self.current_background_image {
-                render_pass.set_pipeline(&self.quad_pipeline);
-                render_pass.set_bind_group(0, &texture.texture.bind_group, &[]);
-                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
-                render_pass.set_vertex_buffer(1, self.quad_instance_buffer.slice(..));
-                render_pass.set_index_buffer(
-                    self.quad_index_buffer.slice(..),
-                    wgpu::IndexFormat::Uint16,
-                );
-
-                render_pass.draw_indexed(
-                    0..QUAD_INDECIES.len() as u32,
-                    0,
-                    0..1,
-                );
-            }
+        if let Some(current_background) = &self.current_background_image {
+            self.quad_renderer.render_on_view(
+                &view,
+                &current_background.texture.bind_group,
+                &self.quad_test_buffer,
+                1
+            );
         }
-
-        self.graphics
-            .queue
-            .submit([encoder.finish()]);
     }
 
     pub fn render_beatmap_card_info(&mut self, ui: &mut egui::Ui) {
