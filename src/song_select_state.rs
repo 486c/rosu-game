@@ -490,7 +490,7 @@ impl<'ss> SongSelectionState<'ss> {
                     ui.set_width(50.0);
 
                     if ui.button("⚙").clicked() {
-                        self.song_importer.open();
+                        self.song_importer.toggle();
                     };
                 });
         });

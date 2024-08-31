@@ -24,8 +24,8 @@ impl SongImporter {
         }
     }
 
-    pub fn open(&mut self) {
-        self.is_opened = true;
+    pub fn toggle(&mut self) {
+        self.is_opened = !self.is_opened;
     }
 
     pub fn render(&mut self, ctx: &egui::Context) {
@@ -33,9 +33,12 @@ impl SongImporter {
             return
         };
 
+        let screen_rect = ctx.screen_rect();
+
         egui::Window::new("Songs Importer")
             .resizable(false)
             .fixed_size(egui::Vec2 {x: 250.0, y: 200.0})
+            .default_pos((screen_rect.width() / 2.0, screen_rect.height() / 2.0))
             .open(&mut self.is_opened)
             .show(ctx, |ui| {
                 let button = Button::new("Select directory to import")
