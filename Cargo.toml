@@ -34,3 +34,4 @@ egui_extras = "0.28.1"
 r2d2_sqlite = "0.25.0"
 r2d2 = "0.8.10"
 rand = "0.8.5"
+oneshot = { version = "0.1.8", default-features = false, features = ["std"] }

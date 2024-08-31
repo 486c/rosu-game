@@ -160,13 +160,7 @@ impl<'s> OsuState<'s> {
         // Convert rosu_map object to our objects
         //let mut out_objects = Vec::with_capacity(map.hit_objects.len());
         let out_objects = Object::from_rosu(&map.hit_objects);
-        /*
-        for obj in &map.hit_objects {
-            if let Some(cobj) = Object::from_rosu(obj) {
-                out_objects.push(cobj)
-            }
-        }
-        */
+
         self.hit_objects = out_objects;
 
         self.current_beatmap = Some(map);

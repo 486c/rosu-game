@@ -33,6 +33,7 @@ mod song_select_state;
 mod osu_db;
 mod quad_renderer;
 mod quad_instance;
+mod song_importer_ui;
 
 fn main() {
     let _client = tracy_client::Client::start();

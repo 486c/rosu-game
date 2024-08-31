@@ -1,7 +1,8 @@
-use std::{fs::File, io::{BufReader, Cursor, Read}, sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
+use std::{fs::File, io::{BufReader, Cursor, Read}, path::PathBuf, sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
 
-use egui::{scroll_area::ScrollBarVisibility, Align, Color32, Label, Margin, Pos2, Rect, RichText, Stroke};
+use egui::{scroll_area::ScrollBarVisibility, Align, Button, Color32, Direction, Label, Margin, Pos2, Rect, RichText, Stroke};
 use egui_extras::{Size, StripBuilder};
+use egui_file::FileDialog;
 use image::DynamicImage;
 use md5::Digest;
 use rand::Rng;
@@ -10,7 +11,7 @@ use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
-use crate::{buffer_write_or_init, camera::Camera, graphics::Graphics, hit_circle_instance::HitCircleInstance, osu_db::{BeatmapEntry, OsuDatabase}, osu_renderer::QUAD_INDECIES, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, texture::Texture, vertex::Vertex};
+use crate::{buffer_write_or_init, camera::Camera, graphics::Graphics, hit_circle_instance::HitCircleInstance, osu_db::{BeatmapEntry, OsuDatabase}, osu_renderer::QUAD_INDECIES, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, song_importer_ui::SongImporter, texture::Texture, vertex::Vertex};
 
 
 const CARD_INNER_MARGIN: Margin = Margin {
@@ -115,6 +116,11 @@ impl BeatmapCardInfoMetadata {
     }
 }
 
+pub struct SongsImportJob {
+    pub path: PathBuf,
+    pub stop_rx: oneshot::Receiver<()>,
+}
+
 // TODO move to some other place
 pub struct CurrentBeatmap {
     beatmap: Beatmap,
@@ -131,7 +137,7 @@ pub struct CurrentAudio {
     audio_hash: md5::Digest,
 }
 
-enum SongSelectionEvents {
+pub enum SongSelectionEvents {
     SelectBeatmap(BeatmapEntry),
     LoadedBeatmap{ 
         beatmap: Beatmap, 
@@ -142,6 +148,7 @@ enum SongSelectionEvents {
         audio_md5: Digest
     },
     StartBeatmap(BeatmapEntry),
+    ImportSongsDirectory(SongsImportJob),
 }
 
 pub struct SongSelectionState<'ss> {
@@ -173,6 +180,8 @@ pub struct SongSelectionState<'ss> {
     quad_renderer: QuadRenderer<'ss>,
     quad_test_buffer: wgpu::Buffer,
     quad_test_instance_data: Vec<QuadInstance>,
+
+    song_importer: SongImporter,
 }
 
 impl<'ss> SongSelectionState<'ss> {
@@ -185,6 +194,7 @@ impl<'ss> SongSelectionState<'ss> {
         let quad_test_instance_data = Vec::new();
 
         Self {
+            song_importer: SongImporter::new(inner_tx.clone()),
             db: OsuDatabase::new().unwrap(), // TODO: REMOVE UNRAP
             min: 0,
             max: 0,
@@ -250,7 +260,9 @@ impl<'ss> SongSelectionState<'ss> {
             let audio_md5 = md5::compute(&audio_buffer);
 
             let audio_file = Cursor::new(audio_buffer);
-
+        
+            // Problematic audio files randomly found:
+            // - 574824
             let audio_source = UniformSourceIterator::new(Decoder::new(audio_file).unwrap(), 2, 48000)
                 .fade_in(Duration::from_millis(150));
 
@@ -413,6 +425,9 @@ impl<'ss> SongSelectionState<'ss> {
                     SongSelectionEvents::StartBeatmap(entry) => {
                         let _ = self.state_tx.send(OsuStateEvent::StartBeatmap(entry));
                     },
+                    SongSelectionEvents::ImportSongsDirectory(job) => {
+                        self.db.scan_beatmaps(job.path, job.stop_rx);
+                    },
                 }
             },
             Err(e) => match e {
@@ -461,10 +476,33 @@ impl<'ss> SongSelectionState<'ss> {
             });
     }
 
+    pub fn render_beatmap_footer(&mut self, ui: &mut egui::Ui) {
+        ui.with_layout(egui::Layout::centered_and_justified(Direction::LeftToRight), |ui| {
+            let text = format!("Beatmaps: {}", self.db.beatmaps_amount());
+            ui.add(Label::new(RichText::new(text).heading())
+                .selectable(false)
+            );
+
+            egui::Frame::none()
+                .show(ui, |ui| {
+                    ui.set_min_width(50.0);
+                    ui.set_max_width(50.0);
+                    ui.set_width(50.0);
+
+                    if ui.button("⚙").clicked() {
+                        self.song_importer.open();
+                    };
+                });
+        });
+
+    }
+
     pub fn render(&mut self, input: egui::RawInput, ctx: &egui::Context, view: &TextureView) -> egui::FullOutput {
         self.render_background(view);
 
         ctx.begin_frame(input);
+
+        self.song_importer.render(ctx);
 
         egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |ui| {
             StripBuilder::new(ui)
@@ -497,11 +535,8 @@ impl<'ss> SongSelectionState<'ss> {
                                                     .show(ui, |ui| {
                                                         ui.set_width(ui.available_rect_before_wrap().width());
                                                         ui.set_height(ui.available_rect_before_wrap().height());
-                                                        ui.centered_and_justified(|ui| {
-                                                            let text = format!("Beatmaps: {}", self.db.beatmaps_amount());
-                                                            ui.add(Label::new(RichText::new(text).heading())
-                                                                .selectable(false));
-                                                        })
+                                                        self.render_beatmap_footer(ui);
+
                                                     });
                                             })
                                         });
@@ -609,7 +644,6 @@ impl<'ss> SongSelectionState<'ss> {
                     })
                 })
         });
-
 
         ctx.end_frame()
     }

@@ -99,12 +99,12 @@ impl OsuDatabase {
     }
     
     // Spawns a job to recursively look for beatmaps in directory
-    pub fn scan_beatmaps(&self, look_path: impl AsRef<Path>) {
+    pub fn scan_beatmaps(&self, look_path: impl AsRef<Path>, stop_rx: oneshot::Receiver<()>) {
         let pool = self.conn.clone();
         let path: PathBuf = look_path.as_ref().to_path_buf();
 
         std::thread::spawn(move || {
-            for entry in fs::read_dir(path).unwrap() {
+            'main_loop: for entry in fs::read_dir(path).unwrap() {
                 let entry = entry.unwrap();
 
                 if !entry.path().is_dir() {
@@ -113,6 +113,10 @@ impl OsuDatabase {
 
                 for entry in fs::read_dir(entry.path()).unwrap() {
                     let entry = entry.unwrap();
+
+                    if stop_rx.try_recv().is_ok() {
+                        break 'main_loop;
+                    }
 
                     // TODO insert in batches
                     if let Some(ext) = entry.path().extension() {
