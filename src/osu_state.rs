@@ -5,10 +5,10 @@ use egui_file::FileDialog;
 use rodio::{Decoder, Sink, Source};
 use rosu_map::Beatmap;
 use wgpu::TextureView;
-use winit::{dpi::PhysicalSize, keyboard::KeyCode, window::Window};
+use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_db::BeatmapEntry, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 
 
@@ -77,6 +77,9 @@ pub struct OsuState<'s> {
     file_dialog: Option<FileDialog>,
     difficulties: Vec<PathBuf>,
     new_beatmap: Option<PathBuf>,
+
+    cursor_renderer: CursorRenderer<'s>,
+    
 }
 
 impl<'s> OsuState<'s> {
@@ -92,7 +95,10 @@ impl<'s> OsuState<'s> {
 
         let song_select = SongSelectionState::new(graphics.clone(), event_sender.clone());
 
+        window.set_cursor_visible(false);
+
         Self {
+            cursor_renderer: CursorRenderer::new(graphics.clone()),
             event_receiver,
             preempt: 0.0,
             hit_offset: 0.0,
@@ -179,6 +185,7 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
+        self.cursor_renderer.on_resize(new_size);
         self.osu_renderer.on_resize(new_size);
         self.song_select.on_resize(new_size);
     }
@@ -196,6 +203,10 @@ impl<'s> OsuState<'s> {
         }
     }
 
+    pub fn on_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
+        self.cursor_renderer.on_cursor_moved(position);
+    }
+
     pub fn update_egui(&mut self, input: RawInput) {
         let _span = tracy_client::span!("osu_state update egui");
 
@@ -207,7 +218,9 @@ impl<'s> OsuState<'s> {
             &mut self.config,
         );
 
-        egui::Window::new("Window").show(&self.egui.state.egui_ctx(), |ui| {
+        egui::Window::new("Debug Gameplay Window")
+            .resizable(false)
+            .show(&self.egui.state.egui_ctx(), |ui| {
 
             if ui.add(egui::Button::new("Select Beatmap")).clicked() {
                 let mut dialog = FileDialog::select_folder(None);
@@ -327,7 +340,6 @@ impl<'s> OsuState<'s> {
 
     pub fn update(&mut self) {
         let _span = tracy_client::span!("osu_state update");
-
         
         // Recv all events
         let event = self.event_receiver.try_recv();
@@ -341,17 +353,19 @@ impl<'s> OsuState<'s> {
                         tracing::info!("Request to enter beatmap");
                         self.open_beatmap(entry.path);
                         self.current_state = OsuStates::Playing;
+                        self.window.set_cursor_visible(false);
                     },
                     OsuStateEvent::ToSongSelection => {
                         self.osu_clock.reset_time();
-                        //self.sink.clear();
                         self.current_state = OsuStates::SongSelection;
+                        self.window.set_cursor_visible(false);
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {
                         self.sink.clear();
                         self.sink.append(audio_source);
                         self.sink.try_seek(Duration::from_millis(start_at.try_into().unwrap_or(0))).unwrap();
                         self.sink.play();
+                        self.window.set_cursor_visible(false);
                     },
                 }
             },
@@ -403,7 +417,7 @@ impl<'s> OsuState<'s> {
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-//
+
         let egui_input = self.egui.state.take_egui_input(&self.window);
 
         match self.current_state {
@@ -434,6 +448,11 @@ impl<'s> OsuState<'s> {
                 self.egui.output = Some(egui_output)
             },
         }
+
+        self.cursor_renderer.render_on_view(
+            &view,
+            &self.skin_manager
+        );
 
         output.present();
 

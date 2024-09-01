@@ -1,4 +1,3 @@
-use egui_demo_lib::DemoWindows;
 use egui_wgpu::{Renderer, ScreenDescriptor};
 use wgpu::{Device, CommandEncoder};
 use winit::{window::Window, event::WindowEvent};

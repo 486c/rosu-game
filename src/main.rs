@@ -34,6 +34,7 @@ mod osu_db;
 mod quad_renderer;
 mod quad_instance;
 mod song_importer_ui;
+mod osu_cursor_renderer;
 
 fn main() {
     let _client = tracy_client::Client::start();
@@ -54,6 +55,7 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
+
     let window = Arc::new(window);
 
     let state = Graphics::new(window.clone());
@@ -64,17 +66,8 @@ fn main() {
     let (stream, stream_handle) = OutputStream::try_default().unwrap();
     let sink = Sink::try_new(&stream_handle).unwrap();
     sink.pause();
-    //sink.append(source);
 
     let mut osu_state = OsuState::new(window.clone(), state, sink);
-
-    //osu_state.open_beatmap("tests/mayday/mayday.osu");
-
-    //osu_state.set_time(194046.5);
-    //osu_state.set_time(30000.0);
-
-    //osu_state.open_beatmap("tests/single_slider.osu");
-    //osu_state.open_beatmap("tests/linear_sliders.osu");
 
     let _ = event_loop.run(move |event, elwf| {
         let _span = tracy_client::span!("event_loop");
@@ -121,19 +114,19 @@ fn main() {
                             winit::keyboard::PhysicalKey::Unidentified(_) => 
                                 tracing::warn!("Got undefined keyboard input"),
                         }
-
-
+                    },
+                    WindowEvent::CursorMoved{ device_id, position } => {
+                        osu_state.on_cursor_moved(position);
                     }
-                    //WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        //osu_state.resize(new_inner_size);
-                        ////osu_state.state.resize(*new_inner_size);
-                    //}
-                    //WindowEvent::RedrawRequested => {
-                    //}
-                    _ => {}
+                    _ => {
+                        dbg!(event);
+                    }
                 }
             }
-            _ => {}
+            Event::NewEvents{..} => {},
+            _ => {
+                dbg!(event);
+            }
         };
     });
 }

@@ -293,7 +293,9 @@ impl<'ss> SongSelectionState<'ss> {
                 new_size.height as f32 / 2.0,
             )
         );
-
+        
+        // TODO move into quad_renderer itself since we are operating on
+        // QuadInstance only
         buffer_write_or_init!(
             self.graphics.queue,
             self.graphics.device,
@@ -618,6 +620,12 @@ impl<'ss> SongSelectionState<'ss> {
                                 let sense = res.response.interact(egui::Sense::click());
 
                                 if sense.clicked() {
+                                    if id == self.current {
+                                        let _ = self.inner_tx.send(
+                                            SongSelectionEvents::StartBeatmap(beatmap.clone())
+                                        );
+                                    }
+
                                     self.current = id;
 
                                     let _ = 
