@@ -1,9 +1,8 @@
-use std::{fs::File, io::BufReader, sync::Arc};
+use std::sync::Arc;
 
 use graphics::Graphics;
 use osu_state::OsuState;
 use rodio::{Decoder, OutputStream, Sink};
-use tracing_subscriber::layer::Filter;
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -119,13 +118,11 @@ fn main() {
                         osu_state.on_cursor_moved(position);
                     }
                     _ => {
-                        dbg!(event);
                     }
                 }
             }
             Event::NewEvents{..} => {},
             _ => {
-                dbg!(event);
             }
         };
     });

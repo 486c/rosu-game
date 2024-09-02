@@ -340,6 +340,7 @@ impl<'s> OsuState<'s> {
 
     pub fn update(&mut self) {
         let _span = tracy_client::span!("osu_state update");
+        self.cursor_renderer.update();
         
         // Recv all events
         let event = self.event_receiver.try_recv();
