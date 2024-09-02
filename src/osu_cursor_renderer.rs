@@ -5,8 +5,7 @@ use winit::dpi::PhysicalPosition;
 
 use crate::{buffer_write_or_init, graphics::Graphics, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager};
 
-const TRAIL_KEEP_LEN: usize = 10;
-const TRAIL_KEEP_MS: u64 = 35;
+const TRAIL_KEEP_MS: u64 = 55;
 
 pub struct CursorRenderer<'cr> {
     graphics: Arc<Graphics<'cr>>,
