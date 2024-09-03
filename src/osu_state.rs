@@ -1,7 +1,6 @@
 use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc}, time::Duration};
 
 use egui::{RawInput, Slider};
-use egui_file::FileDialog;
 use rodio::{source::UniformSourceIterator, Decoder, Sink, Source};
 use rosu_map::Beatmap;
 use wgpu::TextureView;
@@ -191,6 +190,9 @@ impl<'s> OsuState<'s> {
                 if key_code == KeyCode::Escape {
                     let _ = self.event_sender.send(OsuStateEvent::ToSongSelection);
                 }
+
+                if key_code == KeyCode::KeyZ || key_code == KeyCode::KeyX {
+                }
             },
             OsuStates::SongSelection => {
                 self.song_select.on_pressed_down(key_code);
@@ -276,9 +278,6 @@ impl<'s> OsuState<'s> {
             }
 
             self.objects_queue.push(i);
-
-            //self.osu_renderer
-                //.prepare_object_for_render(obj, time, self.preempt, self.fadein);
         }
 
         self.osu_renderer.prepare_objects(
@@ -413,8 +412,6 @@ impl<'s> OsuState<'s> {
         );
 
         output.present();
-
-
 
         Ok(())
     }

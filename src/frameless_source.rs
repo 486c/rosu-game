@@ -1,4 +1,6 @@
-use rodio::{Sample, Source};
+use std::time::Duration;
+
+use rodio::{source::SeekError, Sample, Source};
 
 pub struct FramelessSource<I>
 where
@@ -59,5 +61,9 @@ where
 
   fn total_duration(&self) -> Option<std::time::Duration> {
     self.inner.total_duration()
+  }
+
+  fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
+      self.inner.try_seek(pos)
   }
 }
