@@ -62,6 +62,13 @@ impl SongImporter {
                             ui.horizontal(|ui| {
                                 ui.spinner();
                                 ui.label(format!("{}", &path.display()));
+
+                                if let Some(tx) = tx {
+                                    if tx.is_closed() {
+                                        not_retain = false;
+                                    }
+                                }
+
                                 if ui.button("Stop").clicked() {
                                     let _ = tx.take().unwrap().send(());
                                     not_retain = false;

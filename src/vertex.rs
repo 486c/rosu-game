@@ -35,7 +35,6 @@ impl Vertex {
             let x = radius * theta.sin();
             let z = radius * theta.cos();
 
-            //v.push(Vertex {pos: [x, z, 1.0], uv: [0.0, 0.0]});
             v.push(Vertex {pos: [x, z, -1.0].into(), uv: [0.0, 0.0]});
         }
 

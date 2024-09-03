@@ -24,7 +24,7 @@ impl<'g> Graphics<'g> {
         };
         let power_preferences = wgpu::PowerPreference::HighPerformance;
         //let present_mode = PresentMode::Fifo;
-        let present_mode = PresentMode::Immediate;
+        let present_mode = PresentMode::Fifo;
 
         let size = window.inner_size();
 

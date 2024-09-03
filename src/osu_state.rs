@@ -2,13 +2,13 @@ use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel,
 
 use egui::{RawInput, Slider};
 use egui_file::FileDialog;
-use rodio::{Decoder, Sink, Source};
+use rodio::{source::UniformSourceIterator, Decoder, Sink, Source};
 use rosu_map::Beatmap;
 use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 
 
@@ -72,12 +72,6 @@ pub struct OsuState<'s> {
 
     osu_clock: Timer,
     
-    // I hate that i have to store it right here, but i'm gonna leave it here
-    // just for easier debugging and prototyping
-    file_dialog: Option<FileDialog>,
-    difficulties: Vec<PathBuf>,
-    new_beatmap: Option<PathBuf>,
-
     cursor_renderer: CursorRenderer<'s>,
     
 }
@@ -111,9 +105,6 @@ impl<'s> OsuState<'s> {
             osu_clock: Timer::new(),
             objects_queue: Vec::with_capacity(20),
             hit_objects: Vec::new(),
-            file_dialog: None,
-            difficulties: Vec::new(),
-            new_beatmap: None,
             skin_manager,
             config,
             settings_view: SettingsView::new(event_sender.clone()),
@@ -141,7 +132,6 @@ impl<'s> OsuState<'s> {
             }
         };
 
-        // Prepare audio
         self.sink.clear();
 
         let beatmap_dir = path.as_ref().parent().expect("failed to get beatmap dir");
@@ -151,8 +141,9 @@ impl<'s> OsuState<'s> {
         // without any audio files
         if audio_file.is_file() {
             let file = BufReader::new(File::open(audio_file).unwrap());
-            let source = Decoder::new(file).expect("Failed to load audio file source");
-            self.sink.append(source);
+            let source = FramelessSource::new(Decoder::new(file).expect("Failed to load audio file source"));
+            let source = UniformSourceIterator::new(source, 2, 44100);
+            self.set_audio(source);
             println!("open_beatmap: Initialized a new audio file!");
         }
 
@@ -171,8 +162,12 @@ impl<'s> OsuState<'s> {
 
         self.current_beatmap = Some(map);
         self.apply_beatmap_transformations();
+    }
 
-        self.sink.play();
+    pub fn set_audio<I>(&self, audio: I) 
+    where 
+    I: Source<Item = f32> + Send + Sync + 'static {
+        self.sink.append(audio);
     }
 
     pub fn apply_beatmap_transformations(&mut self) {
@@ -222,30 +217,6 @@ impl<'s> OsuState<'s> {
             .resizable(false)
             .show(&self.egui.state.egui_ctx(), |ui| {
 
-            if ui.add(egui::Button::new("Select Beatmap")).clicked() {
-                let mut dialog = FileDialog::select_folder(None);
-                dialog.open();
-                self.file_dialog = Some(dialog);
-            }
-
-            if let Some(dialog) = &mut self.file_dialog {
-                if dialog.show(self.egui.state.egui_ctx()).selected() {
-                    let mut available_choices = Vec::new();
-                    if let Some(dir) = dialog.path() {
-                        for entry in std::fs::read_dir(dir).expect("failed to read dir") {
-                            let entry = entry.expect("failed to read dir entry");
-                            if let Some(ext) = entry.path().extension() {
-                                if ext == "osu" {
-                                    available_choices.push(entry.path());
-                                }
-                            }
-                        }
-
-                        self.difficulties = available_choices;
-                    }
-                }
-            }
-
             if let Some(beatmap) = &self.current_beatmap {
                 ui.add(egui::Label::new(format!("{}", self.osu_clock.get_time())));
 
@@ -276,18 +247,6 @@ impl<'s> OsuState<'s> {
             }
         });
 
-        if !self.difficulties.is_empty() {
-            egui::Window::new("Select Difficulty").show(&self.egui.state.egui_ctx(), |ui| {
-                for path in &self.difficulties {
-                    if ui.add(egui::Button::new(format!("{:#?}", path.file_name().unwrap()))).clicked() {
-                        self.new_beatmap = Some(path.to_path_buf());
-                    };
-                }
-
-            });
-
-        }
-
         let output = self.egui.state.egui_ctx().end_frame();
 
         self.egui.state.handle_platform_output(
@@ -300,7 +259,7 @@ impl<'s> OsuState<'s> {
 
     // Going through every object on beatmap and preparing it to
     // assigned buffers
-    pub fn prepare_objects(&mut self, time: f64) {
+    pub fn prepare_objects_for_renderer(&mut self, time: f64) {
         let _span = tracy_client::span!("osu_state prepare objects");
 
         for (i, obj) in self.hit_objects.iter_mut().enumerate().rev() {
@@ -337,7 +296,7 @@ impl<'s> OsuState<'s> {
         // we should not forget to upload all that to gpu
         self.osu_renderer.write_buffers();
     }
-
+    
     pub fn update(&mut self) {
         let _span = tracy_client::span!("osu_state update");
         self.cursor_renderer.update();
@@ -354,19 +313,16 @@ impl<'s> OsuState<'s> {
                         tracing::info!("Request to enter beatmap");
                         self.open_beatmap(entry.path);
                         self.current_state = OsuStates::Playing;
-                        self.window.set_cursor_visible(false);
                     },
                     OsuStateEvent::ToSongSelection => {
                         self.osu_clock.reset_time();
                         self.current_state = OsuStates::SongSelection;
-                        self.window.set_cursor_visible(false);
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {
                         self.sink.clear();
                         self.sink.append(audio_source);
                         self.sink.try_seek(Duration::from_millis(start_at.try_into().unwrap_or(0))).unwrap();
                         self.sink.play();
-                        self.window.set_cursor_visible(false);
                     },
                 }
             },
@@ -378,17 +334,7 @@ impl<'s> OsuState<'s> {
         //let input = self.egui.state.take_egui_input(&self.window);
 
         match self.current_state {
-            OsuStates::Playing => {
-                if let Some(path) = &self.new_beatmap.clone() {
-                    self.open_beatmap(path);
-                    self.new_beatmap = None;
-                    self.difficulties.clear();
-                }
-
-                let time = self.osu_clock.update();
-
-                self.prepare_objects(time);
-            },
+            OsuStates::Playing => {},
             OsuStates::SongSelection => {
                 self.song_select.update();
             },
@@ -412,6 +358,9 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+
+        //println!("diff: {}", self.osu_clock.get_time() as u128 - self.sink.get_pos().as_millis());
+
         //let graphics = self.osu_renderer.get_graphics();
         let output = self.osu_renderer.get_graphics().get_current_texture()?;
 
@@ -423,6 +372,12 @@ impl<'s> OsuState<'s> {
 
         match self.current_state {
             OsuStates::Playing => {
+                if self.sink.is_paused() {
+                    self.sink.play()
+                }
+
+                self.prepare_objects_for_renderer(self.osu_clock.get_time());
+
                 // TODO THIS SHOULN'T BE HERE, fix when dicided what to
                 // do with egui_input thing
                 self.update_egui(egui_input);
@@ -438,6 +393,8 @@ impl<'s> OsuState<'s> {
                 self.render_egui(&view)?;
 
                 //self.render_playing(&view);
+
+                self.osu_clock.update();
             },
             OsuStates::SongSelection => {
                 let egui_output = self.song_select.render(
@@ -456,6 +413,8 @@ impl<'s> OsuState<'s> {
         );
 
         output.present();
+
+
 
         Ok(())
     }

@@ -184,14 +184,23 @@ impl OsuDatabase {
         amount
     }
 
-    pub fn get_beatmap_by_index(&mut self, index: usize) -> BeatmapEntry {
+    pub fn get_beatmap_by_index(&mut self, index: usize) -> Option<BeatmapEntry> {
         const QUERY: &str = "SELECT * FROM beatmaps ORDER BY id ASC LIMIT ?1 OFFSET ?1";
 
         let entry = self.conn.get().unwrap().query_row(QUERY, [index], |row| {
             BeatmapEntry::try_from(row)
-        }).unwrap();
+        });
 
-        entry
+        match entry {
+            Ok(entry) => Some(entry),
+            Err(e) => match e {
+                rusqlite::Error::QueryReturnedNoRows => None,
+                _ => {
+                    tracing::error!("selecting beatmap by index error");
+                    None
+                },
+            },
+        }
     }
 
     pub fn load_beatmaps_range(&mut self, min: usize, max: usize) {

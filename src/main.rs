@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use graphics::Graphics;
 use osu_state::OsuState;
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::{OutputStream, Sink};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -34,6 +34,7 @@ mod quad_renderer;
 mod quad_instance;
 mod song_importer_ui;
 mod osu_cursor_renderer;
+mod frameless_source;
 
 fn main() {
     let _client = tracy_client::Client::start();

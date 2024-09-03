@@ -6,6 +6,7 @@ use winit::dpi::PhysicalPosition;
 use crate::{buffer_write_or_init, graphics::Graphics, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager};
 
 const TRAIL_KEEP_MS: u64 = 55;
+const TARGET_TRAIL_UPDATE_RATE: f64 = 120.0; // Per sec
 
 pub struct CursorRenderer<'cr> {
     graphics: Arc<Graphics<'cr>>,
@@ -16,6 +17,8 @@ pub struct CursorRenderer<'cr> {
     
     cursor_instance: QuadInstance,
     cursor_buffer: wgpu::Buffer,
+
+    last_update: Instant,
 }
 
 impl<'cr> CursorRenderer<'cr> {
@@ -35,12 +38,11 @@ impl<'cr> CursorRenderer<'cr> {
             trail_buffer,
             cursor_instance,
             cursor_buffer,
+            last_update: Instant::now(),
         }
     }
 
     pub fn update(&mut self) {
-        self.trail_instance_data.push_back((Instant::now(), self.cursor_instance));
-
         self.trail_instance_data.retain(|(last, _)| {
             if *last < Instant::now() - Duration::from_millis(TRAIL_KEEP_MS) {
                 false
@@ -52,6 +54,16 @@ impl<'cr> CursorRenderer<'cr> {
 
     pub fn on_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
         let instance = QuadInstance::from_xy_pos(position.x as f32, position.y as f32);
+        
+        // Weird logic required to keep cursor trail updated at the same rate
+        let now = Instant::now();
+        let frame_duration: Duration = Duration::from_secs_f64(1.0 / TARGET_TRAIL_UPDATE_RATE as f64);
+        let update_time = now.duration_since(self.last_update);
+        if update_time > frame_duration {
+            self.trail_instance_data.push_back((Instant::now(), self.cursor_instance));
+            self.last_update = now;
+        }
+
         self.cursor_instance = instance;
     }
 
@@ -77,8 +89,6 @@ impl<'cr> CursorRenderer<'cr> {
             &trail,
             QuadInstance
         );
-
-        //self.graphics.queue.write_buffer(&self.cursor_buffer, 0, bytemuck::bytes_of(&self.cursor_instance));
 
         // 1. Trail
         self.quad_renderer.render_on_view(

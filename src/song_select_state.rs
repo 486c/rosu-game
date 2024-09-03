@@ -263,7 +263,7 @@ impl<'ss> SongSelectionState<'ss> {
         
             // Problematic audio files randomly found:
             // - 574824
-            let audio_source = UniformSourceIterator::new(Decoder::new(audio_file).unwrap(), 2, 48000)
+            let audio_source = UniformSourceIterator::new(Decoder::new(audio_file).unwrap(), 2, 44100)
                 .fade_in(Duration::from_millis(150));
 
             tx.send(SongSelectionEvents::LoadedBeatmap{
@@ -560,21 +560,24 @@ impl<'ss> SongSelectionState<'ss> {
                             //     1. Pressed F2 so we got random beatmap
                             //     2. Pressed ArrowDown/Up so we increment by 1
                             if let Some(need_scroll_to) = self.need_scroll_to.take() {
-                                let current_y = self.current as f32 * ROW_HEIGHT;
-
-                                let scroll_y = need_scroll_to as f32 * ROW_HEIGHT;
-                                
-                                let scroll_y = scroll_y - current_y;
-                                self.current = need_scroll_to;
-                                
-                                ui.scroll_with_delta(
-                                    egui::Vec2::new(0.0, -1.0 * scroll_y)
-                                );
-
                                 let entry = self.db.get_beatmap_by_index(need_scroll_to);
-                                let _ = self.inner_tx.send(
-                                    SongSelectionEvents::SelectBeatmap(entry)
-                                );
+
+                                if let Some(entry) = entry {
+                                    let current_y = self.current as f32 * ROW_HEIGHT;
+
+                                    let scroll_y = need_scroll_to as f32 * ROW_HEIGHT;
+
+                                    let scroll_y = scroll_y - current_y;
+                                    self.current = need_scroll_to;
+
+                                    ui.scroll_with_delta(
+                                        egui::Vec2::new(0.0, -1.0 * scroll_y)
+                                    );
+
+                                    let _ = self.inner_tx.send(
+                                        SongSelectionEvents::SelectBeatmap(entry)
+                                    );
+                                }
                             }
 
                             let min_row = (rect.min.y / ROW_HEIGHT).floor() as usize;
