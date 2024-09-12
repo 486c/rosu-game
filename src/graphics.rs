@@ -24,7 +24,7 @@ impl<'g> Graphics<'g> {
         };
         let power_preferences = wgpu::PowerPreference::HighPerformance;
         //let present_mode = PresentMode::Fifo;
-        let present_mode = PresentMode::Fifo;
+        let present_mode = PresentMode::AutoNoVsync;
 
         let size = window.inner_size();
 
@@ -94,7 +94,6 @@ impl<'g> Graphics<'g> {
         let _span = tracy_client::span!("wgpu resize");
         if new_size.width > 0 && new_size.height > 0 {
             let mut lock = self.config.lock().unwrap();
-            //self.size = *new_size;
 
             lock.width = new_size.width;
             lock.height = new_size.height;

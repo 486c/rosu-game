@@ -11,8 +11,15 @@ use winit::dpi::PhysicalSize;
 
 static SLIDER_SCALE: f32 = 2.0;
 
+pub struct JudgementsEntry {
+    pos: Vector2<f64>,
+    start: f64,
+    end: f64,
+    result: hit_objects::Hit,
+}
+
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, SLIDER_FADEOUT_TIME}, math::lerp, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 #[macro_export]
@@ -26,7 +33,8 @@ macro_rules! buffer_write_or_init {
         if data_len <= buffer_len {
             $queue.write_buffer(&$buffer, 0, bytemuck::cast_slice($data))
         } else {
-            let buffer = $device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            let buffer = $device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice($data),
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
@@ -38,32 +46,6 @@ macro_rules! buffer_write_or_init {
 }
 
 pub const QUAD_INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
-
-const OSU_COORDS_WIDTH: f32 = 512.0;
-const OSU_COORDS_HEIGHT: f32 = 384.0;
-
-const OSU_PLAYFIELD_BORDER_TOP_PERCENT: f32 = 0.117;
-const OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT: f32 = 0.0834;
-
-fn get_hitcircle_diameter(cs: f32) -> f32 {
-    ((1.0 - 0.7 * (cs - 5.0) / 5.0) / 2.0) * 128.0 * 1.00041
-}
-
-fn calc_playfield_scale_factor(screen_w: f32, screen_h: f32) -> f32 {
-    let top_border_size = OSU_PLAYFIELD_BORDER_TOP_PERCENT * screen_h;
-    let bottom_border_size = OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT * screen_h;
-
-    let engine_screen_w = screen_w;
-    let engine_screen_h = screen_h - bottom_border_size - top_border_size;
-
-    let scale_factor = if screen_w / OSU_COORDS_WIDTH > engine_screen_h / OSU_COORDS_HEIGHT {
-        engine_screen_h / OSU_COORDS_HEIGHT
-    } else {
-        engine_screen_w / OSU_COORDS_WIDTH
-    };
-
-    return scale_factor;
-}
 
 pub struct OsuRenderer<'or> {
     // Graphics State
@@ -128,13 +110,20 @@ pub struct OsuRenderer<'or> {
 
     depth_texture: DepthTexture,
 
-    last_color: usize,
+    quad_debug: QuadRenderer<'or>,
+
+    quad_debug_instance_data: Vec<QuadInstance>,
+    quad_debug_instance_data2: Vec<QuadInstance>,
+    quad_debug_buffer: wgpu::Buffer,
+    quad_debug_buffer2: wgpu::Buffer,
+    
+    /// Queue of judgements that needs to be rendered
+    /// Should be cleared after everything inside is rendered
+    judgements_queue: Vec<JudgementsEntry>,
 }
 
 impl<'or> OsuRenderer<'or> {
     pub fn new(graphics: Arc<Graphics<'or>>, config: &Config) -> Self {
-        //let approach_circle_texture = Texture::from_path("skin/approachcircle.png", &graphics);
-
         let (graphics_width, graphics_height) = graphics.get_surface_size();
         let surface_config = graphics.get_surface_config();
 
@@ -680,7 +669,17 @@ impl<'or> OsuRenderer<'or> {
         let scale =
             calc_playfield_scale_factor(graphics.size.width as f32, graphics.size.height as f32);
 
+        let quad_debug = QuadRenderer::new(graphics.clone(), true);
+
+        let quad_debug_instance_data: Vec<QuadInstance> = Vec::new();
+        let quad_debug_instance_data2: Vec<QuadInstance> = Vec::new();
+        let quad_debug_buffer = quad_debug.create_instance_buffer();
+        let quad_debug_buffer2 = quad_debug.create_instance_buffer();
+
+        quad_debug.resize_vertex_centered(20.0, 20.0);
+
         Self {
+            quad_debug,
             graphics,
             scale,
             quad_verticies,
@@ -713,10 +712,14 @@ impl<'or> OsuRenderer<'or> {
             follow_points_instance_buffer,
             offsets: Vector2::new(0.0, 0.0),
             hit_circle_diameter: 1.0,
-            last_color: 0,
             quad_colored_pipeline,
             slider_settings_buffer,
             slider_settings_bind_group,
+            quad_debug_instance_data,
+            quad_debug_buffer,
+            quad_debug_instance_data2,
+            quad_debug_buffer2,
+            judgements_queue: Vec::new(),
         }
     }
 
@@ -728,7 +731,8 @@ impl<'or> OsuRenderer<'or> {
             .queue
             .write_buffer(&self.slider_settings_buffer, 0, bytemuck::bytes_of(&config.slider));
     }
-
+    
+    // TODO split into separate functions to avoid endless nesting and general mess
     pub fn prepare_objects(
         &mut self,
         time: f64,
@@ -738,7 +742,6 @@ impl<'or> OsuRenderer<'or> {
         objects: &[Object],
         skin: &SkinManager,
     ) {
-        //println!("======");
         let _span = tracy_client::span!("osu_renderer prepare_objects2");
 
         for current_index in queue.iter() {
@@ -755,9 +758,11 @@ impl<'or> OsuRenderer<'or> {
                     let _span = tracy_client::span!("osu_renderer prepare_objects2::circle");
                     let start_time = object.start_time - preempt as f64;
                     let end_time = start_time + fadein as f64;
-                    let alpha = ((time - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
 
-                    let approach_progress = (time - start_time) / (object.start_time - start_time);
+                    let alpha = calc_progress(time, start_time, end_time).clamp(0.0, 1.0);
+
+                    let approach_progress = calc_progress(time, start_time, object.start_time);
+
 
                     let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);
 
@@ -777,10 +782,26 @@ impl<'or> OsuRenderer<'or> {
                             alpha as f32,
                             approach_scale as f32,
                         ));
+
+                    if let Some(hit_result) = &circle.hit_result {
+                        self.quad_debug_instance_data.push(
+                            QuadInstance::from_xy_pos(circle.pos.x, circle.pos.y)
+                        );
+
+                        match hit_result {
+                            hit_objects::HitResult::Hit { at, result, .. } => {
+                                self.judgements_queue.push(JudgementsEntry{
+                                    pos: Vector2::new(circle.pos.x as f64, circle.pos.y as f64),
+                                    start: *at,
+                                    end: *at + 250.0, // TODO move to const or something
+                                    result: *result
+                                });
+                            },
+                        }
+                    }
                 }
                 hit_objects::ObjectKind::Slider(slider) => {
                     let _span = tracy_client::span!("osu_renderer prepare_objects2::circle");
-
 
                     let start_time = slider.start_time - preempt as f64;
                     let end_time = start_time + fadein as f64;
@@ -892,8 +913,6 @@ impl<'or> OsuRenderer<'or> {
                     };
                 }
             }
-            
-            //dbg!(color);
         }
     }
 
@@ -1045,17 +1064,6 @@ impl<'or> OsuRenderer<'or> {
             SliderInstance
         );
 
-        /*
-        self.slider_instance_buffer =
-            self.graphics
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("linear vertex_buffer"),
-                    contents: bytemuck::cast_slice(&self.slider_instance_data),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                });
-                */
-
         // Drawing to the texture
         let view = slider_texture_not_sampled.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -1102,7 +1110,7 @@ impl<'or> OsuRenderer<'or> {
                 self.slider_index_buffer.slice(..),
                 wgpu::IndexFormat::Uint16,
             );
-
+            
             render_pass.draw_indexed(
                 0..self.slider_indecies.len() as u32,
                 0,
@@ -1147,14 +1155,11 @@ impl<'or> OsuRenderer<'or> {
     }
 
     pub fn on_cs_change(&mut self, cs: f32) {
-        println!("OsuRenderer -> on_cs_change()");
         let hit_circle_diameter = get_hitcircle_diameter(cs);
 
         self.hit_circle_diameter = hit_circle_diameter;
 
         self.quad_verticies = Vertex::quad_centered(hit_circle_diameter, hit_circle_diameter);
-
-        // TODO temp
 
         self.hit_circle_vertex_buffer =
             self.graphics
@@ -1195,27 +1200,13 @@ impl<'or> OsuRenderer<'or> {
 
         let (graphics_width, graphics_height) = self.graphics.get_surface_size();
 
+        let (scale, offsets) = calc_playfield(new_size.width as f32, new_size.height as f32);
 
-
-        // Calculate playfield scale
-        self.scale = calc_playfield_scale_factor(new_size.width as f32, new_size.height as f32);
-
-        // Calculate playfield offsets
-        let scaled_height = OSU_COORDS_HEIGHT as f32 * self.scale;
-        let scaled_width = OSU_COORDS_WIDTH as f32 * self.scale;
-
-        let bottom_border_size = OSU_PLAYFIELD_BORDER_BOTTOM_PERCENT * new_size.height as f32;
-
-        let y_offset = (new_size.height as f32 - scaled_height) / 2.0
-            + (new_size.height as f32 / 2.0 - (scaled_height / 2.0) - bottom_border_size);
-
-        let x_offset = (new_size.width as f32 - scaled_width) / 2.0;
-
-        let offsets = Vector2::new(x_offset, y_offset);
+        self.scale = scale;
         self.offsets = offsets;
 
         self.camera.resize(new_size);
-        self.camera.transform(self.scale, offsets);
+        self.camera.transform(self.scale, self.offsets);
         self.depth_texture = DepthTexture::new(
             &self.graphics,
             graphics_width,
@@ -1223,9 +1214,13 @@ impl<'or> OsuRenderer<'or> {
             1,
         );
 
+
         self.graphics
             .queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera)); // TODO
+
+        self.quad_debug.resize_camera(new_size);
+        self.quad_debug.transform_camera(self.scale, self.offsets);
 
         // Slider to screen
         self.slider_to_screen_verticies = Vertex::quad_positional(
@@ -1278,6 +1273,22 @@ impl<'or> OsuRenderer<'or> {
             &self.follow_points_instance_data,
             SliderInstance
         );
+
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.quad_debug_buffer,
+            &self.quad_debug_instance_data,
+            QuadInstance
+        );
+
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.quad_debug_buffer2,
+            &self.quad_debug_instance_data2,
+            QuadInstance
+        );
     }
 
     /// Clears internal buffers
@@ -1288,6 +1299,31 @@ impl<'or> OsuRenderer<'or> {
         self.slider_to_screen_instance_data.clear();
         self.slider_to_screen_textures.clear();
         self.follow_points_instance_data.clear();
+        self.quad_debug_instance_data.clear();
+        self.quad_debug_instance_data2.clear();
+        self.judgements_queue.clear();
+        self.quad_debug.clear_atlas_buffers();
+    }
+    
+    /// Responsible for managing and rendering judgments queue
+    pub fn render_judgements(&mut self, atlas: &AtlasTexture, view: &TextureView) {
+        for jdg in &self.judgements_queue {
+            let image_index = match jdg.result {
+                hit_objects::Hit::X300 => 0,
+                hit_objects::Hit::X100 => 1,
+                hit_objects::Hit::X50 => 2,
+                hit_objects::Hit::MISS => 3,
+            };
+
+            self.quad_debug.add_atlas_quad(
+                jdg.pos.x as f32, jdg.pos.y as f32,
+                50.0, 50.0,
+                image_index,
+                &atlas
+            )
+        }
+
+        self.quad_debug.render_atlas_test(view, atlas.bind_group());
     }
 
     /// Render all objects from internal buffers
@@ -1436,7 +1472,6 @@ impl<'or> OsuRenderer<'or> {
                         current_circle += 1;
                     },
                 }
-
             }
 
             // Approach circles should be always on top
@@ -1455,7 +1490,18 @@ impl<'or> OsuRenderer<'or> {
                 0,
                 0..self.approach_circle_instance_data.len() as u32,
             );
+            
+            /*
+            self.quad_debug.render_on_view_instanced(
+                &view,
+                &skin.judgments.hit_100.bind_group,
+                &self.quad_debug_buffer,
+                self.quad_debug_instance_data.len() as u32
+            );
+            */
         }
+
+        self.render_judgements(&skin.judgments_atlas, &view);
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
         self.graphics

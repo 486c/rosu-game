@@ -1,9 +1,93 @@
 use std::{io::Cursor, path::Path};
-use image::{imageops::FilterType, io::Reader as ImageReader, DynamicImage, GenericImageView};
+use image::{imageops::FilterType, io::Reader as ImageReader, DynamicImage, GenericImageView, Rgba, RgbaImage};
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension};
 
 use crate::graphics::Graphics;
 
+pub struct AtlasTexture {
+    texture: Texture,
+    /// Number of images inside atlas
+    images: u32,
+
+    /// Width of single image in atlas
+    image_width: f32,
+
+    /// Height of single image in atlas
+    image_height: f32,
+}
+
+/// Atlas Texture of multiple images
+/// Currently it is vertical only for simplicity
+impl AtlasTexture {
+    pub fn from_images(graphics: &Graphics, images: &[DynamicImage]) -> Self {
+        // Provided images should be the same size in order to fit propely
+        for i in images {
+            for j in images {
+                assert_eq!(i.dimensions(), j.dimensions());
+            }
+        }
+
+        let (f_w, f_h) = images.get(0).unwrap().dimensions();
+        
+        // Placing it in one row
+        let total_height = f_h;
+        let total_width = f_w * images.len() as u32;
+
+        let mut atlas_rgba_image = RgbaImage::new(total_width, total_height);
+
+        let mut current_x = 0;
+        for img in images {
+            for y in 0..f_h {
+                for x in 0..f_w {
+                    let pixel = img.get_pixel(x, y);
+                    atlas_rgba_image.put_pixel(current_x + x, y, pixel);
+                }
+            }
+            current_x += f_w;
+        }
+
+        let atlas_image = DynamicImage::ImageRgba8(atlas_rgba_image);
+
+        let atlas_texture = Texture::from_image(
+            atlas_image, graphics
+        );
+
+        Self {
+            texture: atlas_texture,
+            images: images.len() as u32,
+            image_width: f_w as f32,
+            image_height: f_h as f32,
+        }
+    }
+
+    pub fn coords_from_index(&self, index: u32) {
+        assert!(index > self.images);
+    }
+    
+    #[inline]
+    pub fn width(&self) -> f32 {
+        self.images as f32 * self.image_width
+    }
+
+    #[inline]
+    pub fn height(&self) -> f32 {
+        self.image_height
+    }
+
+    #[inline]
+    pub fn image_width(&self) -> f32 {
+        self.image_height
+    }
+
+    #[inline]
+    pub fn image_height(&self) -> f32 {
+        self.image_height
+    }
+
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.texture.bind_group
+    }
+}
 
 pub struct DepthTexture {
     pub view: wgpu::TextureView,
@@ -13,7 +97,7 @@ impl DepthTexture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
     pub fn new(graphics: &Graphics, width: u32, height: u32, sample_count: u32) -> Self {
-        let size = wgpu::Extent3d { // 2.
+        let size = wgpu::Extent3d {
             width,
             height,
             depth_or_array_layers: 1,
@@ -26,13 +110,14 @@ impl DepthTexture {
             sample_count,
             dimension: wgpu::TextureDimension::D2,
             format: Self::DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT // 3.
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         };
         let texture = graphics.device.create_texture(&desc);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         let _sampler = graphics.device.create_sampler(
             &wgpu::SamplerDescriptor {
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -53,9 +138,6 @@ impl DepthTexture {
 }
 
 pub struct Texture {
-    //pub texture: wgpu::Texture,
-    //pub view: wgpu::TextureView,
-    //pub sampler: wgpu::Sampler,
     pub bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
     pub width: f32,

@@ -7,9 +7,30 @@ use rosu_map::section::hit_objects::HitObject;
 use slider::Slider;
 use circle::Circle;
 
+use crate::osu_state::HitWindow;
+
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;
 pub const CIRCLE_FADEOUT_TIME: f64 = 60.0;
 
+#[derive(Copy, Clone, Debug)]
+pub enum Hit {
+    X300,
+    X100,
+    X50,
+    MISS,
+}
+
+pub enum HitResult {
+    /// Used for HitCircles
+    Hit{
+        at: f64,
+        pos: Vector2<f64>,
+        result: Hit
+    }
+}
+
+
+// TODO: Remove this rectangle shit or move it to other place
 #[derive(Clone)]
 pub struct Rectangle {
     pub top_left: Vector2<f32>,
@@ -39,6 +60,7 @@ impl Object {
             ObjectKind::Slider(slider) => slider.is_visible(time, preempt),
         }
     }
+
 
     pub fn from_rosu(values: &[HitObject]) -> Vec<Object> {
         let mut objects = Vec::with_capacity(values.len());
@@ -81,6 +103,7 @@ impl Object {
                     kind: ObjectKind::Circle(Circle {
                         start_time: value.start_time,
                         pos: circle.pos,
+                        hit_result: None,
                     }),
                 }),
                 _ => {},

@@ -188,7 +188,7 @@ impl<'ss> SongSelectionState<'ss> {
     pub fn new(graphics: Arc<Graphics<'ss>>, state_tx: Sender<OsuStateEvent>) -> Self {
         let (inner_tx, inner_rx) = std::sync::mpsc::channel();
 
-        let quad_renderer = QuadRenderer::new(graphics.clone());
+        let quad_renderer = QuadRenderer::new(graphics.clone(), false);
 
         let quad_test_buffer = quad_renderer.create_instance_buffer();
         let quad_test_instance_data = Vec::new();
@@ -443,7 +443,7 @@ impl<'ss> SongSelectionState<'ss> {
 
     pub fn render_background(&self, view: &TextureView) {
         if let Some(current_background) = &self.current_background_image {
-            self.quad_renderer.render_on_view(
+            self.quad_renderer.render_on_view_instanced(
                 &view,
                 &current_background.texture.bind_group,
                 &self.quad_test_buffer,

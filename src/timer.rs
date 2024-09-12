@@ -2,6 +2,7 @@ use std::time::{Instant, Duration};
 
 pub struct Timer {
     now: Instant,
+    started_at: Instant,
 
     /// Milliseconds 
     pub last_time: f64,
@@ -15,10 +16,9 @@ impl Timer {
             now: Instant::now(),
             last_time: 0.0,
             paused: true,
+            started_at: Instant::now(),
         }
     }
-
-
 
     pub fn is_paused(&self) -> bool {
         self.paused == true
@@ -43,6 +43,7 @@ impl Timer {
     }
 
     pub fn reset_time(&mut self) {
+        self.started_at = Instant::now();
         self.last_time = 0.0;
         self.paused = true;
     }
@@ -64,6 +65,10 @@ impl Timer {
         self.now = now;
 
         self.last_time
+    }
+
+    pub fn since_start(&mut self) -> f64 {
+        self.started_at.elapsed().as_secs_f64() * 1000.0
     }
 }
 

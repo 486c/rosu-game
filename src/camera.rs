@@ -39,10 +39,4 @@ impl Camera {
             * Matrix4::from_translation(Vector3::new(offsets.x, offsets.y, 0.0))
             * Matrix4::from_nonuniform_scale(scale, scale, 1.0);
     }
-
-    pub fn transform_double_scale(&mut self, scale: f32, scale_down: f32, offsets: Vector2<f32>) {
-        self.view = Matrix4::identity()
-            * Matrix4::from_translation(Vector3::new(offsets.x, offsets.y, 0.0))
-            * Matrix4::from_nonuniform_scale(scale, scale, 1.0);
-    }
 }

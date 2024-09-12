@@ -5,6 +5,7 @@ use winit::dpi::PhysicalPosition;
 
 use crate::{buffer_write_or_init, graphics::Graphics, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager};
 
+// TODO: control this through settings
 const TRAIL_KEEP_MS: u64 = 55;
 const TARGET_TRAIL_UPDATE_RATE: f64 = 120.0; // Per sec
 
@@ -23,7 +24,7 @@ pub struct CursorRenderer<'cr> {
 
 impl<'cr> CursorRenderer<'cr> {
     pub fn new(graphics: Arc<Graphics<'cr>>) -> Self {
-        let quad_renderer = QuadRenderer::new(graphics.clone());
+        let quad_renderer = QuadRenderer::new(graphics.clone(), false);
         quad_renderer.resize_vertex_centered(50.0, 50.0);
         let trail_instance_data = VecDeque::with_capacity(10);
         let trail_buffer = quad_renderer.create_instance_buffer();
@@ -91,7 +92,7 @@ impl<'cr> CursorRenderer<'cr> {
         );
 
         // 1. Trail
-        self.quad_renderer.render_on_view(
+        self.quad_renderer.render_on_view_instanced(
             view,
             &skin.cursor_trail.bind_group,
             &self.trail_buffer,
@@ -99,7 +100,7 @@ impl<'cr> CursorRenderer<'cr> {
         );
 
         // 2. cursor itself
-        self.quad_renderer.render_on_view(
+        self.quad_renderer.render_on_view_instanced(
             view, 
             &skin.cursor.bind_group, 
             &self.cursor_buffer, 

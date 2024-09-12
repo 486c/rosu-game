@@ -3,7 +3,7 @@
 pub struct QuadInstance {
     pub pos: [f32; 3],
     pub color: [f32; 3],
-    pub alpha: f32
+    pub alpha: f32,
 }
 
 impl QuadInstance {
@@ -29,5 +29,15 @@ impl QuadInstance {
             alpha: 1.0
         }
     }
+}
 
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct QuadInstanceAtlas {
+    pub pos: [f32; 3],
+    pub color: [f32; 3],
+    // 4 uv's for each corner containing two x and y coordinates
+    pub uvs: [[f32; 2]; 4],
+    pub alpha: f32,
 }

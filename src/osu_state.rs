@@ -1,5 +1,6 @@
-use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc}, time::Duration};
+use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc}, time::{Duration, Instant}};
 
+use cgmath::Vector2;
 use egui::{RawInput, Slider};
 use rodio::{source::UniformSourceIterator, Decoder, Sink, Source};
 use rosu_map::Beatmap;
@@ -7,7 +8,7 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{Object, ObjectKind}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{HitResult, Object, ObjectKind}, math::{calc_playfield, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{OsuInput, OsuInputState}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 
 
@@ -40,8 +41,28 @@ fn calculate_preempt_fadein(ar: f32) -> (f32, f32) {
     }
 }
 
-fn calculate_hit_window(od: f32) -> (f32, f32, f32) {
-    (80.0 - 6.0 * od, 140.0 - 8.0 * od, 200.0 - 10.0 * od)
+pub struct HitWindow {
+    pub x300: f64,
+    pub x100: f64,
+    pub x50: f64,
+}
+
+impl Default for HitWindow {
+    fn default() -> Self {
+        Self {
+            x300: 0.0,
+            x100: 0.0,
+            x50: 0.0,
+        }
+    }
+}
+
+fn calculate_hit_window(od: f32) -> HitWindow {
+    HitWindow {
+        x300: 80.0 - 6.0 * (od as f64),
+        x100: 140.0 - 8.0 * (od as f64),
+        x50: 200.0 - 10.0 * (od as f64),
+    }
 }
 
 pub struct OsuState<'s> {
@@ -64,7 +85,7 @@ pub struct OsuState<'s> {
     current_beatmap: Option<Beatmap>,
     preempt: f32,
     fadein: f32,
-    hit_offset: f32,
+    current_hit_window: HitWindow,
 
     hit_objects: Vec<Object>,
     objects_queue: Vec<usize>,
@@ -72,7 +93,12 @@ pub struct OsuState<'s> {
     osu_clock: Timer,
     
     cursor_renderer: CursorRenderer<'s>,
-    
+
+    current_input_state: OsuInputState,
+    input_buffer: Vec<OsuInput>,
+
+    current_screen_size: Vector2<f32>,
+    current_hit_circle_diameter: f32,
 }
 
 impl<'s> OsuState<'s> {
@@ -94,7 +120,6 @@ impl<'s> OsuState<'s> {
             cursor_renderer: CursorRenderer::new(graphics.clone()),
             event_receiver,
             preempt: 0.0,
-            hit_offset: 0.0,
             fadein: 0.0,
             osu_renderer,
             window,
@@ -110,6 +135,11 @@ impl<'s> OsuState<'s> {
             current_state: OsuStates::SongSelection,
             song_select,
             event_sender,
+            input_buffer: Vec::new(),
+            current_hit_window: Default::default(),
+            current_input_state: OsuInputState::default(),
+            current_screen_size: Vector2::new(1.0, 1.0),
+            current_hit_circle_diameter: 1.0,
         }
     }
 
@@ -147,11 +177,11 @@ impl<'s> OsuState<'s> {
         }
 
         let (preempt, fadein) = calculate_preempt_fadein(map.approach_rate);
-        let (_x300, _x100, x50) = calculate_hit_window(map.overall_difficulty);
+        let hit_window = calculate_hit_window(map.overall_difficulty);
 
         self.preempt = preempt;
         self.fadein = fadein;
-        self.hit_offset = x50;
+        self.current_hit_window = hit_window;
 
         // Convert rosu_map object to our objects
         //let mut out_objects = Vec::with_capacity(map.hit_objects.len());
@@ -161,6 +191,8 @@ impl<'s> OsuState<'s> {
 
         self.current_beatmap = Some(map);
         self.apply_beatmap_transformations();
+
+        self.sink.play();
     }
 
     pub fn set_audio<I>(&self, audio: I) 
@@ -176,9 +208,13 @@ impl<'s> OsuState<'s> {
         };
 
         self.osu_renderer.on_cs_change(cs);
+        self.current_hit_circle_diameter = get_hitcircle_diameter(cs);
     }
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
+        self.current_screen_size.x = new_size.width as f32;
+        self.current_screen_size.y = new_size.height as f32;
+
         self.cursor_renderer.on_resize(new_size);
         self.osu_renderer.on_resize(new_size);
         self.song_select.on_resize(new_size);
@@ -190,8 +226,15 @@ impl<'s> OsuState<'s> {
                 if key_code == KeyCode::Escape {
                     let _ = self.event_sender.send(OsuStateEvent::ToSongSelection);
                 }
+                
+                let ts = self.osu_clock.since_start();
 
-                if key_code == KeyCode::KeyZ || key_code == KeyCode::KeyX {
+                if key_code == KeyCode::KeyZ {
+                    self.input_buffer.push(OsuInput::key(ts, true, false, false, false));
+                }
+
+                if key_code == KeyCode::KeyX {
+                    self.input_buffer.push(OsuInput::key(ts, false, true, false, false));
                 }
             },
             OsuStates::SongSelection => {
@@ -200,8 +243,40 @@ impl<'s> OsuState<'s> {
         }
     }
 
+    pub fn on_pressed_release(&mut self, key_code: KeyCode) {
+        match self.current_state {
+            OsuStates::Playing => {
+
+                let ts = self.osu_clock.since_start();
+                if key_code == KeyCode::KeyZ {
+                    self.input_buffer.push(OsuInput::key(ts, false, false, false, false));
+                }
+
+                if key_code == KeyCode::KeyX {
+                    self.input_buffer.push(OsuInput::key(ts, false, false, false, false));
+                }
+            }
+            _ => {}
+        };
+    }
+
     pub fn on_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
         self.cursor_renderer.on_cursor_moved(position);
+
+        match self.current_state {
+            OsuStates::Playing => {
+                let ts = self.osu_clock.since_start();
+                let mut recv_pos = Vector2::new(position.x as f32, position.y as f32);
+                let (scale, offsets) = calc_playfield(self.current_screen_size.x, self.current_screen_size.y);
+
+                recv_pos -= offsets;
+                recv_pos /= scale;
+                
+                let pos = Vector2::new(recv_pos.x as f64, recv_pos.y as f64);
+                self.input_buffer.push(OsuInput::moved(ts, pos))
+            },
+            _ => {},
+        }
     }
 
     pub fn update_egui(&mut self, input: RawInput) {
@@ -259,6 +334,55 @@ impl<'s> OsuState<'s> {
         self.egui.output = Some(output);
     }
 
+    pub fn process_inputs(&mut self, time: f64) {
+        self.input_buffer.iter().for_each(|i| {
+            assert!(i.ts <= time);
+        });
+
+        'input_loop: for input in &self.input_buffer {
+            self.current_input_state.update(input);
+            if !self.current_input_state.is_key_hit() {
+                continue;
+            }
+
+            let time = input.ts;
+
+            'obj_loop: for obj in self.hit_objects.iter_mut() {
+                match &mut obj.kind {
+                    ObjectKind::Circle(circle) => {
+                        // If holding dont even try to process input
+                        // for circle
+                        if self.current_input_state.is_holding() {
+                            continue 'obj_loop;
+                        }
+
+                        if circle.hit_result.is_none() {
+                            let result = circle.is_hittable(
+                                time, 
+                                &self.current_hit_window, 
+                                self.current_input_state.cursor.into(),
+                                self.current_hit_circle_diameter
+                            );
+
+                            if let Some(result) = result {
+                                tracing::info!("hit res: {:?} div: {}", result, time - obj.start_time);
+                                circle.hit_result = Some(HitResult::Hit {
+                                    pos: self.current_input_state.cursor.into(),
+                                    at: time,
+                                    result,
+                                });
+                                continue 'input_loop;
+                            }
+                        }
+                    },
+                    ObjectKind::Slider(_) => {},
+                }
+            }
+        }
+
+        self.input_buffer.clear();
+    }
+
     // Going through every object on beatmap and preparing it to
     // assigned buffers
     pub fn prepare_objects_for_renderer(&mut self, time: f64) {
@@ -269,12 +393,11 @@ impl<'s> OsuState<'s> {
                 continue;
             }
 
-            // TODO circles
             match &mut obj.kind {
-                ObjectKind::Circle(_) => {}
                 ObjectKind::Slider(slider) => {
                     self.osu_renderer.prepare_and_render_slider_texture(slider, &self.skin_manager, &self.config);
                 }
+                _ => {},
             }
 
             self.objects_queue.push(i);
@@ -315,6 +438,7 @@ impl<'s> OsuState<'s> {
                     },
                     OsuStateEvent::ToSongSelection => {
                         self.osu_clock.reset_time();
+                        self.input_buffer.clear();
                         self.current_state = OsuStates::SongSelection;
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {
@@ -371,9 +495,6 @@ impl<'s> OsuState<'s> {
 
         match self.current_state {
             OsuStates::Playing => {
-                if self.sink.is_paused() {
-                    self.sink.play()
-                }
 
                 self.prepare_objects_for_renderer(self.osu_clock.get_time());
 
@@ -393,7 +514,9 @@ impl<'s> OsuState<'s> {
 
                 //self.render_playing(&view);
 
+
                 self.osu_clock.update();
+                self.process_inputs(self.osu_clock.get_time());
             },
             OsuStates::SongSelection => {
                 let egui_output = self.song_select.render(

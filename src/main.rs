@@ -35,6 +35,7 @@ mod quad_instance;
 mod song_importer_ui;
 mod osu_cursor_renderer;
 mod frameless_source;
+mod osu_input;
 
 fn main() {
     let _client = tracy_client::Client::start();
@@ -108,6 +109,7 @@ fn main() {
                                         osu_state.on_pressed_down(key_code);
                                     },
                                     winit::event::ElementState::Released => {
+                                        osu_state.on_pressed_release(key_code);
                                     },
                                 }
                             },
