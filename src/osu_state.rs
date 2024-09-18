@@ -172,7 +172,7 @@ impl<'s> OsuState<'s> {
             let file = BufReader::new(File::open(audio_file).unwrap());
             let source = FramelessSource::new(Decoder::new(file).expect("Failed to load audio file source"));
             let source = UniformSourceIterator::new(source, 2, 44100);
-            self.set_audio(source);
+            self.set_audio(source.delay(Duration::from_millis(30)));
             println!("open_beatmap: Initialized a new audio file!");
         }
 
@@ -334,44 +334,46 @@ impl<'s> OsuState<'s> {
         self.egui.output = Some(output);
     }
 
-    pub fn process_inputs(&mut self, time: f64) {
+    pub fn process_inputs(&mut self, process_time: f64) {
         self.input_buffer.iter().for_each(|i| {
-            assert!(i.ts <= time);
+            assert!(i.ts <= process_time);
         });
 
         'input_loop: for input in &self.input_buffer {
             self.current_input_state.update(input);
             if !self.current_input_state.is_key_hit() {
-                continue;
+                continue 'input_loop;
             }
 
-            let time = input.ts;
+            let input_time = input.ts;
 
             'obj_loop: for obj in self.hit_objects.iter_mut() {
                 match &mut obj.kind {
                     ObjectKind::Circle(circle) => {
-                        // If holding dont even try to process input
-                        // for circle
+                        // If holding dont even try to process input for circle
                         if self.current_input_state.is_holding() {
                             continue 'obj_loop;
                         }
 
                         if circle.hit_result.is_none() {
                             let result = circle.is_hittable(
-                                time, 
+                                input_time, 
                                 &self.current_hit_window, 
                                 self.current_input_state.cursor.into(),
                                 self.current_hit_circle_diameter
                             );
 
                             if let Some(result) = result {
-                                tracing::info!("hit res: {:?} div: {}", result, time - obj.start_time);
+                                tracing::info!("hit res: {:?} div: {} | c: {:.2} i: {:.2}", result, obj.start_time - input_time, circle.start_time, input_time);
                                 circle.hit_result = Some(HitResult::Hit {
                                     pos: self.current_input_state.cursor.into(),
-                                    at: time,
+                                    at: input_time,
                                     result,
                                 });
-                                continue 'input_loop;
+
+                                self.current_input_state.set_no_hit();
+
+                                break 'obj_loop;
                             }
                         }
                     },
@@ -422,6 +424,8 @@ impl<'s> OsuState<'s> {
     pub fn update(&mut self) {
         let _span = tracy_client::span!("osu_state update");
         self.cursor_renderer.update();
+
+        //tracing::info!("{:.?}", self.sink.get_pos().as_secs_f64() * 1000.0 - self.osu_clock.get_time());
         
         // Recv all events
         let event = self.event_receiver.try_recv();
@@ -439,6 +443,7 @@ impl<'s> OsuState<'s> {
                     OsuStateEvent::ToSongSelection => {
                         self.osu_clock.reset_time();
                         self.input_buffer.clear();
+                        self.current_input_state.clear();
                         self.current_state = OsuStates::SongSelection;
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {

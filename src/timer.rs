@@ -68,7 +68,7 @@ impl Timer {
     }
 
     pub fn since_start(&mut self) -> f64 {
-        self.started_at.elapsed().as_secs_f64() * 1000.0
+        (self.now.elapsed().as_secs_f64() * 1000.0) + self.last_time
     }
 }
 

@@ -6,6 +6,7 @@ pub struct OsuInputState {
     pub cursor: CursorState,
     pub keyboard: KeyboardState,
     pub prev_keyboard: KeyboardState,
+    pub no_hit: bool,
 }
 
 impl OsuInputState {
@@ -18,17 +19,36 @@ impl OsuInputState {
             OsuInputKind::Keyboard(state) => {
                 self.prev_keyboard = self.keyboard;
                 self.keyboard = state;
+
+                self.no_hit = false;
             },
             OsuInputKind::CursorMoved(state) => self.cursor = state,
         }
     }
 
     pub fn is_key_hit(&self) -> bool {
-        self.keyboard.is_key_hit()
+        if self.no_hit {
+            return false
+        } else {
+            self.keyboard.is_key_hit()
+        }
     }
 
     pub fn is_holding(&self) -> bool {
         self.keyboard.is_key_hit() && self.prev_keyboard.is_key_hit()
+    }
+
+    pub fn clear(&mut self) {
+        let default = OsuInputState::default();
+        self.ts = 0.0;
+        self.keyboard = default.keyboard;
+        self.prev_keyboard = default.keyboard;
+        self.cursor = default.cursor;
+        self.no_hit = false;
+    }
+
+    pub fn set_no_hit(&mut self) {
+        self.no_hit = true;
     }
 }
 
@@ -39,6 +59,7 @@ impl Default for OsuInputState {
             cursor: CursorState { x: 0.0, y: 0.0 },
             keyboard: KeyboardState { k1: false, k2: false, m1: false, m2: false },
             prev_keyboard: KeyboardState { k1: false, k2: false, m1: false, m2: false },
+            no_hit: false,
         }
     }
 }

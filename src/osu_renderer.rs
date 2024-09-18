@@ -761,7 +761,7 @@ impl<'or> OsuRenderer<'or> {
 
                     let alpha = calc_progress(time, start_time, end_time).clamp(0.0, 1.0);
 
-                    let approach_progress = calc_progress(time, start_time, object.start_time);
+                    let approach_progress = calc_progress(time, start_time, circle.start_time);
 
 
                     let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);

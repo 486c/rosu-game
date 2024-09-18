@@ -33,6 +33,7 @@ fn vs_main(
 	out.uv = model.uv;
 	out.alpha = instance.alpha;
 
+
     out.clip_position = camera.proj * camera.view
 		* vec4<f32>(
 			model.pos.x + instance.pos.x, 

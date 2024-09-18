@@ -35,7 +35,7 @@ impl<'qr> QuadRenderer<'qr> {
     ) -> Self {
         let quad_shader = graphics
             .device
-            .create_shader_module(wgpu::include_wgsl!("shaders/hit_circle.wgsl"));
+            .create_shader_module(wgpu::include_wgsl!("shaders/quad.wgsl"));
 
         let surface_config = graphics.get_surface_config();
 
@@ -116,7 +116,7 @@ impl<'qr> QuadRenderer<'qr> {
             graphics
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("hit_circle render pipeline"),
+                    label: Some("quad render pipeline"),
                     layout: Some(&quad_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &quad_shader,
@@ -188,7 +188,7 @@ impl<'qr> QuadRenderer<'qr> {
                 graphics
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("hit_circle render pipeline"),
+                    label: Some("altas quad render pipeline"),
                     layout: Some(&quad_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &atlas_quad_shader,
