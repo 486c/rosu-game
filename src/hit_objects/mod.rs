@@ -9,8 +9,10 @@ use circle::Circle;
 
 use crate::osu_state::HitWindow;
 
+// In ms
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;
 pub const CIRCLE_FADEOUT_TIME: f64 = 60.0;
+pub const JUDGMENTS_FADEOUT_TIME: f64 = 350.0;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Hit {
@@ -54,13 +56,19 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn is_visible(&self, time: f64, preempt: f32) -> bool {
+    pub fn is_visible(&self, time: f64, preempt: f32, hit_window: &HitWindow) -> bool {
         match &self.kind {
-            ObjectKind::Circle(circle) => circle.is_visible(time, preempt),
+            ObjectKind::Circle(circle) => circle.is_visible(time, preempt, hit_window),
             ObjectKind::Slider(slider) => slider.is_visible(time, preempt),
         }
     }
 
+    pub fn is_judgements_visible(&self, time: f64, preempt: f32) -> bool {
+        match &self.kind {
+            ObjectKind::Circle(circle) => circle.is_judgements_visible(time, preempt),
+            ObjectKind::Slider(_) => false,
+        }
+    }
 
     pub fn from_rosu(values: &[HitObject]) -> Vec<Object> {
         let mut objects = Vec::with_capacity(values.len());

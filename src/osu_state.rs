@@ -88,7 +88,9 @@ pub struct OsuState<'s> {
     current_hit_window: HitWindow,
 
     hit_objects: Vec<Object>,
-    objects_queue: Vec<usize>,
+
+    objects_render_queue: Vec<usize>,
+    objects_judgments_render_queue: Vec<usize>,
 
     osu_clock: Timer,
     
@@ -127,7 +129,7 @@ impl<'s> OsuState<'s> {
             egui,
             sink,
             osu_clock: Timer::new(),
-            objects_queue: Vec::with_capacity(20),
+            objects_render_queue: Vec::with_capacity(20),
             hit_objects: Vec::new(),
             skin_manager,
             config,
@@ -140,6 +142,7 @@ impl<'s> OsuState<'s> {
             current_input_state: OsuInputState::default(),
             current_screen_size: Vector2::new(1.0, 1.0),
             current_hit_circle_diameter: 1.0,
+            objects_judgments_render_queue: Vec::new(),
         }
     }
 
@@ -391,7 +394,11 @@ impl<'s> OsuState<'s> {
         let _span = tracy_client::span!("osu_state prepare objects");
 
         for (i, obj) in self.hit_objects.iter_mut().enumerate().rev() {
-            if !obj.is_visible(time, self.preempt) {
+            if obj.is_judgements_visible(time, self.preempt) {
+                self.objects_judgments_render_queue.push(i);
+            };
+
+            if !obj.is_visible(time, self.preempt, &self.current_hit_window) {
                 continue;
             }
 
@@ -402,12 +409,14 @@ impl<'s> OsuState<'s> {
                 _ => {},
             }
 
-            self.objects_queue.push(i);
+            self.objects_render_queue.push(i);
         }
+
+        self.osu_renderer.prepare_judgements(time, &self.objects_judgments_render_queue, &self.hit_objects);
 
         self.osu_renderer.prepare_objects(
             time, self.preempt, self.fadein,
-            &self.objects_queue, &self.hit_objects,
+            &self.objects_render_queue, &self.hit_objects,
             &self.skin_manager
         );
 
@@ -509,16 +518,16 @@ impl<'s> OsuState<'s> {
 
                 self.osu_renderer.render_objects(
                     &view,
-                    &self.objects_queue, &self.hit_objects,
+                    &self.objects_render_queue, &self.hit_objects,
                     &self.skin_manager,
                 )?;
 
                 // Clearing objects queue only after they successfully rendered
-                self.objects_queue.clear();
+                self.objects_render_queue.clear();
+                self.objects_judgments_render_queue.clear();
                 self.render_egui(&view)?;
 
                 //self.render_playing(&view);
-
 
                 self.osu_clock.update();
                 self.process_inputs(self.osu_clock.get_time());

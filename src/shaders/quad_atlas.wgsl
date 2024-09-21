@@ -10,11 +10,13 @@ var<uniform> camera: CameraUniform;
 struct VertexInput {
 	@location(0) pos: vec2<f32>,
 	@location(1) uv: vec2<f32>,
+	@location(2) alpha: f32,
 }
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
 	@location(0) uv: vec2<f32>,
+	@location(1) alpha: f32
 };
 
 @vertex
@@ -23,6 +25,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 	out.uv = model.uv;
+	out.alpha = model.alpha;
 
     out.clip_position = camera.proj * camera.view
 		* vec4<f32>(
@@ -44,7 +47,7 @@ var hitrcirle_texture_sampler: sampler;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	var hc = textureSample(hitcircle_texture, hitrcirle_texture_sampler, in.uv);
-	//hc.w = hc.w * in.alpha;
+	hc.w = hc.w * in.alpha;
 
 	return hc;
 }

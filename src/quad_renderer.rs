@@ -3,11 +3,11 @@ use std::sync::Arc;
 use cgmath::Vector2;
 use wgpu::{util::DeviceExt, BindGroup, Buffer, BufferUsages, IndexFormat, TextureView};
 
-use crate::{buffer_write_or_init, camera::Camera, graphics::Graphics, quad_instance::QuadInstance, texture::{AtlasTexture, Texture}, vertex::Vertex};
+use crate::{buffer_write_or_init, camera::Camera, graphics::Graphics, quad_instance::QuadInstance, texture::{AtlasTexture, Texture}, vertex::{AtlasQuadVertex, Vertex}};
 
 pub struct AtlasInfo {
     atlas_vertex_buffer: wgpu::Buffer,
-    atlas_vertex_data: Vec<Vertex>,
+    atlas_vertex_data: Vec<AtlasQuadVertex>,
     atlas_pipeline: wgpu::RenderPipeline
 }
 
@@ -165,9 +165,10 @@ impl<'qr> QuadRenderer<'qr> {
                 .create_shader_module(wgpu::include_wgsl!("shaders/quad_atlas.wgsl"));
 
             let atlas_vertex_data = Vec::new();
+
             let atlas_vertex_buffer = graphics.device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: None,
+                    label: Some("atlas quad vertex buffer"),
                     contents: bytemuck::cast_slice(&atlas_vertex_data),
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 });
@@ -176,7 +177,7 @@ impl<'qr> QuadRenderer<'qr> {
                 graphics
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: None,
+                    label: Some("atlas quad pipeline layout"),
                     bind_group_layouts: &[
                         &Texture::default_bind_group_layout(&graphics, 1),
                         &camera_bind_group_layout,
@@ -193,7 +194,7 @@ impl<'qr> QuadRenderer<'qr> {
                     vertex: wgpu::VertexState {
                         module: &atlas_quad_shader,
                         entry_point: "vs_main",
-                        buffers: &[Vertex::desc()],
+                        buffers: &[AtlasQuadVertex::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
@@ -292,8 +293,9 @@ impl<'qr> QuadRenderer<'qr> {
         x: f32, y: f32,
         width: f32, height: f32,
         image_index: u32,
+        alpha: f32,
         atlas: &AtlasTexture
-    ) -> [Vertex; 6] {
+    ) -> [AtlasQuadVertex; 6] {
         let atlas_width = atlas.width();
         let u_min = image_index as f32 * atlas.image_width() / atlas_width;
         let u_max = (image_index as f32 + 1.0) * atlas.image_width() / atlas_width;
@@ -314,14 +316,14 @@ impl<'qr> QuadRenderer<'qr> {
 
         [
             // First triangle (bottom-left, top-left, top-right)
-            Vertex { pos: [x - half_width, y - half_height, 0.0].into(), uv: [u_min, v_min] }, // Bottom-left
-            Vertex { pos: [x - half_width, y + half_height, 0.0].into(), uv: [u_min, v_max] }, // Top-left
-            Vertex { pos: [x + half_width, y + half_height, 0.0].into(), uv: [u_max, v_max] }, // Top-right
+            AtlasQuadVertex { pos: [x - half_width, y - half_height, 0.0].into(), uv: [u_min, v_min], alpha }, // Bottom-left
+            AtlasQuadVertex { pos: [x - half_width, y + half_height, 0.0].into(), uv: [u_min, v_max], alpha }, // Top-left
+            AtlasQuadVertex { pos: [x + half_width, y + half_height, 0.0].into(), uv: [u_max, v_max], alpha }, // Top-right
 
             // Second triangle (bottom-left, top-right, bottom-right)
-            Vertex { pos: [x - half_width, y - half_height, 0.0].into(), uv: [u_min, v_min] }, // Bottom-left
-            Vertex { pos: [x + half_width, y + half_height, 0.0].into(), uv: [u_max, v_max] }, // Top-right
-            Vertex { pos: [x + half_width, y - half_height, 0.0].into(), uv: [u_max, v_min] }, // Bottom-right
+            AtlasQuadVertex { pos: [x - half_width, y - half_height, 0.0].into(), uv: [u_min, v_min], alpha }, // Bottom-left
+            AtlasQuadVertex { pos: [x + half_width, y + half_height, 0.0].into(), uv: [u_max, v_max], alpha }, // Top-right
+            AtlasQuadVertex { pos: [x + half_width, y - half_height, 0.0].into(), uv: [u_max, v_min], alpha }, // Bottom-right
         ]
     }
 
@@ -330,9 +332,10 @@ impl<'qr> QuadRenderer<'qr> {
         x: f32, y: f32,
         width: f32, height: f32,
         image_index: u32,
+        alpha: f32,
         atlas: &AtlasTexture
     ) {
-        let verticies = Self::atlas_quad_centered(x,y, width, height, image_index, atlas);
+        let verticies = Self::atlas_quad_centered(x,y, width, height, image_index, alpha, atlas);
 
         if let Some(ref mut atlas) = &mut self.atlas {
             atlas.atlas_vertex_data.extend(verticies);
@@ -342,7 +345,7 @@ impl<'qr> QuadRenderer<'qr> {
             let data_len = atlas.atlas_vertex_data.len() as u64;
             let buffer_bytes_size = atlas.atlas_vertex_buffer.size();
             
-            let buffer_len = buffer_bytes_size / size_of::<Vertex>() as u64;
+            let buffer_len = buffer_bytes_size / size_of::<AtlasQuadVertex>() as u64;
 
             if data_len <= buffer_len {
                 self.graphics.queue.write_buffer(&atlas.atlas_vertex_buffer, 0, bytemuck::cast_slice(&atlas.atlas_vertex_data));

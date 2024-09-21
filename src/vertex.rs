@@ -6,6 +6,27 @@ static PI: f32 = 3.1415926535897932384626433832795028841971693993751058209749445
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AtlasQuadVertex {
+    pub pos: Vector3::<f32>,
+    pub uv: [f32; 2],
+    pub alpha: f32,
+}
+
+impl AtlasQuadVertex {
+    const ATTRIBS: [wgpu::VertexAttribute; 3] = 
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32];
+
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     pub pos: Vector3::<f32>,
     pub uv: [f32; 2],

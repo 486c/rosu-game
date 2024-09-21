@@ -3,7 +3,7 @@ use rosu_map::util::Pos;
 
 use crate::osu_state::HitWindow;
 
-use super::{Hit, HitResult, CIRCLE_FADEOUT_TIME};
+use super::{Hit, HitResult, CIRCLE_FADEOUT_TIME, JUDGMENTS_FADEOUT_TIME};
 
 pub struct Circle {
     pub start_time: f64,
@@ -13,8 +13,13 @@ pub struct Circle {
 }
 
 impl Circle {
-    pub fn is_visible(&self, time: f64, preempt: f32) -> bool {
-        time > self.start_time - preempt as f64 && time < self.start_time + CIRCLE_FADEOUT_TIME
+    pub fn is_visible(&self, time: f64, preempt: f32, hit_window: &HitWindow) -> bool {
+        time > self.start_time - preempt as f64 && time < self.start_time + CIRCLE_FADEOUT_TIME + hit_window.x50
+    }
+
+
+    pub fn is_judgements_visible(&self, time: f64, preempt: f32) -> bool {
+        time > self.start_time - preempt as f64 && time < self.start_time + (CIRCLE_FADEOUT_TIME * 2.0) + (JUDGMENTS_FADEOUT_TIME * 2.0)
     }
 
     pub fn is_hittable(

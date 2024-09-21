@@ -13,13 +13,12 @@ static SLIDER_SCALE: f32 = 2.0;
 
 pub struct JudgementsEntry {
     pos: Vector2<f64>,
-    start: f64,
-    end: f64,
+    alpha: f32,
     result: hit_objects::Hit,
 }
 
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, JUDGMENTS_FADEOUT_TIME, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 #[macro_export]
@@ -153,13 +152,6 @@ impl<'or> OsuRenderer<'or> {
         let quad_verticies = Vertex::quad_centered(1.0, 1.0);
 
         let all_depth = None;
-            //Some(wgpu::DepthStencilState {
-                //format: DepthTexture::DEPTH_FORMAT,
-                //depth_write_enabled: true,
-                //depth_compare: wgpu::CompareFunction::LessEqual, // 1.
-                //stencil: wgpu::StencilState::default(),     // 2.
-                //bias: wgpu::DepthBiasState::default(),
-            //});
 
         let hit_circle_vertex_buffer =
             graphics
@@ -731,6 +723,34 @@ impl<'or> OsuRenderer<'or> {
             .queue
             .write_buffer(&self.slider_settings_buffer, 0, bytemuck::bytes_of(&config.slider));
     }
+
+    pub fn prepare_judgements(&mut self, time: f64, queue: &[usize], objects: &[Object]) {
+        for index in queue {
+            let object = &objects[*index];
+
+            match &object.kind {
+                hit_objects::ObjectKind::Circle(circle) => {
+                    if let Some(hit_result) = &circle.hit_result {
+                        match hit_result {
+                            hit_objects::HitResult::Hit { at, pos, result } => {
+
+                                let alpha = 1.0 - calc_progress(time, *at, at + JUDGMENTS_FADEOUT_TIME);
+
+                                let entry = JudgementsEntry{
+                                    pos: Vector2::new(circle.pos.x as f64, circle.pos.y as f64),
+                                    alpha: alpha as f32,
+                                    result: *result
+                                };
+
+                                self.judgements_queue.push(entry);
+                            },
+                        }
+                    }
+                },
+                hit_objects::ObjectKind::Slider(_) => todo!(),
+            }
+        };
+    }
     
     // TODO split into separate functions to avoid endless nesting and general mess
     pub fn prepare_objects(
@@ -755,33 +775,23 @@ impl<'or> OsuRenderer<'or> {
 
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
+                    // Approach should scale-in exactly at hit time
+                    // But hit-circle should stay until:
+                    // 1. HitResult is present => TODO
+                    // 2. If no HitResult is present => stay until end time of late x50 hitwindow is reached
+
                     let _span = tracy_client::span!("osu_renderer prepare_objects2::circle");
                     let start_time = object.start_time - preempt as f64;
-                    let end_time = start_time + fadein as f64;
+                    let fade_in_end_time = start_time + fadein as f64;
 
-                    let alpha = calc_progress(time, start_time, end_time).clamp(0.0, 1.0);
+                    let alpha = calc_progress(time, start_time, fade_in_end_time).clamp(0.0, 1.0);
 
                     let approach_progress = calc_progress(time, start_time, circle.start_time);
 
-
                     let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);
 
-                    self.hit_circle_instance_data.push(HitCircleInstance::new(
-                        circle.pos.x,
-                        circle.pos.y,
-                        0.0,
-                        alpha as f32,
-                        color,
-                    ));
-
-                    self.approach_circle_instance_data
-                        .push(ApproachCircleInstance::new(
-                            circle.pos.x,
-                            circle.pos.y,
-                            0.0,
-                            alpha as f32,
-                            approach_scale as f32,
-                        ));
+                    let mut hit_circle_alpha = alpha;
+                    let mut render_approach = true;
 
                     if let Some(hit_result) = &circle.hit_result {
                         self.quad_debug_instance_data.push(
@@ -790,15 +800,46 @@ impl<'or> OsuRenderer<'or> {
 
                         match hit_result {
                             hit_objects::HitResult::Hit { at, result, .. } => {
-                                self.judgements_queue.push(JudgementsEntry{
-                                    pos: Vector2::new(circle.pos.x as f64, circle.pos.y as f64),
-                                    start: *at,
-                                    end: *at + 250.0, // TODO move to const or something
-                                    result: *result
-                                });
+                                // Hit appears early than the exact hit point is reached
+                                // Apply fadeout immediatly
+                                hit_circle_alpha = 1.0 - calc_progress(time, *at, *at + (CIRCLE_FADEOUT_TIME * 2.0));
+                                render_approach = false;
+
                             },
                         }
+                    } else {
+                        // In case if there are no hit result keep alpha at 1.0 until late x50 hit window point
+                        // is passed
+
+                        if time >= object.start_time {
+                            hit_circle_alpha = 1.0;
+                        }
                     }
+
+                    if time >= object.start_time {
+                        render_approach = false;
+                    }
+                    
+                    if render_approach {
+                        self.approach_circle_instance_data
+                            .push(ApproachCircleInstance::new(
+                                circle.pos.x,
+                                circle.pos.y,
+                                0.0,
+                                alpha as f32,
+                                approach_scale as f32,
+                            ));
+                    }
+
+                    let hit_circle_instance = HitCircleInstance::new(
+                        circle.pos.x,
+                        circle.pos.y,
+                        0.0,
+                        hit_circle_alpha as f32,
+                        color,
+                    );
+
+                    self.hit_circle_instance_data.push(hit_circle_instance);
                 }
                 hit_objects::ObjectKind::Slider(slider) => {
                     let _span = tracy_client::span!("osu_renderer prepare_objects2::circle");
@@ -1319,6 +1360,7 @@ impl<'or> OsuRenderer<'or> {
                 jdg.pos.x as f32, jdg.pos.y as f32,
                 50.0, 50.0,
                 image_index,
+                jdg.alpha,
                 &atlas
             )
         }
