@@ -22,7 +22,10 @@ impl OsuInputState {
 
                 self.no_hit = false;
             },
-            OsuInputKind::CursorMoved(state) => self.cursor = state,
+            OsuInputKind::CursorMoved(state) => {
+                self.prev_keyboard = self.keyboard;
+                self.cursor = state
+            },
         }
     }
 
@@ -137,4 +140,24 @@ impl OsuInput {
             _ => false,
         }
     }
+}
+
+#[test]
+fn test_inputs() {
+    let inputs = [
+        OsuInput::key(50.0, true, false, false, false),
+        OsuInput::key(100.0, true, false, false, false),
+        OsuInput::key(300.0, true, false, false, false),
+    ];
+
+    let mut state = OsuInputState::default();
+
+    state.update(&inputs[0]);
+    assert_eq!(state.is_holding(), false);
+
+    state.update(&inputs[1]);
+    assert_eq!(state.is_holding(), true);
+
+    state.update(&inputs[2]);
+    assert_eq!(state.is_holding(), true);
 }
