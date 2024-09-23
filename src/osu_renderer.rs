@@ -18,7 +18,7 @@ pub struct JudgementsEntry {
 }
 
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, JUDGMENTS_FADEOUT_TIME, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 #[macro_export]
@@ -791,6 +791,7 @@ impl<'or> OsuRenderer<'or> {
                     let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);
 
                     let mut hit_circle_alpha = alpha;
+                    let mut hit_circle_scale = 1.0;
                     let mut render_approach = true;
 
                     if let Some(hit_result) = &circle.hit_result {
@@ -802,7 +803,9 @@ impl<'or> OsuRenderer<'or> {
                             hit_objects::HitResult::Hit { at, result, .. } => {
                                 // Hit appears early than the exact hit point is reached
                                 // Apply fadeout immediatly
-                                hit_circle_alpha = 1.0 - calc_progress(time, *at, *at + (CIRCLE_FADEOUT_TIME * 2.0));
+                                let progress = calc_progress(time, *at, *at + (CIRCLE_FADEOUT_TIME * 2.0));
+                                hit_circle_alpha = 1.0 - progress;
+                                hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
                                 render_approach = false;
 
                             },
@@ -836,6 +839,7 @@ impl<'or> OsuRenderer<'or> {
                         circle.pos.y,
                         0.0,
                         hit_circle_alpha as f32,
+                        hit_circle_scale as f32,
                         color,
                     );
 
@@ -908,6 +912,7 @@ impl<'or> OsuRenderer<'or> {
                             pos: [pos.x + slider.pos.x, pos.y + slider.pos.y, 0.0],
                             alpha: body_alpha as f32,
                             color: color.to_gpu_values(),
+                            scale: 1.0
                         });
 
                         follow_circle = Some(self.follow_points_instance_data.len() as u32);
@@ -937,6 +942,7 @@ impl<'or> OsuRenderer<'or> {
                                 slider.pos.y,
                                 0.0,
                                 if approach_alpha > 0.0 { body_alpha as f32 } else { 0.0 }, // TODO XD
+                                1.0,
                                 color,
                         ));
 
@@ -1431,7 +1437,7 @@ impl<'or> OsuRenderer<'or> {
                         );
 
                         // overlay
-                        render_pass.set_pipeline(&self.hit_circle_pipeline);
+                        render_pass.set_pipeline(&self.quad_colored_pipeline);
                         render_pass.set_bind_group(0, &skin.hit_circle_overlay.bind_group, &[]);
                         render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
                         render_pass.set_vertex_buffer(1, self.hit_circle_instance_buffer.slice(..));

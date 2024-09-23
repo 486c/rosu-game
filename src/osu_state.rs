@@ -367,7 +367,9 @@ impl<'s> OsuState<'s> {
                             );
 
                             if let Some(result) = result {
-                                tracing::info!("hit res: {:?} div: {} | c: {:.2} i: {:.2}", result, obj.start_time - input_time, circle.start_time, input_time);
+                                tracing::info!("hit res: {:?} div: {} | c: {:.2} i: {:.2}", 
+                                    result, obj.start_time - input_time, circle.start_time, input_time
+                                );
                                 circle.hit_result = Some(HitResult::Hit {
                                     pos: self.current_input_state.cursor.into(),
                                     at: input_time,

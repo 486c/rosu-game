@@ -16,6 +16,7 @@ struct InstanceInput {
 	@location(2) pos: vec3<f32>,
 	@location(3) color: vec3<f32>,
 	@location(4) alpha: f32,
+	@location(5) scale: f32
 }
 
 struct VertexOutput {
@@ -35,13 +36,19 @@ fn vs_main(
 	out.alpha = instance.alpha;
 	out.color = instance.color;
 
+
+	let model_matrix = mat4x4<f32>(
+		1.0, 0.0, 0.0, 0.0,
+		0.0, 1.0, 0.0, 0.0,
+		0.0, 0.0, 1.0, 0.0,
+		instance.pos.x, instance.pos.y, instance.pos.z, 1.0,
+	);
+
+	let scaled_pos = vec4<f32>(instance.scale, instance.scale, 0.0, 1.0) * vec4<f32>(model.pos, 0.0, 1.0);
+
     out.clip_position = camera.proj * camera.view
-		* vec4<f32>(
-			model.pos.x + instance.pos.x, 
-			model.pos.y + instance.pos.y, 
-			instance.pos.z + 0.0, 
-			1.0
-		);
+		* model_matrix
+		* scaled_pos;
 
     return out;
 }

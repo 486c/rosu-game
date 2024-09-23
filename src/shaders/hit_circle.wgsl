@@ -16,6 +16,7 @@ struct InstanceInput {
 	@location(2) pos: vec3<f32>,
 	@location(3) color: vec3<f32>,
 	@location(4) alpha: f32,
+	@location(5) scale: f32,
 }
 
 struct VertexOutput {

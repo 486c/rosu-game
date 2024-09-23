@@ -8,14 +8,16 @@ pub struct HitCircleInstance {
     pub pos: [f32; 3], 
     pub color: [f32; 3], 
     pub alpha: f32,
+    pub scale: f32,
 }
 
 impl HitCircleInstance {
-    const ATTRIBS: [wgpu::VertexAttribute; 3] = 
+    const ATTRIBS: [wgpu::VertexAttribute; 4] = 
         wgpu::vertex_attr_array![
             2 => Float32x3,
             3 => Float32x3,
             4 => Float32,
+            5 => Float32,
         ];
 
     pub fn new(
@@ -23,6 +25,7 @@ impl HitCircleInstance {
         y: f32, 
         z: f32, 
         alpha: f32,
+        scale: f32,
         color: &Rgb
     ) -> HitCircleInstance {
         let mat = Vector3::new(x, y, z);
@@ -30,7 +33,8 @@ impl HitCircleInstance {
         Self {
             pos: mat.into(),
             color: color.to_gpu_values(),
-            alpha
+            alpha,
+            scale,
         }
     }
 
@@ -42,7 +46,6 @@ impl HitCircleInstance {
         }
     }
 }
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]

@@ -12,7 +12,8 @@ use crate::osu_state::HitWindow;
 // In ms
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;
 pub const CIRCLE_FADEOUT_TIME: f64 = 60.0;
-pub const JUDGMENTS_FADEOUT_TIME: f64 = 350.0;
+pub const JUDGMENTS_FADEOUT_TIME: f64 = 300.0;
+pub const CIRCLE_SCALEOUT_MAX: f64 = 1.4;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Hit {
