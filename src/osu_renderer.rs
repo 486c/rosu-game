@@ -731,20 +731,15 @@ impl<'or> OsuRenderer<'or> {
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
                     if let Some(hit_result) = &circle.hit_result {
-                        match hit_result {
-                            hit_objects::HitResult::Hit { at, pos, result } => {
+                        let alpha = 1.0 - calc_progress(time, hit_result.at, hit_result.at + JUDGMENTS_FADEOUT_TIME);
 
-                                let alpha = 1.0 - calc_progress(time, *at, at + JUDGMENTS_FADEOUT_TIME);
+                        let entry = JudgementsEntry{
+                            pos: Vector2::new(circle.pos.x as f64, circle.pos.y as f64),
+                            alpha: alpha as f32,
+                            result: hit_result.result
+                        };
 
-                                let entry = JudgementsEntry{
-                                    pos: Vector2::new(circle.pos.x as f64, circle.pos.y as f64),
-                                    alpha: alpha as f32,
-                                    result: *result
-                                };
-
-                                self.judgements_queue.push(entry);
-                            },
-                        }
+                        self.judgements_queue.push(entry);
                     }
                 },
                 hit_objects::ObjectKind::Slider(_) => todo!(),
@@ -799,17 +794,12 @@ impl<'or> OsuRenderer<'or> {
                             QuadInstance::from_xy_pos(circle.pos.x, circle.pos.y)
                         );
 
-                        match hit_result {
-                            hit_objects::HitResult::Hit { at, result, .. } => {
-                                // Hit appears early than the exact hit point is reached
-                                // Apply fadeout immediatly
-                                let progress = calc_progress(time, *at, *at + (CIRCLE_FADEOUT_TIME * 2.0));
-                                hit_circle_alpha = 1.0 - progress;
-                                hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
-                                render_approach = false;
-
-                            },
-                        }
+                        // Hit appears early than the exact hit point is reached
+                        // Apply fadeout immediatly
+                        let progress = calc_progress(time, hit_result.at, hit_result.at + (CIRCLE_FADEOUT_TIME * 2.0));
+                        hit_circle_alpha = 1.0 - progress;
+                        hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
+                        render_approach = false;
                     } else {
                         // In case if there are no hit result keep alpha at 1.0 until late x50 hit window point
                         // is passed

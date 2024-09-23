@@ -23,16 +23,6 @@ pub enum Hit {
     MISS,
 }
 
-pub enum HitResult {
-    /// Used for HitCircles
-    Hit{
-        at: f64,
-        pos: Vector2<f64>,
-        result: Hit
-    }
-}
-
-
 // TODO: Remove this rectangle shit or move it to other place
 #[derive(Clone)]
 pub struct Rectangle {

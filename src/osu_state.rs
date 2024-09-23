@@ -8,7 +8,7 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{HitResult, Object, ObjectKind}, math::{calc_playfield, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{OsuInput, OsuInputState}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{circle::CircleHitResult, Object, ObjectKind}, math::{calc_playfield, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{OsuInput, OsuInputState}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 
 
@@ -370,7 +370,7 @@ impl<'s> OsuState<'s> {
                                 tracing::info!("hit res: {:?} div: {} | c: {:.2} i: {:.2}", 
                                     result, obj.start_time - input_time, circle.start_time, input_time
                                 );
-                                circle.hit_result = Some(HitResult::Hit {
+                                circle.hit_result = Some(CircleHitResult {
                                     pos: self.current_input_state.cursor.into(),
                                     at: input_time,
                                     result,

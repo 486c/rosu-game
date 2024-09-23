@@ -3,13 +3,19 @@ use rosu_map::util::Pos;
 
 use crate::osu_state::HitWindow;
 
-use super::{Hit, HitResult, CIRCLE_FADEOUT_TIME, JUDGMENTS_FADEOUT_TIME};
+use super::{Hit, CIRCLE_FADEOUT_TIME, JUDGMENTS_FADEOUT_TIME};
+
+pub struct CircleHitResult {
+    pub at: f64,
+    pub pos: Vector2<f64>,
+    pub result: Hit
+}
 
 pub struct Circle {
     pub start_time: f64,
     pub pos: Pos,
 
-    pub hit_result: Option<HitResult>,
+    pub hit_result: Option<CircleHitResult>,
 }
 
 impl Circle {
