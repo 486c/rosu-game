@@ -175,7 +175,7 @@ impl<'s> OsuState<'s> {
             let file = BufReader::new(File::open(audio_file).unwrap());
             let source = FramelessSource::new(Decoder::new(file).expect("Failed to load audio file source"));
             let source = UniformSourceIterator::new(source, 2, 44100);
-            self.set_audio(source.delay(Duration::from_millis(30)));
+            self.set_audio(source);
             println!("open_beatmap: Initialized a new audio file!");
         }
 
