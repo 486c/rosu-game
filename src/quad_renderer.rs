@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 
 use cgmath::Vector2;
 use wgpu::{util::DeviceExt, BindGroup, Buffer, BufferUsages, IndexFormat, TextureView};
@@ -416,7 +416,7 @@ impl<'qr> QuadRenderer<'qr> {
         view: &TextureView,
         texture: &BindGroup,
         instances: &Buffer,
-        amount: u32
+        amount: Range<u32>
     ) {
         let mut encoder =
             self.graphics
@@ -455,7 +455,7 @@ impl<'qr> QuadRenderer<'qr> {
             render_pass.draw_indexed(
                 0..crate::osu_renderer::QUAD_INDECIES.len() as u32,
                 0,
-                0..amount,
+                amount,
             );
         }
 

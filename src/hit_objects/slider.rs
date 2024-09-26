@@ -7,10 +7,16 @@ use crate::texture::Texture;
 
 use super::{Rectangle, SLIDER_FADEOUT_TIME};
 
+#[derive(Debug)]
+pub struct Tick {
+    pub time: f64,
+    pub pos: Vector2<f32>,
+    pub slide: usize
+}
+
 pub struct SliderRender {
     pub texture: Arc<Texture>,
     pub quad: Arc<wgpu::Buffer>,
-    pub bounding_box: Rectangle,
 }
 
 pub struct Slider {
@@ -19,13 +25,14 @@ pub struct Slider {
     pub curve: Curve,
     pub pos: Pos,
     pub repeats: i32,
+    pub ticks: Vec<Tick>,
 
     pub render: Option<SliderRender>,
 }
 
 impl Slider {
     pub fn is_visible(&self, time: f64, preempt: f32) -> bool {
-        time > self.start_time - preempt as f64
+        time > (self.start_time - preempt as f64)
             && time < self.start_time + self.duration + SLIDER_FADEOUT_TIME
     }
 

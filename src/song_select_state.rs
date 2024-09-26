@@ -447,7 +447,7 @@ impl<'ss> SongSelectionState<'ss> {
                 &view,
                 &current_background.texture.bind_group,
                 &self.quad_test_buffer,
-                1
+                0..1
             );
         }
     }

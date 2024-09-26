@@ -2,12 +2,12 @@ pub mod circle;
 pub mod slider;
 
 use cgmath::Vector2;
-use rosu_map::section::hit_objects::HitObject;
+use rosu_map::{section::hit_objects::HitObject, Beatmap};
 
-use slider::Slider;
+use slider::{Slider, Tick};
 use circle::Circle;
 
-use crate::osu_state::HitWindow;
+use crate::{math::calc_progress, osu_state::HitWindow};
 
 // In ms
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;
@@ -61,10 +61,14 @@ impl Object {
         }
     }
 
-    pub fn from_rosu(values: &[HitObject]) -> Vec<Object> {
-        let mut objects = Vec::with_capacity(values.len());
+    pub fn from_rosu(map: &Beatmap) -> Vec<Object> {
 
         let mut color_index = 1;
+        let tick_rate = map.slider_tick_rate;
+
+
+        let values = &map.hit_objects;
+        let mut objects = Vec::with_capacity(values.len());
 
         for value in values {
             if value.new_combo() {
@@ -77,11 +81,93 @@ impl Object {
 
             match &value.kind {
                 rosu_map::section::hit_objects::HitObjectKind::Slider(slider) => {
+                    let timing = map.control_points.timing_point_at(value.start_time);
+                    let beat_len = timing.unwrap().beat_len; // TODO remove unwrap
+                    let tick_every_ms = beat_len / tick_rate;
+
+
                     let mut slider = slider.clone();
 
                     let pos = slider.pos;
                     let duration = slider.duration();
                     let curve = slider.path.curve().clone();
+
+                    let slide_duration = slider.duration() / f64::from(slider.span_count());
+
+                    let mut ticks = Vec::new();
+                    
+                    /*
+                    let mut i = value.start_time + tick_every_ms;
+                    for _ in 0..slider.repeat_count {
+                        let v1 = i - value.start_time;
+                        let slide = (v1 / slide_duration).floor() as usize + 1;
+
+                        let mut progress = calc_progress(
+                            i, 
+                            value.start_time, 
+                            value.start_time + duration
+                        );
+
+                        if slide % 2 == 0 {
+                            progress = 1.0 - progress;
+                        };
+
+                        let curve_pos = curve.position_at(progress);
+
+                        let pos = Vector2::new(
+                            slider.pos.x + curve_pos.x, 
+                            slider.pos.y + curve_pos.y
+                        );
+                        
+                        if ((value.start_time + duration) - i) > 0.1 {
+                            ticks.push(Tick { 
+                                pos,
+                                time: i,
+                                slide,
+                            });
+                        }
+
+                        i += tick_every_ms;
+                    }
+                    */
+
+                    let mut i = value.start_time + tick_every_ms;
+                    while i < value.start_time + duration {
+                        let v1 = i - value.start_time;
+                        let v2 = duration / slider.span_count() as f64;
+                        let slide = (v1 / v2).floor() as usize + 1;
+
+                        let slide_start = value.start_time + (v2 * (slide as f64 - 1.0));
+                        let slide_end = slide_start + v2;
+
+                        let mut progress = calc_progress(
+                            i, 
+                            slide_start, 
+                            slide_end
+                        );
+
+                        if slide % 2 == 0 {
+                            progress = 1.0 - progress;
+                        }
+
+                        let curve_pos = curve.position_at(progress);
+
+                        let pos = Vector2::new(
+                            slider.pos.x + curve_pos.x, 
+                            slider.pos.y + curve_pos.y
+                        );
+
+
+                        if (slide_end - i) > 10.0 {
+                            ticks.push(Tick {
+                                pos,
+                                time: i,
+                                slide,
+                            });
+                        }
+
+                        i += tick_every_ms;
+                    }
 
                     objects.push(Self {
                         start_time: value.start_time,
@@ -92,6 +178,7 @@ impl Object {
                             pos,
                             duration,
                             curve,
+                            ticks,
                             render: None,
                         }),
                     })

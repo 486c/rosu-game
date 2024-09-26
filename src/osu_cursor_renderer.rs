@@ -96,7 +96,7 @@ impl<'cr> CursorRenderer<'cr> {
             view,
             &skin.cursor_trail.bind_group,
             &self.trail_buffer,
-            self.trail_instance_data.len() as u32
+            0..self.trail_instance_data.len() as u32
         );
 
         // 2. cursor itself
@@ -104,7 +104,7 @@ impl<'cr> CursorRenderer<'cr> {
             view, 
             &skin.cursor.bind_group, 
             &self.cursor_buffer, 
-            1
+            0..1
         );
     }
 }

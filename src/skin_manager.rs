@@ -60,6 +60,8 @@ pub struct SkinManager {
     pub debug_texture: Texture,
     pub judgments: Judgments,
     pub judgments_atlas: AtlasTexture,
+    pub slider_tick: Texture,
+    pub slider_reverse_arrow: Texture,
 
     pub debug_texture2: Texture,
 }
@@ -132,6 +134,9 @@ impl SkinManager {
             &[hit_300, hit_100, hit_50, hit_miss]
         );
 
+        let slider_tick = load_or_fallback_texture!(path, "sliderscorepoint.png", "sliderscorepoint.png", graphics);
+        let slider_reverse_arrow = load_or_fallback_texture!(path, "reversearrow.png", graphics);
+
         Self {
             ini: skin_ini,
             hit_circle,
@@ -142,7 +147,9 @@ impl SkinManager {
             debug_texture,
             debug_texture2,
             judgments,
-            judgments_atlas        
+            judgments_atlas,
+            slider_tick,
+            slider_reverse_arrow,        
         }
     }
 }

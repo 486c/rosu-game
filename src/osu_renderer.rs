@@ -8,19 +8,14 @@ use wgpu::{
     TextureUsages, TextureView, TextureViewDimension,
 };
 use winit::dpi::PhysicalSize;
-
-static SLIDER_SCALE: f32 = 2.0;
-
-pub struct JudgementsEntry {
-    pos: Vector2<f64>,
-    alpha: f32,
-    result: hit_objects::Hit,
-}
-
 use crate::{
     camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
+static SLIDER_SCALE: f32 = 2.0;
+pub const QUAD_INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
+
+// TODO: Move it outta her
 #[macro_export]
 macro_rules! buffer_write_or_init {
     ($queue:expr, $device:expr, $buffer:expr, $data:expr, $t: ty) => {{
@@ -44,7 +39,19 @@ macro_rules! buffer_write_or_init {
     }};
 }
 
-pub const QUAD_INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
+pub struct JudgementsEntry {
+    pos: Vector2<f64>,
+    alpha: f32,
+    result: hit_objects::Hit,
+}
+
+pub struct SliderToScreenEntry {
+    texture: Arc<Texture>,
+    buffer: Arc<wgpu::Buffer>,
+    follow_circle: Option<u32>,
+    ticks: Vec<usize>,
+    reverse_arrow: Option<u32>
+}
 
 pub struct OsuRenderer<'or> {
     // Graphics State
@@ -101,7 +108,7 @@ pub struct OsuRenderer<'or> {
     follow_points_instance_buffer: wgpu::Buffer,
 
     // Slider body queue
-    slider_to_screen_textures: SmallVec<[(Arc<Texture>, Arc<wgpu::Buffer>, Option<u32>); 32]>,
+    slider_to_screen_textures: SmallVec<[SliderToScreenEntry; 32]>,
 
     // Slider settings
     slider_settings_buffer: wgpu::Buffer,
@@ -115,6 +122,9 @@ pub struct OsuRenderer<'or> {
     quad_debug_instance_data2: Vec<QuadInstance>,
     quad_debug_buffer: wgpu::Buffer,
     quad_debug_buffer2: wgpu::Buffer,
+
+    slider_ticks_instance_data: Vec<QuadInstance>,
+    slider_ticks_instance_buffer: wgpu::Buffer,
     
     /// Queue of judgements that needs to be rendered
     /// Should be cleared after everything inside is rendered
@@ -668,7 +678,10 @@ impl<'or> OsuRenderer<'or> {
         let quad_debug_buffer = quad_debug.create_instance_buffer();
         let quad_debug_buffer2 = quad_debug.create_instance_buffer();
 
-        quad_debug.resize_vertex_centered(20.0, 20.0);
+        quad_debug.resize_vertex_centered(10.0, 10.0);
+
+        let slider_ticks_instance_data = Vec::new();
+        let slider_ticks_instance_buffer = quad_debug.create_instance_buffer();
 
         Self {
             quad_debug,
@@ -712,6 +725,8 @@ impl<'or> OsuRenderer<'or> {
             quad_debug_instance_data2,
             quad_debug_buffer2,
             judgements_queue: Vec::new(),
+            slider_ticks_instance_data,
+            slider_ticks_instance_buffer,
         }
     }
 
@@ -836,13 +851,40 @@ impl<'or> OsuRenderer<'or> {
                     self.hit_circle_instance_data.push(hit_circle_instance);
                 }
                 hit_objects::ObjectKind::Slider(slider) => {
-                    let _span = tracy_client::span!("osu_renderer prepare_objects2::circle");
+                    let _span = tracy_client::span!("osu_renderer prepare_objects2::slider");
 
                     let start_time = slider.start_time - preempt as f64;
                     let end_time = start_time + fadein as f64;
 
                     let mut body_alpha =
                     ((time - start_time) / (end_time - start_time)).clamp(0.0, 0.95);
+
+                    // Calculating current slide
+                    let v1 = time - object.start_time;
+                    let v2 = slider.duration / slider.repeats as f64;
+                    let current_slide = (v1 / v2).floor() as i32 + 1;
+
+                    let mut reverse_arrow = None;
+                    
+                    // Handle all reverse arrows, for animations and stuff
+                    for repeat in 0..slider.repeats - 1 {
+                        let pos = if repeat % 2 == 0 {
+                            slider.curve.position_at(1.0)
+                        } else {
+                            slider.curve.position_at(0.0)
+                        };
+
+                        let reverse_arrow_pos = Vector2::new(
+                            slider.pos.x + pos.x,
+                            slider.pos.y + pos.y
+                        );
+
+                        self.slider_ticks_instance_data.push(
+                            QuadInstance::from_xy_pos_alpha(reverse_arrow_pos.x, reverse_arrow_pos.y, body_alpha as f32)
+                        );
+
+                        reverse_arrow = Some(self.slider_ticks_instance_data.len() as u32);
+                    }
 
                     // FADEOUT
                     if time >= object.start_time + slider.duration
@@ -871,10 +913,10 @@ impl<'or> OsuRenderer<'or> {
                     };
 
                     // FOLLOW CIRCLE STUFF
-                    // BLOCK IN WHICH SLIDER IS HITABLE
+                    // SCOPE IN WHICH SLIDER IS HITABLE
                     let mut follow_circle = None;
                     if time >= object.start_time && time <= object.start_time + slider.duration {
-                        // Calculating current slide
+                        // Calculating current slide according to provided time
                         let v1 = time - object.start_time;
                         let v2 = slider.duration / slider.repeats as f64;
                         let slide = (v1 / v2).floor() as i32 + 1;
@@ -916,7 +958,6 @@ impl<'or> OsuRenderer<'or> {
                         slider_body: skin.ini.colours.slider_body.to_gpu_values(),
                     });
 
-
                     self.approach_circle_instance_data
                         .push(ApproachCircleInstance::new(
                             slider.pos.x,
@@ -936,15 +977,42 @@ impl<'or> OsuRenderer<'or> {
                                 color,
                         ));
 
+                    let mut slider_tick_indexes = Vec::new();
+                    
+                    // SLIDER TICKS
+                    for tick in &slider.ticks {
+                        let v1 = time - object.start_time;
+                        let v2 = slider.duration / slider.repeats as f64;
+                        let slide = (v1 / v2).floor() as usize + 1;
+
+                        if tick.slide == slide {
+                            // TODO: McOsu doesnt bother with slider ticks fadeout and fadein animations.
+                            // and i spend too much time trying to get it right
+                            // so i'm also gonna give up on it for now....
+                            self.slider_ticks_instance_data.push(
+                                QuadInstance::from_xy_pos_alpha(tick.pos.x, tick.pos.y, body_alpha as f32)
+                            );
+
+                            if time >= tick.time {
+                                continue;
+                            }
+
+                            slider_tick_indexes.push(self.slider_ticks_instance_data.len());
+                        }
+
+                    };
+
                     // That's tricky part. Since every slider have a according
                     // slider texture and a quad where texture will be rendered and presented on screen.
                     // So we are pushing all textures to the "queue" so we can iterate on it later
                     if let Some(render) = &slider.render {
-                        self.slider_to_screen_textures.push((
-                            render.texture.clone(),
-                            render.quad.clone(),
+                        self.slider_to_screen_textures.push(SliderToScreenEntry {
+                            texture: render.texture.clone(),
+                            buffer: render.quad.clone(),
                             follow_circle,
-                        ))
+                            ticks: slider_tick_indexes,
+                            reverse_arrow,
+                        })
                     } else {
                         panic!("Texture and quad should be present");
                     };
@@ -1187,7 +1255,6 @@ impl<'or> OsuRenderer<'or> {
         slider.render = Some(SliderRender {
             texture: slider_texture,
             quad: slider_quad.into(),
-            bounding_box: slider_bounding_box,
         });
     }
 
@@ -1326,6 +1393,14 @@ impl<'or> OsuRenderer<'or> {
             &self.quad_debug_instance_data2,
             QuadInstance
         );
+
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.slider_ticks_instance_buffer,
+            &self.slider_ticks_instance_data,
+            QuadInstance
+        );
     }
 
     /// Clears internal buffers
@@ -1339,6 +1414,7 @@ impl<'or> OsuRenderer<'or> {
         self.quad_debug_instance_data.clear();
         self.quad_debug_instance_data2.clear();
         self.judgements_queue.clear();
+        self.slider_ticks_instance_data.clear();
         self.quad_debug.clear_atlas_buffers();
     }
     
@@ -1448,18 +1524,39 @@ impl<'or> OsuRenderer<'or> {
                         );
 
                         let instance = current_slider as u32..current_slider as u32 + 1;
-                        let (texture, vertex_buffer, follow) = &self.slider_to_screen_textures[current_slider];
+                        //let (texture, vertex_buffer, follow) = &self.slider_to_screen_textures[current_slider];
+                        let slider_to_screen = &self.slider_to_screen_textures[current_slider];
 
                         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                        render_pass.set_vertex_buffer(0, slider_to_screen.buffer.slice(..));
 
-                        render_pass.set_bind_group(0, &texture.bind_group, &[]);
+                        render_pass.set_bind_group(0, &slider_to_screen.texture.bind_group, &[]);
 
                         // First draw a slider body
                         render_pass.draw_indexed(0..QUAD_INDECIES.len() as u32, 0, instance.clone());
+                        
+                        // Slider ticks
+                        for tick_index in &slider_to_screen.ticks {
+                            self.quad_debug.render_on_view_instanced(
+                                view, 
+                                &skin.slider_tick.bind_group, 
+                                &self.slider_ticks_instance_buffer, 
+                                (tick_index -1) as u32..*tick_index as u32
+                            );
+                        }
+
+                        // reverse arrow
+                        if let Some(reverse_arrow_index) = &slider_to_screen.reverse_arrow {
+                            self.quad_debug.render_on_view_instanced(
+                                view, 
+                                &skin.slider_reverse_arrow.bind_group, 
+                                &self.slider_ticks_instance_buffer, 
+                                (reverse_arrow_index -1) as u32..*reverse_arrow_index as u32
+                            );
+                        }
 
                         // follow circle
-                        if let Some(follow) = follow {
+                        if let Some(follow) = &slider_to_screen.follow_circle {
                             render_pass.set_pipeline(&self.hit_circle_pipeline);
                             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
                             render_pass.set_bind_group(0, &skin.sliderb0.bind_group, &[]);
@@ -1475,6 +1572,8 @@ impl<'or> OsuRenderer<'or> {
                                 *follow - 1 as u32..*follow as u32,
                             );
                         }
+
+
 
                         // Hit circle on top of everything
                         render_pass.set_pipeline(&self.quad_colored_pipeline);

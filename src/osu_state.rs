@@ -186,9 +186,8 @@ impl<'s> OsuState<'s> {
         self.fadein = fadein;
         self.current_hit_window = hit_window;
 
-        // Convert rosu_map object to our objects
-        //let mut out_objects = Vec::with_capacity(map.hit_objects.len());
-        let out_objects = Object::from_rosu(&map.hit_objects);
+        // Convert rosu_map to our objects
+        let out_objects = Object::from_rosu(&map);
 
         self.hit_objects = out_objects;
 
