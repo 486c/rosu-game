@@ -9,7 +9,7 @@ use wgpu::{
 };
 use winit::dpi::PhysicalSize;
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 static SLIDER_SCALE: f32 = 2.0;
@@ -872,8 +872,6 @@ impl<'or> OsuRenderer<'or> {
                     let current_slide = ((v1 / v2).floor() as i32 + 1).max(1);
 
 
-                    println!("======");
-
                     // Handle all reverse arrows, for animations and stuff
                     
                     // Cases we need to handle:
@@ -908,7 +906,9 @@ impl<'or> OsuRenderer<'or> {
                             slider.pos.y + pos.y
                         );
 
-                        let mut alpha = if time > reverse_arrow_time {
+                        let mut alpha = body_alpha;
+
+                        alpha = if time > reverse_arrow_time {
                             // Applying fadeout
                             if (reverse_arrow_time..reverse_arrow_time + REVERSE_ARROW_FADEOUT).contains(&time) {
                                 let progress = calc_progress(time, reverse_arrow_time, reverse_arrow_time + REVERSE_ARROW_FADEOUT);
@@ -921,21 +921,22 @@ impl<'or> OsuRenderer<'or> {
                             body_alpha
                         };
 
-                        if repeat != current_slide {
-                            alpha = 0.0;
-                        }
-
                         // If it has previous overlapping reverse arrow
                         // and it not current on slide
-                        if repeat - 2 >= 0 && repeat != current_slide && reverse_arrow_time > time {
+                        if repeat -2 >= 0 && repeat != current_slide {
                             let prev_reverse_arrow_time = slider.start_time + (v2 * ((repeat - 2) as f64));
-                            println!("acrive repeat {} current slide: {}", repeat, current_slide);
+                            if reverse_arrow_time > time {
+                                let progress = calc_progress(
+                                    time,
+                                    prev_reverse_arrow_time,
+                                    prev_reverse_arrow_time + REVERSE_ARROW_FADEIN
+                                );
 
-                            if time > prev_reverse_arrow_time + 200.0 {
-                                alpha = 1.0
+                                alpha = progress.clamp(0.0, 1.0)
                             }
-
                         }
+
+                        let alpha = alpha as f32;
 
                         self.slider_ticks_instance_data.push(
                             QuadInstance::from_xy_pos_alpha(reverse_arrow_pos.x, reverse_arrow_pos.y, alpha as f32)
