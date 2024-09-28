@@ -9,7 +9,7 @@ use wgpu::{
 };
 use winit::dpi::PhysicalSize;
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 static SLIDER_SCALE: f32 = 2.0;
@@ -50,7 +50,7 @@ pub struct SliderToScreenEntry {
     buffer: Arc<wgpu::Buffer>,
     follow_circle: Option<u32>,
     ticks: Vec<usize>,
-    reverse_arrow: Option<u32>
+    reverse_arrow: Option<Vec<u32>>
 }
 
 pub struct OsuRenderer<'or> {
@@ -117,6 +117,9 @@ pub struct OsuRenderer<'or> {
     depth_texture: DepthTexture,
 
     quad_debug: QuadRenderer<'or>,
+
+
+    slider_reverse_arrow_quad: QuadRenderer<'or>,
 
     quad_debug_instance_data: Vec<QuadInstance>,
     quad_debug_instance_data2: Vec<QuadInstance>,
@@ -683,6 +686,9 @@ impl<'or> OsuRenderer<'or> {
         let slider_ticks_instance_data = Vec::new();
         let slider_ticks_instance_buffer = quad_debug.create_instance_buffer();
 
+        let slider_reverse_arrow_quad = QuadRenderer::new(graphics.clone(), false);
+        slider_reverse_arrow_quad.resize_vertex_centered(10.0, 10.0);
+
         Self {
             quad_debug,
             graphics,
@@ -727,6 +733,7 @@ impl<'or> OsuRenderer<'or> {
             judgements_queue: Vec::new(),
             slider_ticks_instance_data,
             slider_ticks_instance_buffer,
+            slider_reverse_arrow_quad,
         }
     }
 
@@ -862,16 +869,38 @@ impl<'or> OsuRenderer<'or> {
                     // Calculating current slide
                     let v1 = time - object.start_time;
                     let v2 = slider.duration / slider.repeats as f64;
-                    let current_slide = (v1 / v2).floor() as i32 + 1;
+                    let current_slide = ((v1 / v2).floor() as i32 + 1).max(1);
 
-                    let mut reverse_arrow = None;
-                    
+
+                    println!("======");
+
                     // Handle all reverse arrows, for animations and stuff
+                    
+                    // Cases we need to handle:
+                    // *===R===R===*
+
+                    // * First reverse arrow should appear with body
+                    // * Reverse arrow should fadeout after it has been passed
+                    // * In cases where there are more than 2+ repeats we should handle this situation:
+                    //     
+                    //    H===R===R===E      H - slider head
+                    //       ^    ^          R - reverse arrow
+                    //       1    2          E - slider end
+                    //
+                    //    
+                    //    Assuming [1] is our current position, and we already passed slider head
+                    //    we should render the second reverse arrow [2] even if we haven't passed
+                    //    first reverse arrow yet
+                    let mut repeats_index = Vec::new(); // TODO ah uh
                     for repeat in 0..slider.repeats - 1 {
+                        let repeat = repeat + 1;
+
+                        let reverse_arrow_time = slider.start_time + (v2 * (repeat as f64));
+
                         let pos = if repeat % 2 == 0 {
-                            slider.curve.position_at(1.0)
-                        } else {
                             slider.curve.position_at(0.0)
+                        } else {
+                            slider.curve.position_at(1.0)
                         };
 
                         let reverse_arrow_pos = Vector2::new(
@@ -879,12 +908,43 @@ impl<'or> OsuRenderer<'or> {
                             slider.pos.y + pos.y
                         );
 
+                        let mut alpha = if time > reverse_arrow_time {
+                            // Applying fadeout
+                            if (reverse_arrow_time..reverse_arrow_time + REVERSE_ARROW_FADEOUT).contains(&time) {
+                                let progress = calc_progress(time, reverse_arrow_time, reverse_arrow_time + REVERSE_ARROW_FADEOUT);
+
+                                1.0 - progress
+                            } else {
+                                0.0
+                            }
+                        } else {
+                            body_alpha
+                        };
+
+                        if repeat != current_slide {
+                            alpha = 0.0;
+                        }
+
+                        // If it has previous overlapping reverse arrow
+                        // and it not current on slide
+                        if repeat - 2 >= 0 && repeat != current_slide && reverse_arrow_time > time {
+                            let prev_reverse_arrow_time = slider.start_time + (v2 * ((repeat - 2) as f64));
+                            println!("acrive repeat {} current slide: {}", repeat, current_slide);
+
+                            if time > prev_reverse_arrow_time + 200.0 {
+                                alpha = 1.0
+                            }
+
+                        }
+
                         self.slider_ticks_instance_data.push(
-                            QuadInstance::from_xy_pos_alpha(reverse_arrow_pos.x, reverse_arrow_pos.y, body_alpha as f32)
+                            QuadInstance::from_xy_pos_alpha(reverse_arrow_pos.x, reverse_arrow_pos.y, alpha as f32)
                         );
 
-                        reverse_arrow = Some(self.slider_ticks_instance_data.len() as u32);
+                        repeats_index.push(self.slider_ticks_instance_data.len() as u32);
                     }
+
+                    let reverse_arrow = Some(repeats_index);
 
                     // FADEOUT
                     if time >= object.start_time + slider.duration
@@ -1265,6 +1325,8 @@ impl<'or> OsuRenderer<'or> {
 
         self.quad_verticies = Vertex::quad_centered(hit_circle_diameter, hit_circle_diameter);
 
+        self.slider_reverse_arrow_quad.resize_vertex_centered(hit_circle_diameter, hit_circle_diameter);
+
         self.hit_circle_vertex_buffer =
             self.graphics
                 .device
@@ -1318,13 +1380,16 @@ impl<'or> OsuRenderer<'or> {
             1,
         );
 
-
         self.graphics
             .queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera)); // TODO
 
         self.quad_debug.resize_camera(new_size);
         self.quad_debug.transform_camera(self.scale, self.offsets);
+
+
+        self.slider_reverse_arrow_quad.resize_camera(new_size);
+        self.slider_reverse_arrow_quad.transform_camera(self.scale, self.offsets);
 
         // Slider to screen
         self.slider_to_screen_verticies = Vertex::quad_positional(
@@ -1547,12 +1612,14 @@ impl<'or> OsuRenderer<'or> {
 
                         // reverse arrow
                         if let Some(reverse_arrow_index) = &slider_to_screen.reverse_arrow {
-                            self.quad_debug.render_on_view_instanced(
-                                view, 
-                                &skin.slider_reverse_arrow.bind_group, 
-                                &self.slider_ticks_instance_buffer, 
-                                (reverse_arrow_index -1) as u32..*reverse_arrow_index as u32
-                            );
+                            for index in reverse_arrow_index {
+                                self.slider_reverse_arrow_quad.render_on_view_instanced(
+                                    view, 
+                                    &skin.slider_reverse_arrow.bind_group, 
+                                    &self.slider_ticks_instance_buffer, 
+                                    (index-1) as u32..*index as u32
+                                );
+                            }
                         }
 
                         // follow circle
