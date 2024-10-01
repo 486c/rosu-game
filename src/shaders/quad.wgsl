@@ -16,12 +16,14 @@ struct InstanceInput {
 	@location(2) pos: vec3<f32>,
 	@location(3) color: vec3<f32>,
 	@location(4) alpha: f32,
+	@location(5) degree: f32,
 }
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
 	@location(0) uv: vec2<f32>,
 	@location(1) alpha: f32,
+	@location(2) degree: f32
 };
 
 @vertex
@@ -32,13 +34,27 @@ fn vs_main(
     var out: VertexOutput;
 	out.uv = model.uv;
 	out.alpha = instance.alpha;
+	out.degree = instance.degree;
 
+    let rotation_matrix = mat3x3<f32>(
+        cos(radians(instance.degree)), -sin(radians(instance.degree)), 0.0,
+        sin(radians(instance.degree)), cos(radians(instance.degree)), 0.0,
+        0.0, 0.0, 1.0
+    );
+
+    let rotated_position = vec3<f32>(
+        rotation_matrix * vec3<f32>(
+            model.pos.x + instance.pos.x,
+            model.pos.y + instance.pos.y,
+            instance.pos.z + 0.0
+        )
+    );
 
     out.clip_position = camera.proj * camera.view
 		* vec4<f32>(
-			model.pos.x + instance.pos.x, 
-			model.pos.y + instance.pos.y, 
-			instance.pos.z + 0.0, 
+			model.pos.x + instance.pos.x,
+			model.pos.y + instance.pos.y,
+			instance.pos.z,
 			1.0
 		);
 
@@ -52,7 +68,21 @@ var hitcircle_texture: texture_2d<f32>;
 var hitrcirle_texture_sampler: sampler;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	var hc = textureSample(hitcircle_texture, hitrcirle_texture_sampler, in.uv);
+	let c = cos(radians(in.degree));
+	let s = sin(radians(in.degree));
+
+	let m = mat2x2<f32>(
+		c, -s, s, c 
+	);
+
+	let uv = (in.uv * 2.0 - 1.0) * m;
+
+	var hc = textureSample(
+		hitcircle_texture, 
+		hitrcirle_texture_sampler, 
+		uv * 0.5 + 0.5
+	);
+
 	hc.w = hc.w * in.alpha;
 
 	return hc;

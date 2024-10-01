@@ -891,7 +891,9 @@ impl<'or> OsuRenderer<'or> {
                     //    first reverse arrow yet
                     let mut repeats_index = Vec::new(); // TODO ah uh
                     for repeat in 0..slider.repeats - 1 {
-                        let repeat = repeat + 1;
+                        let repeat = repeat + 1; // TODO: big brain
+
+                        assert!(slider.reverse_arrows.get(repeat as usize - 1).is_some());
 
                         let reverse_arrow_time = slider.start_time + (v2 * (repeat as f64));
 
@@ -939,7 +941,12 @@ impl<'or> OsuRenderer<'or> {
                         let alpha = alpha as f32;
 
                         self.slider_ticks_instance_data.push(
-                            QuadInstance::from_xy_pos_alpha(reverse_arrow_pos.x, reverse_arrow_pos.y, alpha as f32)
+                            QuadInstance::from_xy_pos_alpha_degree(
+                                reverse_arrow_pos.x, 
+                                reverse_arrow_pos.y, 
+                                alpha as f32,
+                                slider.reverse_arrows[repeat as usize - 1].angle
+                            )
                         );
 
                         repeats_index.push(self.slider_ticks_instance_data.len() as u32);

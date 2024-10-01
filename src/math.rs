@@ -1,4 +1,4 @@
-use cgmath::Vector2;
+use cgmath::{Angle, Vector2};
 use std::ops::{ Div, Sub };
 
 pub const OSU_COORDS_WIDTH: f32 = 512.0;
@@ -48,17 +48,37 @@ pub fn calc_playfield(screen_w: f32, screen_h: f32) -> (f32, Vector2<f32>) {
     (scale, offsets)
 }
 
+pub fn calc_direction_degree(p1: Vector2<f32>, p2: Vector2<f32>) -> f32 {
+    let angle_rad = (p2.y - p1.y).atan2(p2.x - p1.x);
+    let mut angle_deg = angle_rad.to_degrees();
+
+    if angle_deg < 0.0 {
+        angle_deg += 360.0;
+    }
+
+    angle_deg
+}
+
+
+pub fn calc_opposite_direction_degree(p1: Vector2<f32>, p2: Vector2<f32>) -> f32 {
+    (calc_direction_degree(p1, p2) + 180.0) % 360.0
+}
+
 #[inline]
 pub fn calc_progress(current: f64, start: f64, end: f64) -> f64 {
     (current - start) / (end - start)
 }
 
-#[test]
-pub fn test_scale() {
-    calc_playfield_scale_factor(1920.0, 1080.0);
-}
 
 #[test]
 pub fn test_progress() {
     assert_eq!(calc_progress(50.0, 0.0, 100.0), 0.50);
+}
+
+#[test]
+pub fn test_directiondegrees() {
+    let p1 = Vector2::new(0.0, 0.0);
+    let p2 = Vector2::new(0.0, 6.0);
+
+    assert_eq!(calc_opposite_direction_degree(p1, p2), 270.0)
 }

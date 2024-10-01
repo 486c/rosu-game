@@ -8,6 +8,12 @@ use crate::texture::Texture;
 use super::{Rectangle, SLIDER_FADEOUT_TIME};
 
 #[derive(Debug)]
+pub struct ReverseArrow {
+    pub time: f64,
+    pub angle: f32,
+}
+
+#[derive(Debug)]
 pub struct Tick {
     pub time: f64,
     pub pos: Vector2<f32>,
@@ -26,6 +32,7 @@ pub struct Slider {
     pub pos: Pos,
     pub repeats: i32,
     pub ticks: Vec<Tick>,
+    pub reverse_arrows: Vec<ReverseArrow>,
 
     pub render: Option<SliderRender>,
 }

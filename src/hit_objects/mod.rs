@@ -7,7 +7,7 @@ use rosu_map::{section::hit_objects::HitObject, Beatmap};
 use slider::{Slider, Tick};
 use circle::Circle;
 
-use crate::{math::calc_progress, osu_state::HitWindow};
+use crate::{math::{calc_direction_degree, calc_opposite_direction_degree, calc_progress}, osu_state::HitWindow};
 
 // In ms
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;
@@ -97,41 +97,6 @@ impl Object {
                     let slide_duration = slider.duration() / f64::from(slider.span_count());
 
                     let mut ticks = Vec::new();
-                    
-                    /*
-                    let mut i = value.start_time + tick_every_ms;
-                    for _ in 0..slider.repeat_count {
-                        let v1 = i - value.start_time;
-                        let slide = (v1 / slide_duration).floor() as usize + 1;
-
-                        let mut progress = calc_progress(
-                            i, 
-                            value.start_time, 
-                            value.start_time + duration
-                        );
-
-                        if slide % 2 == 0 {
-                            progress = 1.0 - progress;
-                        };
-
-                        let curve_pos = curve.position_at(progress);
-
-                        let pos = Vector2::new(
-                            slider.pos.x + curve_pos.x, 
-                            slider.pos.y + curve_pos.y
-                        );
-                        
-                        if ((value.start_time + duration) - i) > 0.1 {
-                            ticks.push(Tick { 
-                                pos,
-                                time: i,
-                                slide,
-                            });
-                        }
-
-                        i += tick_every_ms;
-                    }
-                    */
 
                     let mut i = value.start_time + tick_every_ms;
                     while i < value.start_time + duration {
@@ -170,6 +135,41 @@ impl Object {
 
                         i += tick_every_ms;
                     }
+                
+                    let mut reverse_arrows = Vec::new();
+                    for repeat in 0..slider.span_count() - 1 {
+                        let repeat = repeat + 1;
+                        let v2 = duration / slider.span_count() as f64;
+
+                        let (pos1, pos2) = if repeat % 2 == 0 {
+                            let p1 = curve.position_at(0.0);
+                            let p2 = curve.position_at(0.05);
+
+                            (
+                                Vector2::new(slider.pos.x + p1.x, slider.pos.y + p1.y),
+                                Vector2::new(slider.pos.x + p2.x, slider.pos.y + p2.y),
+                            )
+                        } else {
+                            let p1 = curve.position_at(1.0);
+                            let p2 = curve.position_at(0.95);
+
+                            (
+                                Vector2::new(slider.pos.x + p1.x, slider.pos.y + p1.y),
+                                Vector2::new(slider.pos.x + p2.x, slider.pos.y + p2.y),
+                            )
+                        };
+
+                        let angle = -calc_opposite_direction_degree(pos2, pos1);
+
+                        let slide_start = value.start_time + (v2 * (repeat as f64 - 1.0));
+
+                        reverse_arrows.push(
+                            slider::ReverseArrow {
+                                time: slide_start,
+                                angle,
+                            }
+                        )
+                    }
 
                     objects.push(Self {
                         start_time: value.start_time,
@@ -182,6 +182,7 @@ impl Object {
                             curve,
                             ticks,
                             render: None,
+                            reverse_arrows,
                         }),
                     })
                 }
