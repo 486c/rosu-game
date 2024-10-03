@@ -9,8 +9,8 @@ use winit::{
     event_loop::EventLoop,
     window::WindowBuilder,
 };
-pub mod math;
 
+pub mod math;
 mod camera;
 mod rgb;
 mod egui_state;
@@ -36,6 +36,7 @@ mod song_importer_ui;
 mod osu_cursor_renderer;
 mod frameless_source;
 mod osu_input;
+/*
 
 fn main() {
     let _client = tracy_client::Client::start();
@@ -130,3 +131,4 @@ fn main() {
         };
     });
 }
+*/

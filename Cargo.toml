@@ -5,6 +5,22 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "rosu"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rosu-client"
+path = "src/bin.rs"
+
+[workspace]
+members = [
+	"wasm"
+]
+
+[workspace.dependencies]
+winit = "0.29.4"
+
 [dependencies]
 md5 = "0.7"
 bytemuck = { version = "1.14.0", features = ["zeroable_maybe_uninit", "zeroable_atomics"] }
@@ -28,11 +44,12 @@ r2d2_sqlite = "0.25.0"
 r2d2 = "0.8.10"
 rand = "0.8.5"
 oneshot = { version = "0.1.8", default-features = false, features = ["std"] }
-winit = { version = "0.29.4", default-features = false, feautres = ["x11"] }
+
+
 wgpu = "0.20.0"
 
-egui-winit = { git = "https://github.com/486c/egui", branch = "0.28.1"}
 egui = { git = "https://github.com/486c/egui", branch = "0.28.1"}
+egui-winit = { git = "https://github.com/486c/egui", branch = "0.28.1"}
 egui-wgpu = { git = "https://github.com/486c/egui", branch = "0.28.1"}
 egui_extras = { git = "https://github.com/486c/egui", branch = "0.28.1"}
 
