@@ -64,6 +64,23 @@ pub fn calc_opposite_direction_degree(p1: Vector2<f32>, p2: Vector2<f32>) -> f32
     (calc_direction_degree(p1, p2) + 180.0) % 360.0
 }
 
+/// Return preempt and fadein based on AR
+pub fn calculate_preempt_fadein(ar: f32) -> (f32, f32) {
+    if ar > 5.0 {
+        (
+            1200.0 - 750.0 * (ar - 5.0) / 5.0,
+            800.0 - 500.0 * (ar - 5.0) / 5.0,
+        )
+    } else if ar < 5.0 {
+        (
+            1200.0 + 600.0 * (5.0 - ar) / 5.0,
+            800.0 + 400.0 * (5.0 - ar) / 5.0,
+        )
+    } else {
+        (1200.0, 800.0)
+    }
+}
+
 #[inline]
 pub fn calc_progress(current: f64, start: f64, end: f64) -> f64 {
     (current - start) / (end - start)

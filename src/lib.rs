@@ -1,26 +1,32 @@
+pub mod graphics;
+pub mod osu_renderer;
+pub mod hit_objects;
+pub mod texture;
 pub mod math;
-mod camera;
-mod rgb;
-mod egui_state;
-mod graphics;
-mod skin_ini;
-mod hit_circle_instance;
-mod hit_objects;
-mod osu_renderer;
-mod osu_state;
-mod config;
-mod slider_instance;
-mod skin_manager;
-mod texture;
-mod timer;
-mod ui;
-mod vertex;
-mod screen;
-mod song_select_state;
-mod osu_db;
-mod quad_renderer;
-mod quad_instance;
-mod song_importer_ui;
-mod osu_cursor_renderer;
-mod frameless_source;
-mod osu_input;
+pub mod camera;
+pub mod rgb;
+pub mod quad_renderer;
+pub mod quad_instance;
+pub mod skin_manager;
+pub mod vertex;
+pub mod config;
+pub mod hit_circle_instance;
+pub mod slider_instance;
+pub mod timer;
+pub mod skin_ini;
+
+cfg_if::cfg_if! {
+    if #[cfg(not(target_arch = "wasm32"))] {
+        mod egui_state;
+        mod osu_state;
+        mod ui;
+        mod screen;
+        mod song_select_state;
+        mod osu_db;
+        mod song_importer_ui;
+        mod osu_cursor_renderer;
+        mod frameless_source;
+        mod osu_input;
+    }
+}
+

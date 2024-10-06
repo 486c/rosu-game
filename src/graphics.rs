@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
-use futures::executor::block_on;
+use log::warn;
+use pollster::block_on;
 use wgpu::{Instance, InstanceDescriptor, PresentMode, RequestAdapterOptions, SurfaceTexture};
 use winit::window::Window;
 
@@ -13,29 +14,67 @@ pub struct Graphics<'g> {
 }
 
 impl<'g> Graphics<'g> {
-    pub fn new(window: Arc<Window>) -> Self {
+    pub async fn new(window: Arc<Window>) -> Self {
         let _span = tracy_client::span!("wgpu init");
 
-        let supported_backend = wgpu::Backends::VULKAN;
-        let device_descriptor = wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::default(),
-            required_limits: wgpu::Limits::default(),
-        };
-        let power_preferences = wgpu::PowerPreference::HighPerformance;
-        //let present_mode = PresentMode::Fifo;
-        let present_mode = PresentMode::AutoNoVsync;
+        /*
+cfg_if::cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+            } else {
+                let size = window.inner_size();
+                let instance = wgpu::Instance::default();
+                let limits = wgpu::Limits::default();
+            }
+        }
+        */
 
+
+
+
+        let present_mode = PresentMode::Fifo;
         let size = window.inner_size();
 
-        let instance = Instance::new(InstanceDescriptor {
-            backends: supported_backend,
-            dx12_shader_compiler: Default::default(),
-            flags: wgpu::InstanceFlags::empty(),
-            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
-        });
+        cfg_if::cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                let size = window.inner_size();
+                let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::GL,
+                    ..Default::default()
+                });
 
+                let limits = wgpu::Limits::downlevel_webgl2_defaults();
+
+                let device_descriptor = wgpu::DeviceDescriptor {
+                    label: None,
+                    required_features: wgpu::Features::default(),
+                    required_limits: limits,
+                };
+
+            } else {
+
+                let supported_backend = wgpu::Backends::VULKAN;
+                let device_descriptor = wgpu::DeviceDescriptor {
+                    label: None,
+                    required_features: wgpu::Features::default(),
+                    required_limits: wgpu::Limits::default(),
+                };
+
+
+                let instance = Instance::new(InstanceDescriptor {
+                    backends: supported_backend,
+                    dx12_shader_compiler: Default::default(),
+                    flags: wgpu::InstanceFlags::empty(),
+                    gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+                });
+            }
+        }
+
+
+        let power_preferences = wgpu::PowerPreference::None;
         let surface = instance.create_surface(window).unwrap();
+
+
+        warn!("Create surface");
 
         let adapter_options = RequestAdapterOptions {
             power_preference: power_preferences,
@@ -43,9 +82,13 @@ impl<'g> Graphics<'g> {
             compatible_surface: Some(&surface),
         };
 
-        let adapter = block_on(instance.request_adapter(&adapter_options)).unwrap();
+        let adapter = instance.request_adapter(&adapter_options).await.unwrap();
 
-        let (device, queue) = block_on(adapter.request_device(&device_descriptor, None)).unwrap();
+        warn!("adapter");
+
+        let (device, queue) = adapter.request_device(&device_descriptor, None).await.unwrap();
+
+        warn!("device queue");
 
         let surface_caps = surface.get_capabilities(&adapter);
 

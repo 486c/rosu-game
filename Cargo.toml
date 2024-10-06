@@ -20,17 +20,21 @@ members = [
 
 [workspace.dependencies]
 winit = "0.29.4"
+rosu-map = { git = "https://github.com/MaxOhn/rosu-map.git" }
+wgpu = "0.20.0"
 
 [dependencies]
+log = "0.4.20"
+winit = { workspace = true }
+rosu-map = { workspace = true }
+wgpu = { workspace = true }
 md5 = "0.7"
 bytemuck = { version = "1.14.0", features = ["zeroable_maybe_uninit", "zeroable_atomics"] }
 cgmath = { git = "https://github.com/rustgd/cgmath.git", features = ["bytemuck"] }
-futures = "0.3.28"
 image = "0.24.7"
 rosu-pp = "0.10.0"
 tracy-client = { version = "0.16.5", default-features = false }
 ultraviolet = { version = "0.9.2", features = ["bytemuck"] }
-rosu-map = { git = "https://github.com/MaxOhn/rosu-map.git" }
 smallvec = "1.13.2"
 rodio = "0.19.0"
 raw-window-handle = "0.6.2"
@@ -46,12 +50,16 @@ rand = "0.8.5"
 oneshot = { version = "0.1.8", default-features = false, features = ["std"] }
 
 
-wgpu = "0.20.0"
-
 egui = { git = "https://github.com/486c/egui", branch = "0.28.1"}
-egui-winit = { git = "https://github.com/486c/egui", branch = "0.28.1"}
+egui-winit = { git = "https://github.com/486c/egui", branch = "0.28.1", default-features = false}
 egui-wgpu = { git = "https://github.com/486c/egui", branch = "0.28.1"}
 egui_extras = { git = "https://github.com/486c/egui", branch = "0.28.1"}
+cfg-if = "1.0.0"
+getrandom = { version = "0.2.15", features = ["js"] }
+pollster = "0.3.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1.1.0"
 
 [replace]
 "egui:0.28.1" = {git = "https://github.com/486c/egui", branch = "0.28.1"}

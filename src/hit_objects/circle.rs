@@ -1,9 +1,7 @@
 use cgmath::Vector2;
 use rosu_map::util::Pos;
 
-use crate::osu_state::HitWindow;
-
-use super::{Hit, CIRCLE_FADEOUT_TIME, JUDGMENTS_FADEOUT_TIME};
+use super::{hit_window::HitWindow, Hit, CIRCLE_FADEOUT_TIME, JUDGMENTS_FADEOUT_TIME};
 
 pub struct CircleHitResult {
     pub at: f64,

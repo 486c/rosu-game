@@ -8,7 +8,7 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{circle::CircleHitResult, Object, ObjectKind}, math::{calc_playfield, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{OsuInput, OsuInputState}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{circle::CircleHitResult, hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, get_hitcircle_diameter, calculate_preempt_fadein}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{OsuInput, OsuInputState}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 
 
@@ -24,46 +24,6 @@ pub enum OsuStateEvent {
     PlaySound(i32, Box<dyn Source<Item = f32> + Send + Sync>),
 }
 
-/// Return preempt and fadein based on AR
-fn calculate_preempt_fadein(ar: f32) -> (f32, f32) {
-    if ar > 5.0 {
-        (
-            1200.0 - 750.0 * (ar - 5.0) / 5.0,
-            800.0 - 500.0 * (ar - 5.0) / 5.0,
-        )
-    } else if ar < 5.0 {
-        (
-            1200.0 + 600.0 * (5.0 - ar) / 5.0,
-            800.0 + 400.0 * (5.0 - ar) / 5.0,
-        )
-    } else {
-        (1200.0, 800.0)
-    }
-}
-
-pub struct HitWindow {
-    pub x300: f64,
-    pub x100: f64,
-    pub x50: f64,
-}
-
-impl Default for HitWindow {
-    fn default() -> Self {
-        Self {
-            x300: 0.0,
-            x100: 0.0,
-            x50: 0.0,
-        }
-    }
-}
-
-fn calculate_hit_window(od: f32) -> HitWindow {
-    HitWindow {
-        x300: 80.0 - 6.0 * (od as f64),
-        x100: 140.0 - 8.0 * (od as f64),
-        x50: 200.0 - 10.0 * (od as f64),
-    }
-}
 
 pub struct OsuState<'s> {
     pub window: Arc<Window>,
@@ -180,7 +140,7 @@ impl<'s> OsuState<'s> {
         }
 
         let (preempt, fadein) = calculate_preempt_fadein(map.approach_rate);
-        let hit_window = calculate_hit_window(map.overall_difficulty);
+        let hit_window = HitWindow::from_od(map.overall_difficulty);
 
         self.preempt = preempt;
         self.fadein = fadein;

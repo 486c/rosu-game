@@ -1,13 +1,15 @@
 pub mod circle;
 pub mod slider;
+pub mod hit_window;
 
 use cgmath::Vector2;
+use hit_window::HitWindow;
 use rosu_map::{section::hit_objects::HitObject, Beatmap};
 
 use slider::{Slider, Tick};
 use circle::Circle;
 
-use crate::{math::{calc_direction_degree, calc_opposite_direction_degree, calc_progress}, osu_state::HitWindow};
+use crate::math::{calc_direction_degree, calc_opposite_direction_degree, calc_progress};
 
 // In ms
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;

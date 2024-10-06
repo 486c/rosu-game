@@ -1,4 +1,10 @@
-use std::time::{Instant, Duration};
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        use web_time::{Instant, Duration};
+    } else {
+        use std::time::{Instant, Duration};
+    }
+}
 
 pub struct Timer {
     now: Instant,
