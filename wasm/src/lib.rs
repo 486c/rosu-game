@@ -1,4 +1,5 @@
 use log::{info, warn};
+use url::Url;
 use wasm_bindgen::prelude::wasm_bindgen;
 use rosu::timer::Timer;
 use winit::{event_loop::EventLoop, platform::web::WindowExtWebSys, window::WindowBuilder};
@@ -30,6 +31,24 @@ async fn main() {
             Some(())
         })
     .unwrap();
+
+
+    // Getting url path
+    let current_url = {
+        web_sys::window().unwrap().location().href()
+    }.unwrap();
+
+    let url = Url::parse(&current_url)
+        .expect("failed to parse current url");
+    
+    // TODO: some magical fuckery to extract path
+    // in the future protect this using some proper routing lmao
+    let beatmap_id = if let Some(path) = url.path().strip_prefix("/b/") {
+        let id = path.trim_matches('/').to_string();
+        Some(id)
+    } else {
+        None
+    }.expect("no beatmap id is provided. bye!");
     
     let window = Arc::new(window);
 
@@ -43,8 +62,20 @@ async fn main() {
 
     let skin = SkinManager::from_static(&graphics);
     info!("Initialized skin");
+    
+    let download_link = Url::parse(&format!("https://osu.direct/api/osu/{}", beatmap_id)).unwrap();
 
-    let beatmap: rosu_map::Beatmap = rosu_map::from_bytes(TEST_BEATMAP_BYTES).unwrap();
+    let client = reqwest_wasm::Client::new();
+    let downloaded_beatmap = client.get(download_link)
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
+        .header("Access-Control-Allow-Headers", "Origin, Content-Type, X-Auth-Token")
+        .send().await.unwrap()
+        .bytes().await.expect("failed to extract bytes from request sended");
+
+    info!("Downloaded beatmap: {}", downloaded_beatmap.len());
+
+    let beatmap: rosu_map::Beatmap = rosu_map::from_bytes(&downloaded_beatmap).unwrap();
     info!("Initialized test static beatmap!");
     
     let hit_window = HitWindow::from_od(beatmap.overall_difficulty);
