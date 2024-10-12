@@ -442,15 +442,9 @@ impl<'s> OsuState<'s> {
 
     pub fn render_egui(&mut self, view: &TextureView) -> Result<(), wgpu::SurfaceError> {
         let graphics = self.osu_renderer.get_graphics();
-        let mut encoder = graphics
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
 
-        self.egui.render(&graphics, &mut encoder, &view)?;
+        self.egui.render(&graphics, &view)?;
 
-        graphics.queue.submit(std::iter::once(encoder.finish()));
 
         Ok(())
     }

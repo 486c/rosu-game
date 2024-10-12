@@ -117,6 +117,7 @@ impl<'qr> QuadRenderer<'qr> {
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("quad render pipeline"),
+                    cache: None,
                     layout: Some(&quad_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &quad_shader,
@@ -190,6 +191,7 @@ impl<'qr> QuadRenderer<'qr> {
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("altas quad render pipeline"),
+                    cache: None,
                     layout: Some(&quad_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &atlas_quad_shader,

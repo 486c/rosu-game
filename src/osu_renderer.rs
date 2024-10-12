@@ -303,6 +303,7 @@ impl<'or> OsuRenderer<'or> {
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("approach circle render pipeline"),
+                    cache: None,
                     layout: Some(&approach_circle_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &approach_circle_shader,
@@ -366,6 +367,7 @@ impl<'or> OsuRenderer<'or> {
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("hit_circle render pipeline"),
+                    cache: None,
                     layout: Some(&hit_circle_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &hit_circle_shader,
@@ -425,6 +427,7 @@ impl<'or> OsuRenderer<'or> {
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("quad colored render pipeline"),
+                    cache: None,
                     layout: Some(&hit_circle_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &quad_colored_shader,
@@ -516,6 +519,7 @@ impl<'or> OsuRenderer<'or> {
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("slider test pipeline"),
+                    cache: None,
                     layout: Some(&slider_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &slider_shader,
@@ -609,6 +613,7 @@ impl<'or> OsuRenderer<'or> {
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("slider to screen render pipeline23"),
+                    cache: None,
                     layout: Some(&slider_to_screen_pipeline_layout),
                     vertex: wgpu::VertexState {
                         compilation_options: Default::default(),

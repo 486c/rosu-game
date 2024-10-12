@@ -23,6 +23,7 @@ impl EguiState {
             window,
             None,
             None,
+            None,
         );
 
         let surface_config = graphics.get_surface_config();
@@ -32,7 +33,8 @@ impl EguiState {
             &graphics.device, 
             surface_config.format,
             None, 
-            1
+            1,
+            false
         );
 
         EguiState {
@@ -56,7 +58,6 @@ impl EguiState {
     pub fn render(
         &mut self,
         graphics: &Graphics,
-        encoder: &mut CommandEncoder,
         view: &wgpu::TextureView,
     ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("egui_state render");
@@ -89,16 +90,24 @@ impl EguiState {
             pixels_per_point: self.state.egui_ctx().pixels_per_point()
         };
 
+
+        let mut encoder =
+            graphics
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("egui encoder"),
+                });
+
         self.renderer.update_buffers(
             &graphics.device,
             &graphics.queue,
-            encoder,
+            &mut encoder,
             &paint_jobs,
             &screen_descriptor,
         );
 
         {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let descriptor = wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view,
@@ -111,17 +120,21 @@ impl EguiState {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
-            });
+            };
 
+            let render_pass = encoder.begin_render_pass(&descriptor).forget_lifetime();
+            let mut render_pass = render_pass.forget_lifetime();
 
             self.renderer
                 .render(&mut render_pass, &paint_jobs, &screen_descriptor);
-
         }
+
 
         for id in &egui_output.textures_delta.free {
             self.renderer.free_texture(&id);
         }
+
+        graphics.queue.submit([encoder.finish()]);
 
         Ok(())
     }
