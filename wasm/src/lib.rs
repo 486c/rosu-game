@@ -115,6 +115,8 @@ impl<'ows> OsuWasmState<'ows> {
             &self.objects_render_queue, &self.objects,
             &self.skin,
         ).unwrap();
+
+        output.present();
     }
 }
 
@@ -128,6 +130,7 @@ struct App<'app> {
 
 enum AppEvents {
     GraphicsInitialized(Arc<Graphics<'static>>),
+    Resize(PhysicalSize<u32>),
 }
 
 impl<'app> App<'app> {
@@ -145,6 +148,7 @@ async fn initialize_graphics<'a>(window: Arc<Window>) -> GraphicsInitialized<'a>
     let size = window.inner_size();
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::GL,
+        flags: wgpu::InstanceFlags::empty(),
         ..Default::default()
     });
 
@@ -157,7 +161,7 @@ async fn initialize_graphics<'a>(window: Arc<Window>) -> GraphicsInitialized<'a>
         memory_hints: MemoryHints::default() 
     };
 
-    let power_preferences = wgpu::PowerPreference::None;
+    let power_preferences = wgpu::PowerPreference::HighPerformance;
     let surface = instance.create_surface(window).unwrap();
     info!("Initialized surface");
 
@@ -217,19 +221,21 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 if let Some(ref mut state) = self.osu_state {
                     state.on_draw()
                 }
-
-                window.request_redraw();
-
             },
             winit::event::WindowEvent::Resized(new_size) => {
                 if self.graphics.is_none() {
                     let window = self.window.as_ref().unwrap().clone();
                     let proxy = self.proxy.take().unwrap();
                     spawn_local(async move {
+                        info!("spawned shit");
                         let initialized_graphics = initialize_graphics(window.clone()).await;
                         let graphics = Arc::new(Graphics::from_initialized(initialized_graphics));
 
                         if proxy.send_event(AppEvents::GraphicsInitialized(graphics)).is_err() {
+                            info!("user event is not send");
+                        };
+
+                        if proxy.send_event(AppEvents::Resize(new_size)).is_err() {
                             info!("user event is not send");
                         };
                     });
@@ -241,6 +247,11 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
             },
             _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        let window = self.window.as_ref().unwrap();
+        window.request_redraw();
     }
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: AppEvents) {
@@ -266,9 +277,15 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 };
 
                 state.open_beatmap_from_bytes(&TEST_BEATMAP_BYTES);
+                state.clock.unpause();
 
                 self.graphics = Some(graphics);
                 self.osu_state = Some(state);
+            },
+            AppEvents::Resize(new_size) => {
+                if let Some(ref mut state) = self.osu_state {
+                    state.osu_renderer.on_resize(&new_size);
+                }
             },
         }
     }

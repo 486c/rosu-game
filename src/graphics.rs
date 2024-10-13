@@ -68,7 +68,7 @@ impl<'g> Graphics<'g> {
     }
 
     pub fn from_initialized(graphics: GraphicsInitialized<'g>) -> Self {
-        let present_mode = PresentMode::Fifo;
+        let present_mode = PresentMode::AutoVsync;
         let surface_caps = graphics.surface.get_capabilities(&graphics.adapter);
 
         let surface_format = surface_caps
