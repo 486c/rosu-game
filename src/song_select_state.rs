@@ -215,6 +215,7 @@ impl<'ss> SongSelectionState<'ss> {
     
     // Spawns a thread to parse a beatmap
     fn open_beatmap(&self, beatmap: &BeatmapEntry) {
+        let _span = tracy_client::span!("osu_song_select_state::open_beatmap");
         let tx = self.inner_tx.clone();
         let path = beatmap.path.clone();
         
@@ -222,6 +223,7 @@ impl<'ss> SongSelectionState<'ss> {
         // 2. Load and decode image & apply blur
         // 3. Load and decode audio file
         std::thread::spawn(move || {
+            let _span = tracy_client::span!("osu_song_select_state::open_beatmap_thread");
             // Beatmap stuff
             let mut beatmap_file = File::open(&path).unwrap();
             let mut beatmap_buffer = Vec::new();
@@ -279,6 +281,7 @@ impl<'ss> SongSelectionState<'ss> {
 
 
     pub fn on_resize(&mut self, new_size: &PhysicalSize<u32>) {
+        let _span = tracy_client::span!("osu_song_select_state::on_resize");
         self.quad_renderer.resize_camera(new_size);
 
         if let Some(bg) = &self.current_background_image {
@@ -306,11 +309,15 @@ impl<'ss> SongSelectionState<'ss> {
     }
 
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
+        let _span = tracy_client::span!("osu_song_select_state::on_pressed_down");
+
         if key_code == KeyCode::Enter {
             let current_in_cache = self.current - self.min;
 
-            let _ = self.inner_tx.send(
+            self.inner_tx.send(
                 SongSelectionEvents::StartBeatmap(self.db.cache[current_in_cache].clone())
+            ).expect(
+                "Failed to send StartBeatmap event to the SongSelectState"
             );
         }
 
@@ -332,6 +339,8 @@ impl<'ss> SongSelectionState<'ss> {
     }
     
     fn resize_background_vertex(&self, width: f32, height: f32) {
+        let _span = tracy_client::span!("osu_song_select_state::resize_background_vertex");
+
         let image_width = width;
         let image_height = height;
 
@@ -357,6 +366,8 @@ impl<'ss> SongSelectionState<'ss> {
     }
 
     fn load_background(&mut self, image: DynamicImage, md5: Digest) {
+        let _span = tracy_client::span!("osu_song_select_state::load_background");
+
         // Do not preform any operations if background is the same
         if let Some(current_background) = &self.current_background_image {
             if current_background.image_hash == md5 {
@@ -386,6 +397,8 @@ impl<'ss> SongSelectionState<'ss> {
         md5: md5::Digest,
         beatmap: &Beatmap,
     ) {
+        let _span = tracy_client::span!("osu_song_select_state::load_audio");
+
         // If current audio is the same do nothing
         if let Some(current_audio) = &self.current_audio {
             if current_audio.audio_hash == md5 {
@@ -393,10 +406,12 @@ impl<'ss> SongSelectionState<'ss> {
             }
         };
 
-        let _ = self.state_tx.send(OsuStateEvent::PlaySound(
+        self.state_tx.send(OsuStateEvent::PlaySound(
                 beatmap.preview_time,
                 audio_source,
-        ));
+        )).expect(
+            "Failed to send PlaySound event to the OsuState"
+        );
 
         self.current_audio = Some(CurrentAudio {
             audio_hash: md5,
@@ -404,13 +419,16 @@ impl<'ss> SongSelectionState<'ss> {
     }
 
     pub fn update(&mut self) {
+        let _span = tracy_client::span!("osu_song_select_state::update");
         match self.inner_rx.try_recv() {
             Ok(event) => {
                 match event {
                     SongSelectionEvents::SelectBeatmap(entry) => {
+                        let _span = tracy_client::span!("osu_song_select_state::update::event::select_beatmap");
                         self.open_beatmap(&entry);
                     },
                     SongSelectionEvents::LoadedBeatmap{ mut beatmap, image, audio_source, image_md5, audio_md5, beatmap_md5 }  => {
+                        let _span = tracy_client::span!("osu_song_select_state::update::event::loaded_beatmap");
                         self.load_background(image, image_md5);
                         self.load_audio(audio_source, audio_md5, &beatmap);
 
@@ -425,9 +443,12 @@ impl<'ss> SongSelectionState<'ss> {
                         self.current_beatmap = Some(current_beatmap);
                     },
                     SongSelectionEvents::StartBeatmap(entry) => {
-                        let _ = self.state_tx.send(OsuStateEvent::StartBeatmap(entry));
+                        let _span = tracy_client::span!("osu_song_select_state::update::event::start_beatmap");
+                        self.state_tx.send(OsuStateEvent::StartBeatmap(entry))
+                            .expect("Failed to send StartBeatmap event to the OsuState");
                     },
                     SongSelectionEvents::ImportSongsDirectory(job) => {
+                        let _span = tracy_client::span!("osu_song_select_state::update::event::import_songs_directory");
                         self.db.scan_beatmaps(job.path, job.stop_rx);
                     },
                 }
@@ -442,6 +463,7 @@ impl<'ss> SongSelectionState<'ss> {
     }
 
     pub fn render_background(&self, view: &TextureView) {
+        let _span = tracy_client::span!("osu_song_select_state::render_background");
         if let Some(current_background) = &self.current_background_image {
             self.quad_renderer.render_on_view_instanced(
                 &view,
@@ -453,6 +475,7 @@ impl<'ss> SongSelectionState<'ss> {
     }
 
     pub fn render_beatmap_card_info(&mut self, ui: &mut egui::Ui) {
+        let _span = tracy_client::span!("osu_song_select_state::render_beatmap_card_info");
         egui::Frame::default()
             .rounding(5.0)
             .outer_margin(10.0)
@@ -479,6 +502,7 @@ impl<'ss> SongSelectionState<'ss> {
     }
 
     pub fn render_beatmap_footer(&mut self, ui: &mut egui::Ui) {
+        let _span = tracy_client::span!("osu_song_select_state::render_beatmap_footer");
         ui.with_layout(egui::Layout::centered_and_justified(Direction::LeftToRight), |ui| {
             let text = format!("Beatmaps: {}", self.db.beatmaps_amount());
             ui.add(Label::new(RichText::new(text).heading())
@@ -574,8 +598,10 @@ impl<'ss> SongSelectionState<'ss> {
                                         egui::Vec2::new(0.0, -1.0 * scroll_y)
                                     );
 
-                                    let _ = self.inner_tx.send(
+                                    self.inner_tx.send(
                                         SongSelectionEvents::SelectBeatmap(entry)
+                                    ).expect(
+                                        "Failed to send SelectBeatmap event to the SongSelectState"
                                     );
                                 }
                             }
@@ -624,25 +650,28 @@ impl<'ss> SongSelectionState<'ss> {
 
                                 if sense.clicked() {
                                     if id == self.current {
-                                        let _ = self.inner_tx.send(
+                                        self.inner_tx.send(
                                             SongSelectionEvents::StartBeatmap(beatmap.clone())
-                                        );
+                                        ).expect("Failed to send StartBeatmap event to the SongSelectState");
                                     }
 
                                     self.current = id;
 
-                                    let _ = 
-                                        self.inner_tx.send(
-                                            SongSelectionEvents::SelectBeatmap(beatmap.clone())
-                                        ); // TODO handle this shit
+                                    self.inner_tx.send(
+                                        SongSelectionEvents::SelectBeatmap(beatmap.clone())
+                                    ).expect(
+                                        "Failed to send SelectBeatmap event to the SongSelectState"
+                                    );
 
                                     res.response.scroll_to_me(Some(Align::Center));
                                 }
 
                                 if sense.double_clicked() {
                                     self.current = id;
-                                    let _ = self.inner_tx.send(
+                                    self.inner_tx.send(
                                         SongSelectionEvents::StartBeatmap(beatmap.clone())
+                                    ).expect(
+                                        "Failed to send StartBeatmap event to the SongSelectState"
                                     );
                                     res.response.scroll_to_me(Some(Align::Center));
                                 }

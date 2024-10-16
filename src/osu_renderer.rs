@@ -752,6 +752,7 @@ impl<'or> OsuRenderer<'or> {
     }
 
     pub fn prepare_judgements(&mut self, time: f64, queue: &[usize], objects: &[Object]) {
+        let _span = tracy_client::span!("osu_renderer::prepare judgements");
         for index in queue {
             let object = &objects[*index];
 
@@ -784,7 +785,7 @@ impl<'or> OsuRenderer<'or> {
         objects: &[Object],
         skin: &SkinManager,
     ) {
-        let _span = tracy_client::span!("osu_renderer prepare_objects2");
+        let _span = tracy_client::span!("osu_renderer::prepare objects");
 
         for current_index in queue.iter() {
             let object = &objects[*current_index];
@@ -1095,6 +1096,7 @@ impl<'or> OsuRenderer<'or> {
     }
 
     pub fn get_graphics(&self) -> Arc<Graphics> {
+        let _span = tracy_client::span!("osu_renderer::get_graphics");
         self.graphics.clone()
     }
 
@@ -1105,7 +1107,7 @@ impl<'or> OsuRenderer<'or> {
         skin: &SkinManager,
         config: &Config
     ) {
-        let _span = tracy_client::span!("osu_renderer prepare_and_render_slider_texture");
+        let _span = tracy_client::span!("osu_renderer::prepare_and_render_slider_texture");
         let surface_config = self.graphics.get_surface_config();
 
         if !slider.render.is_none() && config.store_slider_textures {
@@ -1332,6 +1334,7 @@ impl<'or> OsuRenderer<'or> {
     }
 
     pub fn on_cs_change(&mut self, cs: f32) {
+        let _span = tracy_client::span!("osu_renderer::on_cs_change");
         let hit_circle_diameter = get_hitcircle_diameter(cs);
 
         self.hit_circle_diameter = hit_circle_diameter;
@@ -1375,6 +1378,7 @@ impl<'or> OsuRenderer<'or> {
     }
 
     pub fn on_resize(&mut self, new_size: &PhysicalSize<u32>) {
+        let _span = tracy_client::span!("osu_renderer::on_resize");
         self.graphics.resize(new_size);
 
         let (graphics_width, graphics_height) = self.graphics.get_surface_size();
@@ -1422,7 +1426,7 @@ impl<'or> OsuRenderer<'or> {
     }
 
     pub fn write_buffers(&mut self) {
-        let _span = tracy_client::span!("osu_renderer write buffers");
+        let _span = tracy_client::span!("osu_renderer::write_buffers");
 
         buffer_write_or_init!(
             self.graphics.queue,
@@ -1483,7 +1487,7 @@ impl<'or> OsuRenderer<'or> {
 
     /// Clears internal buffers
     pub fn clear_buffers(&mut self) {
-        let _span = tracy_client::span!("osu_renderer clear_buffers");
+        let _span = tracy_client::span!("osu_renderer::clear_buffers");
         self.hit_circle_instance_data.clear();
         self.approach_circle_instance_data.clear();
         self.slider_to_screen_instance_data.clear();
@@ -1498,6 +1502,7 @@ impl<'or> OsuRenderer<'or> {
     
     /// Responsible for managing and rendering judgments queue
     pub fn render_judgements(&mut self, atlas: &AtlasTexture, view: &TextureView) {
+        let _span = tracy_client::span!("osu_renderer::render_judgements");
         for jdg in &self.judgements_queue {
             let image_index = match jdg.result {
                 hit_objects::Hit::X300 => 0,
@@ -1527,7 +1532,7 @@ impl<'or> OsuRenderer<'or> {
         objects: &[Object],
         skin: &SkinManager,
     ) -> Result<(), wgpu::SurfaceError> {
-        let _span = tracy_client::span!("osu_renderer render_objects");
+        let _span = tracy_client::span!("osu_renderer::render_objects");
 
         let mut encoder =
             self.graphics

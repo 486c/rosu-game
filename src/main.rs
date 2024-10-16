@@ -3,13 +3,6 @@ use std::sync::Arc;
 use graphics::Graphics;
 use osu_state::OsuState;
 use rodio::{OutputStream, Sink};
-use winit::{
-    dpi::LogicalSize,
-    event::{Event, WindowEvent},
-    event_loop::EventLoop,
-    window::WindowBuilder,
-};
-
 pub mod math;
 mod camera;
 mod rgb;

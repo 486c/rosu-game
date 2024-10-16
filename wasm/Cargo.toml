@@ -23,7 +23,7 @@ web-sys = { version = "0.3.69", features = [
 	"Location",
 ]}
 
-wgpu-tests = { path = "../" }
+rosu-game = { path = "../" }
 
 winit = { workspace = true }
 rosu-map = { workspace = true }

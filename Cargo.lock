@@ -2562,6 +2562,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "rosu-game"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cfg-if",
+ "cgmath",
+ "egui",
+ "egui-wgpu",
+ "egui-winit",
+ "egui_extras",
+ "egui_file",
+ "getrandom",
+ "image",
+ "log",
+ "md5",
+ "oneshot",
+ "pollster",
+ "r2d2",
+ "r2d2_sqlite",
+ "rand",
+ "raw-window-handle",
+ "rodio",
+ "rosu-map",
+ "rosu-pp",
+ "rusqlite",
+ "rust-ini",
+ "smallvec",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+ "tracy-client",
+ "ultraviolet",
+ "web-time",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "rosu-map"
 version = "0.1.2"
 source = "git+https://github.com/MaxOhn/rosu-map.git#e82f86890b99a23104097f114210244d2b414f78"
@@ -3363,6 +3401,7 @@ dependencies = [
  "console_log",
  "log",
  "reqwest-wasm",
+ "rosu-game",
  "rosu-map",
  "url",
  "wasm-bindgen",
@@ -3370,7 +3409,6 @@ dependencies = [
  "web-sys",
  "web-time",
  "wgpu",
- "wgpu-tests",
  "winit",
 ]
 
@@ -3669,44 +3707,6 @@ dependencies = [
  "web-sys",
  "wgpu-types",
  "winapi",
-]
-
-[[package]]
-name = "wgpu-tests"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "cfg-if",
- "cgmath",
- "egui",
- "egui-wgpu",
- "egui-winit",
- "egui_extras",
- "egui_file",
- "getrandom",
- "image",
- "log",
- "md5",
- "oneshot",
- "pollster",
- "r2d2",
- "r2d2_sqlite",
- "rand",
- "raw-window-handle",
- "rodio",
- "rosu-map",
- "rosu-pp",
- "rusqlite",
- "rust-ini",
- "smallvec",
- "thiserror",
- "tracing",
- "tracing-subscriber",
- "tracy-client",
- "ultraviolet",
- "web-time",
- "wgpu",
- "winit",
 ]
 
 [[package]]

@@ -70,7 +70,8 @@ impl SongImporter {
                                 }
 
                                 if ui.button("Stop").clicked() {
-                                    let _ = tx.take().unwrap().send(());
+                                    tx.take().unwrap().send(())
+                                        .expect("Failed to send Stop event to the beatmap importer");
                                     not_retain = false;
                                 }
                             });
@@ -93,7 +94,8 @@ impl SongImporter {
 
                 self.current_jobs.push((path.to_path_buf(), Some(tx)));
 
-                let _ = self.song_select_tx.send(SongSelectionEvents::ImportSongsDirectory(job));
+                self.song_select_tx.send(SongSelectionEvents::ImportSongsDirectory(job))
+                    .expect("Failed to send ImportSongsDirectory event to the db");
             }
         };
     }

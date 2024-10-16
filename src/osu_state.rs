@@ -107,11 +107,13 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn open_skin(&mut self, path: impl AsRef<Path>) {
+        let _span = tracy_client::span!("osu_state::open_skin");
         let skin_manager = SkinManager::from_path(path, &self.osu_renderer.get_graphics());
         self.skin_manager = skin_manager;
     }
 
     pub fn open_beatmap(&mut self, path: impl AsRef<Path>) {
+        let _span = tracy_client::span!("osu_state::open_beatmap");
         self.osu_clock.reset_time();
         self.osu_clock.unpause();
 
@@ -160,10 +162,12 @@ impl<'s> OsuState<'s> {
     pub fn set_audio<I>(&self, audio: I) 
     where 
     I: Source<Item = f32> + Send + Sync + 'static {
+        let _span = tracy_client::span!("osu_state::set_audio");
         self.sink.append(audio);
     }
 
     pub fn apply_beatmap_transformations(&mut self) {
+        let _span = tracy_client::span!("osu_state::apply_beatmap_transformations");
         let cs = match &self.current_beatmap {
             Some(beatmap) => beatmap.circle_size,
             None => 4.0,
@@ -174,6 +178,7 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
+        let _span = tracy_client::span!("osu_state::resize");
         self.current_screen_size.x = new_size.width as f32;
         self.current_screen_size.y = new_size.height as f32;
 
@@ -183,10 +188,12 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
+        let _span = tracy_client::span!("osu_state::on_pressed_down");
         match self.current_state {
             OsuStates::Playing => {
                 if key_code == KeyCode::Escape {
-                    let _ = self.event_sender.send(OsuStateEvent::ToSongSelection);
+                    self.event_sender.send(OsuStateEvent::ToSongSelection)
+                        .expect("Failed to send ToSongSelection event to the OsuState");
                 }
                 
                 let ts = self.osu_clock.since_start();
@@ -206,6 +213,7 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn on_pressed_release(&mut self, key_code: KeyCode) {
+        let _span = tracy_client::span!("osu_state::on_pressed_release");
         match self.current_state {
             OsuStates::Playing => {
 
@@ -223,6 +231,7 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn on_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
+        let _span = tracy_client::span!("osu_state::on_cursor_moved");
         self.cursor_renderer.on_cursor_moved(position);
 
         match self.current_state {
@@ -242,9 +251,9 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn update_egui(&mut self, input: RawInput) {
-        let _span = tracy_client::span!("osu_state update egui");
+        let _span = tracy_client::span!("osu_state::update_egui");
 
-        self.egui.state.egui_ctx().begin_frame(input);
+        self.egui.state.egui_ctx().begin_pass(input);
 
         self.settings_view.window(
             &self.egui.state.egui_ctx(),
@@ -286,7 +295,7 @@ impl<'s> OsuState<'s> {
             }
         });
 
-        let output = self.egui.state.egui_ctx().end_frame();
+        let output = self.egui.state.egui_ctx().end_pass();
 
         self.egui.state.handle_platform_output(
             &self.window,
@@ -297,6 +306,7 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn process_inputs(&mut self, process_time: f64) {
+        let _span = tracy_client::span!("osu_state::process_inputs");
         self.input_buffer.iter().for_each(|i| {
             assert!(i.ts <= process_time);
         });
@@ -352,7 +362,7 @@ impl<'s> OsuState<'s> {
     // Going through every object on beatmap and preparing it to
     // assigned buffers
     pub fn prepare_objects_for_renderer(&mut self, time: f64) {
-        let _span = tracy_client::span!("osu_state prepare objects");
+        let _span = tracy_client::span!("osu_state::prepare_objects_for_renderer");
 
         for (i, obj) in self.hit_objects.iter_mut().enumerate().rev() {
             if obj.is_judgements_visible(time, self.preempt) {
@@ -392,7 +402,7 @@ impl<'s> OsuState<'s> {
     }
     
     pub fn update(&mut self) {
-        let _span = tracy_client::span!("osu_state update");
+        let _span = tracy_client::span!("osu_state::update");
         self.cursor_renderer.update();
 
         //tracing::info!("{:.?}", self.sink.get_pos().as_secs_f64() * 1000.0 - self.osu_clock.get_time());
@@ -403,24 +413,31 @@ impl<'s> OsuState<'s> {
             Ok(event) => {
                 match event {
                     OsuStateEvent::ChangeSkin(path) => {
+                        let _span = tracy_client::span!("osu_state::update::event::change_skin");
                         self.open_skin(path)
                     },
                     OsuStateEvent::StartBeatmap(entry) => {
-                        tracing::info!("Request to enter beatmap");
+                        let _span = tracy_client::span!("osu_state::update::event::start_beatmap");
                         self.open_beatmap(entry.path);
                         self.current_state = OsuStates::Playing;
                     },
                     OsuStateEvent::ToSongSelection => {
+                        let _span = tracy_client::span!("osu_state::update::event::to_song_selection");
                         self.osu_clock.reset_time();
                         self.input_buffer.clear();
                         self.current_input_state.clear();
                         self.current_state = OsuStates::SongSelection;
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {
+                        let span = tracy_client::span!("osu_state::update::event::play_sound");
                         self.sink.clear();
+                        span.emit_text("cleared sink");
                         self.sink.append(audio_source);
+                        span.emit_text("appended audio_source");
                         self.sink.try_seek(Duration::from_millis(start_at.try_into().unwrap_or(0))).unwrap();
+                        span.emit_text("appended try_seek");
                         self.sink.play();
+                        span.emit_text("appended play");
                     },
                 }
             },
@@ -441,6 +458,8 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn render_egui(&mut self, view: &TextureView) -> Result<(), wgpu::SurfaceError> {
+        let _span = tracy_client::span!("osu_state::render_egui");
+
         let graphics = self.osu_renderer.get_graphics();
 
         self.egui.render(&graphics, &view)?;
@@ -450,6 +469,7 @@ impl<'s> OsuState<'s> {
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let _span = tracy_client::span!("osu_state::render");
 
         //println!("diff: {}", self.osu_clock.get_time() as u128 - self.sink.get_pos().as_millis());
 
@@ -469,7 +489,7 @@ impl<'s> OsuState<'s> {
 
                 // TODO THIS SHOULN'T BE HERE, fix when dicided what to
                 // do with egui_input thing
-                self.update_egui(egui_input);
+                //self.update_egui(egui_input);
 
                 self.osu_renderer.render_objects(
                     &view,
@@ -480,12 +500,12 @@ impl<'s> OsuState<'s> {
                 // Clearing objects queue only after they successfully rendered
                 self.objects_render_queue.clear();
                 self.objects_judgments_render_queue.clear();
-                self.render_egui(&view)?;
+                //self.render_egui(&view)?;
 
                 //self.render_playing(&view);
 
                 self.osu_clock.update();
-                self.process_inputs(self.osu_clock.get_time());
+                //self.process_inputs(self.osu_clock.get_time());
             },
             OsuStates::SongSelection => {
                 let egui_output = self.song_select.render(

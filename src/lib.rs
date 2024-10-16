@@ -18,7 +18,7 @@ pub mod skin_ini;
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {
         mod egui_state;
-        mod osu_state;
+        pub mod osu_state;
         mod ui;
         mod screen;
         mod song_select_state;

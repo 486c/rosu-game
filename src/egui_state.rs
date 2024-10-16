@@ -49,7 +49,6 @@ impl EguiState {
         event: &WindowEvent,
         window: &Window,
     ) {
-        // TODO handle
         let _ = self.state.on_window_event(
             window, event
         );
