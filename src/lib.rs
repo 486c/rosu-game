@@ -14,6 +14,7 @@ pub mod hit_circle_instance;
 pub mod slider_instance;
 pub mod timer;
 pub mod skin_ini;
+pub mod processor;
 
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {

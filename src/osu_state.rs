@@ -8,7 +8,7 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{circle::CircleHitResult, hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, get_hitcircle_diameter, calculate_preempt_fadein}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{OsuInput, OsuInputState}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{circle::CircleHitResult, hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{KeyboardState, OsuInput}, osu_renderer::OsuRenderer, processor::OsuProcessor, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 
 
@@ -56,8 +56,7 @@ pub struct OsuState<'s> {
     
     cursor_renderer: CursorRenderer<'s>,
 
-    current_input_state: OsuInputState,
-    input_buffer: Vec<OsuInput>,
+    input_processor: OsuProcessor,
 
     current_screen_size: Vector2<f32>,
     current_hit_circle_diameter: f32,
@@ -97,9 +96,8 @@ impl<'s> OsuState<'s> {
             current_state: OsuStates::SongSelection,
             song_select,
             event_sender,
-            input_buffer: Vec::new(),
+            input_processor: OsuProcessor::default(),
             current_hit_window: Default::default(),
-            current_input_state: OsuInputState::default(),
             current_screen_size: Vector2::new(1.0, 1.0),
             current_hit_circle_diameter: 1.0,
             objects_judgments_render_queue: Vec::new(),
@@ -199,11 +197,25 @@ impl<'s> OsuState<'s> {
                 let ts = self.osu_clock.since_start();
 
                 if key_code == KeyCode::KeyZ {
-                    self.input_buffer.push(OsuInput::key(ts, true, false, false, false));
+                    let state = KeyboardState {
+                        k1: true,
+                        k2: false,
+                        m1: false,
+                        m2: false,
+                    };
+
+                    self.input_processor.store_keyboard_pressed(ts, state);
                 }
 
                 if key_code == KeyCode::KeyX {
-                    self.input_buffer.push(OsuInput::key(ts, false, true, false, false));
+                    let state = KeyboardState {
+                        k1: false,
+                        k2: true,
+                        m1: false,
+                        m2: false,
+                    };
+
+                    self.input_processor.store_keyboard_pressed(ts, state);
                 }
             },
             OsuStates::SongSelection => {
@@ -219,11 +231,25 @@ impl<'s> OsuState<'s> {
 
                 let ts = self.osu_clock.since_start();
                 if key_code == KeyCode::KeyZ {
-                    self.input_buffer.push(OsuInput::key(ts, false, false, false, false));
+                    let state = KeyboardState {
+                        k1: true,
+                        k2: false,
+                        m1: false,
+                        m2: false,
+                    };
+
+                    self.input_processor.store_keyboard_released(ts, state);
                 }
 
                 if key_code == KeyCode::KeyX {
-                    self.input_buffer.push(OsuInput::key(ts, false, false, false, false));
+                    let state = KeyboardState {
+                        k1: false,
+                        k2: true,
+                        m1: false,
+                        m2: false,
+                    };
+
+                    self.input_processor.store_keyboard_released(ts, state);
                 }
             }
             _ => {}
@@ -237,6 +263,7 @@ impl<'s> OsuState<'s> {
         match self.current_state {
             OsuStates::Playing => {
                 let ts = self.osu_clock.since_start();
+
                 let mut recv_pos = Vector2::new(position.x as f32, position.y as f32);
                 let (scale, offsets) = calc_playfield(self.current_screen_size.x, self.current_screen_size.y);
 
@@ -244,7 +271,8 @@ impl<'s> OsuState<'s> {
                 recv_pos /= scale;
                 
                 let pos = Vector2::new(recv_pos.x as f64, recv_pos.y as f64);
-                self.input_buffer.push(OsuInput::moved(ts, pos))
+
+                self.input_processor.store_cursor_moved(ts, pos);
             },
             _ => {},
         }
@@ -307,56 +335,6 @@ impl<'s> OsuState<'s> {
 
     pub fn process_inputs(&mut self, process_time: f64) {
         let _span = tracy_client::span!("osu_state::process_inputs");
-        self.input_buffer.iter().for_each(|i| {
-            assert!(i.ts <= process_time);
-        });
-
-        'input_loop: for input in &self.input_buffer {
-            self.current_input_state.update(input);
-            if !self.current_input_state.is_key_hit() {
-                continue 'input_loop;
-            }
-
-            let input_time = input.ts;
-
-            'obj_loop: for obj in self.hit_objects.iter_mut() {
-                match &mut obj.kind {
-                    ObjectKind::Circle(circle) => {
-                        // If holding dont even try to process input for circle
-                        if self.current_input_state.is_holding() {
-                            continue 'obj_loop;
-                        }
-
-                        if circle.hit_result.is_none() {
-                            let result = circle.is_hittable(
-                                input_time, 
-                                &self.current_hit_window, 
-                                self.current_input_state.cursor.into(),
-                                self.current_hit_circle_diameter
-                            );
-
-                            if let Some(result) = result {
-                                tracing::info!("hit res: {:?} div: {} | c: {:.2} i: {:.2}", 
-                                    result, obj.start_time - input_time, circle.start_time, input_time
-                                );
-                                circle.hit_result = Some(CircleHitResult {
-                                    pos: self.current_input_state.cursor.into(),
-                                    at: input_time,
-                                    result,
-                                });
-
-                                self.current_input_state.set_no_hit();
-
-                                break 'obj_loop;
-                            }
-                        }
-                    },
-                    ObjectKind::Slider(_) => {},
-                }
-            }
-        }
-
-        self.input_buffer.clear();
     }
 
     // Going through every object on beatmap and preparing it to
@@ -424,8 +402,6 @@ impl<'s> OsuState<'s> {
                     OsuStateEvent::ToSongSelection => {
                         let _span = tracy_client::span!("osu_state::update::event::to_song_selection");
                         self.osu_clock.reset_time();
-                        self.input_buffer.clear();
-                        self.current_input_state.clear();
                         self.current_state = OsuStates::SongSelection;
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {
