@@ -8,9 +8,9 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{circle::CircleHitResult, hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{KeyboardState, OsuInput}, osu_renderer::OsuRenderer, processor::OsuProcessor, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{circle::CircleHitResult, hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{KeyboardState, OsuInput}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
-
+use crate::processor::OsuProcessor;
 
 pub enum OsuStates {
     Playing,

@@ -3,7 +3,7 @@ use replay_log::ReplayLog;
 
 use crate::osu_input::{KeyboardState, OsuInput};
 
-mod replay_log;
+pub mod replay_log;
 
 /// Responsible for 
 /// 1. Handling inputs
@@ -48,7 +48,6 @@ impl OsuProcessor {
 
     }
 
-    // TODO: unit test this shit
     /// This function treats KeyboardState with reversed meaning
     /// `true` means that particular key is released
     pub fn store_keyboard_released(&mut self, ts: f64, state: KeyboardState) {
@@ -56,6 +55,11 @@ impl OsuProcessor {
 
         if let Some(last) = last {
             let last = last.keys;
+
+            if !last.is_key_hit() {
+                return;
+            }
+
             self.replay_log.store_input(OsuInput {
                 ts,
                 pos: self.last_cursor_pos,
@@ -96,4 +100,57 @@ impl OsuProcessor {
             });
         }
     }
+}
+
+#[test]
+fn test_input_released() {
+    let mut processor = OsuProcessor::default();
+
+    processor.store_keyboard_pressed(
+        100.0, 
+        KeyboardState {
+            k1: true,
+            k2: false,
+            m1: false,
+            m2: false,
+        }
+    );
+
+    processor.store_keyboard_pressed(
+        150.0, 
+        KeyboardState {
+            k1: true,
+            k2: false,
+            m1: false,
+            m2: false,
+        }
+    );
+
+    processor.store_keyboard_released(
+        150.0, 
+        KeyboardState {
+            k1: true,
+            k2: false,
+            m1: false,
+            m2: false,
+        }
+    );
+
+    let last_input = processor.replay_log.last_input().unwrap();
+
+    assert_eq!(last_input.keys.is_key_hit(), false);
+
+    processor.store_keyboard_released(
+        200.0, 
+        KeyboardState {
+            k1: true,
+            k2: false,
+            m1: false,
+            m2: false,
+        }
+    );
+
+    let last_input = processor.replay_log.last_input().unwrap();
+    assert_eq!(last_input.keys.is_key_hit(), false);
+    assert_eq!(last_input.ts, 150.0);
 }
