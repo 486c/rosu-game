@@ -1128,8 +1128,6 @@ impl<'or> OsuRenderer<'or> {
             Vertex
         );
 
-        let slider_bounding_box = bbox.clone();
-
         let bbox_width = bbox.width() * SLIDER_SCALE;
         let bbox_height = bbox.height() * SLIDER_SCALE;
 

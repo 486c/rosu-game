@@ -10,6 +10,7 @@ pub mod replay_log;
 /// 2. Assigning hit results based on recorded inputs
 pub struct OsuProcessor {
     replay_log: ReplayLog,
+    queue: Vec<OsuInput>,
 
     last_cursor_pos: Vector2<f64>,
 }
@@ -18,7 +19,8 @@ impl Default for OsuProcessor {
     fn default() -> Self {
         Self {
             last_cursor_pos: Vector2::new(0.0, 0.0),
-            replay_log: Default::default()
+            replay_log: Default::default(),
+            queue: Vec::new(),
         }
     }
 }
@@ -33,19 +35,18 @@ impl OsuProcessor {
         let last = self.replay_log.last_input();
 
         if let Some(last) = last {
-            self.replay_log.store_input(OsuInput {
+            self.store_input(OsuInput {
                 ts,
                 pos,
                 keys: last.keys,
             });
         } else {
-            self.replay_log.store_input(OsuInput {
+            self.store_input(OsuInput {
                 ts,
                 pos,
                 keys: KeyboardState::empty(),
             });
         }
-
     }
 
     /// This function treats KeyboardState with reversed meaning
@@ -60,7 +61,7 @@ impl OsuProcessor {
                 return;
             }
 
-            self.replay_log.store_input(OsuInput {
+            self.store_input(OsuInput {
                 ts,
                 pos: self.last_cursor_pos,
                 keys: KeyboardState {
@@ -82,7 +83,7 @@ impl OsuProcessor {
         if let Some(last) = last {
             let last = last.keys;
 
-            self.replay_log.store_input(OsuInput {
+            self.store_input(OsuInput {
                 ts,
                 pos: self.last_cursor_pos,
                 keys: KeyboardState {
@@ -93,12 +94,17 @@ impl OsuProcessor {
                 },
             });
         } else {
-            self.replay_log.store_input(OsuInput {
+            self.store_input(OsuInput {
                 ts,
                 pos: self.last_cursor_pos,
                 keys: state,
             });
         }
+    }
+
+    fn store_input(&mut self, input: OsuInput) {
+        self.queue.push(input.clone());
+        self.replay_log.store_input(input);
     }
 }
 
