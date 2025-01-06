@@ -1,7 +1,8 @@
 use cgmath::Vector2;
+use osu_replay_parser::replay::Replay;
 use replay_log::ReplayLog;
 
-use crate::osu_input::{KeyboardState, OsuInput};
+use crate::{hit_objects::{circle::CircleHitResult, hit_window::HitWindow, Object}, osu_input::{KeyboardState, OsuInput}};
 
 pub mod replay_log;
 
@@ -47,6 +48,56 @@ impl OsuProcessor {
                 keys: KeyboardState::empty(),
             });
         }
+    }
+    
+    /// Processes all inputs frame by frame
+    pub fn process_all(
+        &mut self, 
+        objects: &mut [Object], 
+        hit_window: &HitWindow,
+        circle_diameter: f32,
+    ) {
+        for input in &self.queue {
+            for object in objects.iter_mut() {
+                match &mut object.kind {
+                    crate::hit_objects::ObjectKind::Circle(circle) => {
+                        if circle.hit_result.is_some() {
+                            continue
+                        }
+
+                        if !input.keys.is_key_hit() {
+                            continue
+                        }
+
+                        let result = circle.is_hittable(
+                            input.ts,
+                            hit_window,
+                            input.pos,
+                            circle_diameter
+                        );
+
+                        if result.is_none() {
+                            continue
+                        }
+
+                        let result = result.unwrap(); // TODO ugly
+
+                        let hit_circle_result = CircleHitResult {
+                            at: input.ts,
+                            pos: input.pos,
+                            result,
+                        };
+
+                        circle.hit_result = Some(hit_circle_result);
+                    },
+                    crate::hit_objects::ObjectKind::Slider(slider) => {},
+                }
+            }
+        }
+    }
+    
+    pub fn process(&mut self, ts: f64, objects: &mut [Object]) {
+        todo!();
     }
 
     /// This function treats KeyboardState with reversed meaning
@@ -105,6 +156,40 @@ impl OsuProcessor {
     fn store_input(&mut self, input: OsuInput) {
         self.queue.push(input.clone());
         self.replay_log.store_input(input);
+    }
+}
+
+impl From<Replay> for OsuProcessor {
+    fn from(value: Replay) -> Self {
+        let mut ts = 0;
+        let mut inputs = Vec::new();
+
+        for frame in value.replay_data.frames {
+            ts += frame.w;
+
+            let input = OsuInput {
+                ts: ts as f64,
+                pos: Vector2::new(frame.x as f64, frame.y as f64),
+                keys: KeyboardState {
+                    k1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::K1),
+                    k2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::K2),
+                    m1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M1),
+                    m2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M2),
+                },
+            };
+
+            inputs.push(input);
+        }
+
+        inputs.iter().for_each(|x| {
+            println!("time: {} | k1: {}, k2: {}", x.ts, x.keys.k1, x.keys.k2);
+        });
+
+        Self {
+            replay_log: ReplayLog::default(),
+            queue: inputs,
+            last_cursor_pos: Vector2::new(0.0, 0.0),
+        }
     }
 }
 

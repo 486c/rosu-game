@@ -25,10 +25,11 @@ impl Circle {
     pub fn is_judgements_visible(&self, time: f64, preempt: f32) -> bool {
         time > self.start_time - preempt as f64 && time < self.start_time + (CIRCLE_FADEOUT_TIME * 2.0) + (JUDGMENTS_FADEOUT_TIME * 2.0)
     }
-
+    
+    /// Checks if circle is hittable as well as calculating hit result
     pub fn is_hittable(
         &self, 
-        time: f64, 
+        hit_time: f64, 
         hit_window: &HitWindow,
         pos: Vector2<f64>,
         diameter: f32,
@@ -42,24 +43,17 @@ impl Circle {
             return None
         }
 
-        let x50_early = self.start_time - hit_window.x50;
-        let x50_late = self.start_time + hit_window.x50;
+        let hit_error = (self.start_time - hit_time).abs();
 
-        let x100_early = self.start_time - hit_window.x100;
-        let x100_late = self.start_time + hit_window.x100;
-
-        let x300_early = self.start_time - hit_window.x300;
-        let x300_late = self.start_time + hit_window.x300;
-
-        if (x300_early..x300_late).contains(&time) {
+        if hit_error < hit_window.x300.round() {
             return Some(Hit::X300);
         }
 
-        if (x100_early..x100_late).contains(&time) {
+        if hit_error < hit_window.x100.round() {
             return Some(Hit::X100);
         }
 
-        if (x50_early..x50_late).contains(&time) {
+        if hit_error < hit_window.x50.round() {
             return Some(Hit::X50);
         }
 
