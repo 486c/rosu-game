@@ -1,6 +1,6 @@
 use std::sync::mpsc::Sender;
 
-use egui::{color_picker::show_color, Button, Context, Label, Slider, Ui};
+use egui::{color_picker::show_color, Button, Context, Slider, Ui};
 use egui_file::FileDialog;
 
 use crate::{config::Config, osu_state::OsuStateEvent, skin_manager::SkinManager};

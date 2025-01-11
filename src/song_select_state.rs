@@ -1,8 +1,7 @@
-use std::{fs::File, io::{BufReader, Cursor, Read}, path::PathBuf, sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
+use std::{fs::File, io::{Cursor, Read}, path::PathBuf, sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
 
-use egui::{scroll_area::ScrollBarVisibility, Align, Button, Color32, Direction, Label, Margin, Pos2, Rect, RichText, Stroke};
+use egui::{scroll_area::ScrollBarVisibility, Align, Color32, Direction, Label, Margin, RichText, Stroke};
 use egui_extras::{Size, StripBuilder};
-use egui_file::FileDialog;
 use image::DynamicImage;
 use md5::Digest;
 use rand::Rng;
@@ -11,8 +10,7 @@ use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
-use crate::{buffer_write_or_init, camera::Camera, graphics::Graphics, hit_circle_instance::HitCircleInstance, osu_db::{BeatmapEntry, OsuDatabase}, osu_renderer::QUAD_INDECIES, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, song_importer_ui::SongImporter, texture::Texture, vertex::Vertex};
-
+use crate::{buffer_write_or_init, graphics::Graphics,osu_db::{BeatmapEntry, OsuDatabase}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, song_importer_ui::SongImporter, texture::Texture};
 
 const CARD_INNER_MARGIN: Margin = Margin {
     left: 5.0,
@@ -123,9 +121,9 @@ pub struct SongsImportJob {
 
 // TODO move to some other place
 pub struct CurrentBeatmap {
-    beatmap: Beatmap,
+    //beatmap: Beatmap,
     metadata: BeatmapCardInfoMetadata,
-    beatmap_hash: md5::Digest,
+    //beatmap_hash: md5::Digest,
 }
 
 pub struct CurrentBackground {
@@ -141,7 +139,7 @@ pub enum SongSelectionEvents {
     SelectBeatmap(BeatmapEntry),
     LoadedBeatmap{ 
         beatmap: Beatmap, 
-        beatmap_md5: Digest,
+        //beatmap_md5: Digest,
         image: DynamicImage,
         image_md5: Digest,
         audio_source: Box<dyn Source<Item = f32> + Send + Sync>,
@@ -229,7 +227,7 @@ impl<'ss> SongSelectionState<'ss> {
             let mut beatmap_buffer = Vec::new();
             beatmap_file.read_to_end(&mut beatmap_buffer).unwrap();
 
-            let beatmap_md5 = md5::compute(&beatmap_buffer);
+            let _beatmap_md5 = md5::compute(&beatmap_buffer);
 
             let parsed_beatmap = Beatmap::from_bytes(&beatmap_buffer).unwrap();
 
@@ -270,7 +268,7 @@ impl<'ss> SongSelectionState<'ss> {
 
             tx.send(SongSelectionEvents::LoadedBeatmap{
                 beatmap: parsed_beatmap,
-                beatmap_md5,
+                //beatmap_md5,
                 image: img,
                 image_md5: bg_md5,
                 audio_source: Box::new(audio_source),
@@ -427,7 +425,7 @@ impl<'ss> SongSelectionState<'ss> {
                         let _span = tracy_client::span!("osu_song_select_state::update::event::select_beatmap");
                         self.open_beatmap(&entry);
                     },
-                    SongSelectionEvents::LoadedBeatmap{ mut beatmap, image, audio_source, image_md5, audio_md5, beatmap_md5 }  => {
+                    SongSelectionEvents::LoadedBeatmap{ mut beatmap, image, audio_source, image_md5, audio_md5, .. }  => {
                         let _span = tracy_client::span!("osu_song_select_state::update::event::loaded_beatmap");
                         self.load_background(image, image_md5);
                         self.load_audio(audio_source, audio_md5, &beatmap);
@@ -435,8 +433,8 @@ impl<'ss> SongSelectionState<'ss> {
                         let metadata = BeatmapCardInfoMetadata::from_beatmap(&mut beatmap);
 
                         let current_beatmap = CurrentBeatmap {
-                            beatmap,
-                            beatmap_hash: beatmap_md5,
+                            //beatmap,
+                            //beatmap_hash: beatmap_md5,
                             metadata,
                         };
 
@@ -526,7 +524,7 @@ impl<'ss> SongSelectionState<'ss> {
     pub fn render(&mut self, input: egui::RawInput, ctx: &egui::Context, view: &TextureView) -> egui::FullOutput {
         self.render_background(view);
 
-        ctx.begin_frame(input);
+        ctx.begin_pass(input);
 
         self.song_importer.render(ctx);
 
@@ -685,6 +683,6 @@ impl<'ss> SongSelectionState<'ss> {
                 })
         });
 
-        ctx.end_frame()
+        ctx.end_pass()
     }
 }

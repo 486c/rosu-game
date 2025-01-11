@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc}, time::{Duration, Instant}};
+use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc}, time::Duration};
 
 use cgmath::Vector2;
 use egui::{RawInput, Slider};
@@ -8,7 +8,7 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{circle::CircleHitResult, hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::{KeyboardState, OsuInput}, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 use crate::processor::OsuProcessor;
 
@@ -333,7 +333,7 @@ impl<'s> OsuState<'s> {
         self.egui.output = Some(output);
     }
 
-    pub fn process_inputs(&mut self, process_time: f64) {
+    pub fn process_inputs(&mut self, _process_time: f64) {
         let _span = tracy_client::span!("osu_state::process_inputs");
     }
 

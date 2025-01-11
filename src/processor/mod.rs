@@ -90,13 +90,13 @@ impl OsuProcessor {
 
                         circle.hit_result = Some(hit_circle_result);
                     },
-                    crate::hit_objects::ObjectKind::Slider(slider) => {},
+                    crate::hit_objects::ObjectKind::Slider(_slider) => {},
                 }
             }
         }
     }
     
-    pub fn process(&mut self, ts: f64, objects: &mut [Object]) {
+    pub fn process(&mut self, _ts: f64, _objects: &mut [Object]) {
         todo!();
     }
 

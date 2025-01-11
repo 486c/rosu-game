@@ -1,5 +1,4 @@
-use cgmath::{Angle, Vector2};
-use std::ops::{ Div, Sub };
+use cgmath::Vector2;
 
 pub const OSU_COORDS_WIDTH: f32 = 512.0;
 pub const OSU_COORDS_HEIGHT: f32 = 384.0;
@@ -58,7 +57,6 @@ pub fn calc_direction_degree(p1: Vector2<f32>, p2: Vector2<f32>) -> f32 {
 
     angle_deg
 }
-
 
 pub fn calc_opposite_direction_degree(p1: Vector2<f32>, p2: Vector2<f32>) -> f32 {
     (calc_direction_degree(p1, p2) + 180.0) % 360.0

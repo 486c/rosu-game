@@ -1,4 +1,4 @@
-use std::{io, path::Path};
+use std::path::Path;
 use crate::{graphics::Graphics, skin_ini::SkinIni, texture::{AtlasTexture, Texture}};
 use image::load_from_memory;
 

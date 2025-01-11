@@ -1,9 +1,9 @@
 use std::{ops::Range, sync::Arc};
 
 use cgmath::Vector2;
-use wgpu::{util::DeviceExt, BindGroup, Buffer, BufferUsages, IndexFormat, TextureView};
+use wgpu::{util::DeviceExt, BindGroup, Buffer, BufferUsages, TextureView};
 
-use crate::{buffer_write_or_init, camera::Camera, graphics::Graphics, quad_instance::QuadInstance, texture::{AtlasTexture, Texture}, vertex::{AtlasQuadVertex, Vertex}};
+use crate::{camera::Camera, graphics::Graphics, quad_instance::QuadInstance, texture::{AtlasTexture, Texture}, vertex::{AtlasQuadVertex, Vertex}};
 
 pub struct AtlasInfo {
     atlas_vertex_buffer: wgpu::Buffer,

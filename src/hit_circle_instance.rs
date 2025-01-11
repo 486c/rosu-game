@@ -1,4 +1,4 @@
-use cgmath::{Matrix4, Vector3, Vector2};
+use cgmath::Vector3;
 
 use crate::rgb::Rgb;
 

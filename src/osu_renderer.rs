@@ -914,9 +914,7 @@ impl<'or> OsuRenderer<'or> {
                             slider.pos.y + pos.y
                         );
 
-                        let mut alpha = body_alpha;
-
-                        alpha = if time > reverse_arrow_time {
+                        let mut alpha = if time > reverse_arrow_time {
                             // Applying fadeout
                             if (reverse_arrow_time..reverse_arrow_time + REVERSE_ARROW_FADEOUT).contains(&time) {
                                 let progress = calc_progress(time, reverse_arrow_time, reverse_arrow_time + REVERSE_ARROW_FADEOUT);

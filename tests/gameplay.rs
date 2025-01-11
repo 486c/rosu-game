@@ -1,4 +1,4 @@
-use std::{fs::read_to_string, path::{Path, PathBuf}};
+use std::path::{Path, PathBuf};
 
 use osu_replay_parser::replay::Replay;
 use rosu::{hit_objects::{hit_window::HitWindow, Object}, math::get_hitcircle_diameter, processor::OsuProcessor};

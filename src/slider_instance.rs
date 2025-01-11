@@ -1,5 +1,5 @@
 
-use cgmath::{Vector2, Vector3};
+use cgmath::Vector3;
 
 use crate::rgb::Rgb;
 

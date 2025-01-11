@@ -1,4 +1,4 @@
-use ini::{Ini, ParseError};
+use ini::Ini;
 use thiserror::Error;
 use std::io;
 

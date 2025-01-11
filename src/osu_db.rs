@@ -1,4 +1,4 @@
-use std::{fs, path::{self, Path, PathBuf}, sync::{Arc, RwLock}};
+use std::{fs, path::{self, Path, PathBuf}};
 
 use r2d2_sqlite::SqliteConnectionManager;
 use r2d2::Pool;

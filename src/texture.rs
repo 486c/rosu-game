@@ -1,5 +1,5 @@
 use std::{io::Cursor, path::Path};
-use image::{imageops::FilterType, io::Reader as ImageReader, DynamicImage, GenericImageView, Rgba, RgbaImage};
+use image::{imageops::FilterType, io::Reader as ImageReader, DynamicImage, GenericImageView, RgbaImage};
 use wgpu::{ShaderStages, BindingType, TextureSampleType, TextureViewDimension};
 
 use crate::graphics::Graphics;

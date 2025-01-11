@@ -1,7 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use log::warn;
-use pollster::block_on;
 use wgpu::{Instance, InstanceDescriptor, MemoryHints, PresentMode, RequestAdapterOptions, SurfaceTexture};
 use winit::window::Window;
 
