@@ -89,7 +89,6 @@ impl Object {
                     let beat_len = timing.unwrap().beat_len; // TODO remove unwrap
                     let tick_every_ms = beat_len / tick_rate;
 
-
                     let mut slider = slider.clone();
 
                     let pos = slider.pos;
@@ -126,12 +125,12 @@ impl Object {
                             slider.pos.y + curve_pos.y
                         );
 
-
                         if (slide_end - i) > 10.0 {
                             ticks.push(Tick {
                                 pos,
                                 time: i,
                                 slide,
+                                is_reverse: false,
                             });
                         }
 
@@ -170,7 +169,19 @@ impl Object {
                                 time: slide_start,
                                 angle,
                             }
+                        );
+
+                        /*
+                        ticks.push(
+                            Tick {
+                                time: slide_start,
+                                angle,
+                                pos: todo!(),
+                                slide: todo!(),
+                                is_reverse: todo!(),
+                            }
                         )
+                        */
                     }
 
                     objects.push(Self {
@@ -185,6 +196,7 @@ impl Object {
                             ticks,
                             render: None,
                             reverse_arrows,
+                            result: None
                         }),
                     })
                 }

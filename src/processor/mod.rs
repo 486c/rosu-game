@@ -2,7 +2,7 @@ use cgmath::Vector2;
 use osu_replay_parser::replay::Replay;
 use replay_log::ReplayLog;
 
-use crate::{hit_objects::{circle::CircleHitResult, hit_window::HitWindow, Object}, osu_input::{KeyboardState, OsuInput}};
+use crate::{hit_objects::{circle::CircleHitResult, hit_window::HitWindow, slider::SliderResult, Object}, osu_input::{KeyboardState, OsuInput}};
 
 pub mod replay_log;
 
@@ -61,36 +61,47 @@ impl OsuProcessor {
             for object in objects.iter_mut() {
                 match &mut object.kind {
                     crate::hit_objects::ObjectKind::Circle(circle) => {
-                        if circle.hit_result.is_some() {
-                            continue
-                        }
-
-                        if !input.keys.is_key_hit() {
-                            continue
-                        }
-
-                        let result = circle.is_hittable(
-                            input.ts,
+                        circle.update(
+                            input,
                             hit_window,
-                            input.pos,
                             circle_diameter
                         );
-
-                        if result.is_none() {
-                            continue
-                        }
-
-                        let result = result.unwrap(); // TODO ugly
-
-                        let hit_circle_result = CircleHitResult {
-                            at: input.ts,
-                            pos: input.pos,
-                            result,
-                        };
-
-                        circle.hit_result = Some(hit_circle_result);
                     },
-                    crate::hit_objects::ObjectKind::Slider(_slider) => {},
+                    // Slider has a few states
+                    // 1. SLIDER_START
+                    // 2. All of the checkpoints aka slider ticks (also reverse slides)
+                    // 2. SLIDER_END
+                    crate::hit_objects::ObjectKind::Slider(slider) => {
+                        continue;
+                        /*
+                        // if result is present that means slider head is already hit
+                        if let Some(result) = &slider.result {
+                        } else {
+                            let result = slider.is_head_hittable(
+                                input.ts,
+                                hit_window,
+                                input.pos,
+                                circle_diameter
+                            );
+
+                            if result.is_none() {
+                                continue
+                            }
+
+                            let result = result.unwrap();
+
+                            slider.result = Some(SliderResult {
+                                head: CircleHitResult {
+                                    at: input.ts,
+                                    pos: input.pos,
+                                    result
+                                },
+                                passed_checkpoints: Vec::new(),
+                                end_passed: false,
+                            })
+                        }
+                        */
+                    },
                 }
             }
         }
