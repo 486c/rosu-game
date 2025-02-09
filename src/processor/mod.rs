@@ -72,6 +72,18 @@ impl OsuProcessor {
                     // 2. All of the checkpoints aka slider ticks (also reverse slides)
                     // 2. SLIDER_END
                     crate::hit_objects::ObjectKind::Slider(slider) => {
+                        slider.update(
+                            input,
+                            hit_window,
+                            circle_diameter
+                        );
+
+                        slider.update_post(
+                            input,
+                            hit_window,
+                            circle_diameter
+                        );
+
                         continue;
                         /*
                         // if result is present that means slider head is already hit

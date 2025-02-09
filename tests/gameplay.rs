@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use osu_replay_parser::replay::Replay;
-use rosu::{hit_objects::{hit_window::HitWindow, Object}, math::get_hitcircle_diameter, processor::OsuProcessor};
+use rosu::{hit_objects::{hit_window::HitWindow, slider::SliderResultState, Object}, math::get_hitcircle_diameter, processor::OsuProcessor};
 use rosu_map::Beatmap;
 use test_case::case;
 
@@ -50,11 +50,50 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                 }
 
             },
-            rosu::hit_objects::ObjectKind::Slider(_slider) => {},
+            rosu::hit_objects::ObjectKind::Slider(slider) => {
+                if let Some(hit_result) = &slider.hit_result {
+                    if hit_result.state == SliderResultState::Passed {
+                        // Case when slider was hit completly perfect
+                        if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.ticks.len() {
+                            out.x300 += 1;
+                            return;
+                        }
+
+                        // Case when only slider head was hit
+                        if !hit_result.end_passed && hit_result.passed_checkpoints.is_empty() && !slider.ticks.is_empty() {
+                            out.x50 += 1;
+                            return;
+                        }
+
+                        // Case when slider slider head and atleast
+                        // one slider tick was hit
+                        if !hit_result.end_passed 
+                        && !hit_result.passed_checkpoints.is_empty() 
+                        && hit_result.passed_checkpoints.len() != slider.ticks.len() {
+                            out.x100 += 1;
+                            return;
+                        }
+
+                        // Case when slider end was hit but some of the
+                        // ticks is not
+                        if hit_result.end_passed 
+                        && hit_result.passed_checkpoints.len() != slider.ticks.len() {
+                            out.x100 += 1;
+                            return;
+                        }
+                    }
+                }
+                dbg!(&slider.hit_result);
+                dbg!(&slider.ticks);
+            },
         }
     });
 
     assert_eq!(out, expected, "Left - Result from processor, Right - expected");
+}
+
+fn get_gameplay_tests_path() -> PathBuf {
+    PathBuf::from("tests/data/gameplay")
 }
 
 #[case(
@@ -97,8 +136,7 @@ Expected {
 "1 x50"
 )]
 fn test_single_hit_circle(replay: &str, beatmap: &str, expected: Expected) {
-
-    let base = PathBuf::from("tests/data");
+    let base = get_gameplay_tests_path();
 
     let replay_file = base.join(replay);
     let beatmap_file = base.join(beatmap);
@@ -163,8 +201,111 @@ fn test_single_hit_circle(replay: &str, beatmap: &str, expected: Expected) {
     "6 x300"
 )]
 fn test_simple_jumps(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
 
-    let base = PathBuf::from("tests/data");
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
+
+#[case(
+    "slider.osr", 
+    "slider.osu",
+    Expected {
+        x300: 1,
+        x100: 0,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "1 x300"
+)]
+#[case(
+    "slider2.osr", 
+    "slider.osu",
+    Expected {
+        x300: 0,
+        x100: 0,
+        x50: 1,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "skipped slider tick and end, 1 x50"
+)]
+#[case(
+    "slider3.osr", 
+    "slider.osu",
+    Expected {
+        x300: 0,
+        x100: 1,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "skipped slider tick, hit end, 1 x100"
+)]
+fn test_slider(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
+
+#[case(
+    "slider_two_ticks.osr", 
+    "slider_two_ticks.osu",
+    Expected {
+        x300: 0,
+        x100: 1,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "hit head and first tick, skipped rest, 1 x100"
+)]
+#[case(
+    "slider_two_ticks2.osr", 
+    "slider_two_ticks.osu",
+    Expected {
+        x300: 1,
+        x100: 0,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "hit slider completly, 1 x300"
+)]
+#[case(
+    "slider_two_ticks3.osr", 
+    "slider_two_ticks.osu",
+    Expected {
+        x300: 0,
+        x100: 1,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "skipped just last slider tick, 1 x100"
+)]
+fn test_slider_two_ticks(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
 
     let replay_file = base.join(replay);
     let beatmap_file = base.join(beatmap);

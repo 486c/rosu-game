@@ -196,7 +196,7 @@ impl Object {
                             ticks,
                             render: None,
                             reverse_arrows,
-                            result: None
+                            hit_result: None
                         }),
                     })
                 }

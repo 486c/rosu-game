@@ -5,6 +5,7 @@ use crate::osu_input::OsuInput;
 
 use super::{hit_window::HitWindow, Hit, CIRCLE_FADEOUT_TIME, JUDGMENTS_FADEOUT_TIME};
 
+#[derive(Debug)]
 pub struct CircleHitResult {
     pub at: f64,
     pub pos: Vector2<f64>,
