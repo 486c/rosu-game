@@ -52,6 +52,11 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
             },
             rosu::hit_objects::ObjectKind::Slider(slider) => {
                 if let Some(hit_result) = &slider.hit_result {
+                    println!("=============");
+                    dbg!(slider.start_time);
+                    dbg!(hit_result);
+                    dbg!(&slider.ticks);
+                    println!("=============");
                     if hit_result.state == SliderResultState::Passed {
                         // Case when slider was hit completly perfect
                         if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.ticks.len() {
@@ -83,8 +88,6 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                         }
                     }
                 }
-                dbg!(&slider.hit_result);
-                dbg!(&slider.ticks);
             },
         }
     });
@@ -304,7 +307,163 @@ fn test_slider(replay: &str, beatmap: &str, expected: Expected) {
     };
     "skipped just last slider tick, 1 x100"
 )]
+#[case(
+    "slider_two_ticks4.osr", 
+    "slider_two_ticks.osu",
+    Expected {
+        x300: 0,
+        x100: 1,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "1 x100"
+)]
 fn test_slider_two_ticks(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
+
+#[case(
+    "two_sliders.osr", 
+    "two_sliders.osu",
+    Expected {
+        x300: 2,
+        x100: 0,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "perfect sliders hit, 2 x300"
+)]
+#[case(
+    "two_sliders2.osr", 
+    "two_sliders.osu",
+    Expected {
+        x300: 1,
+        x100: 1,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "missed slider ticks, hit perfectly second slider, 1 x300 1 x100"
+)]
+fn test_two_sliders(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
+
+#[case(
+    "sliders_and_jumps.osr", 
+    "sliders_and_jumps.osu",
+    Expected {
+        x300: 6,
+        x100: 1,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "1 x100, 6x300"
+)]
+fn test_sliders_and_jumps(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
+
+#[case(
+    "slider_with_ticks_and_reverse.osr", 
+    "slider_with_ticks_and_reverse.osu",
+    Expected {
+        x300: 1,
+        x100: 0,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "perfect hit, 1 x300"
+)]
+#[case(
+    "slider_with_ticks_and_reverse2.osr", 
+    "slider_with_ticks_and_reverse.osu",
+    Expected {
+        x300: 0,
+        x100: 1,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "missed some ticks, 1 x100"
+)]
+fn test_slider_with_ticks_and_reverse(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
+
+#[case(
+    "koise.osr", 
+    "koise.osu",
+    Expected {
+        x300: 46,
+        x100: 0,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "normal diff, 46 x300 an SS"
+)]
+#[case(
+    "koise2.osr", 
+    "koise.osu",
+    Expected {
+        x300: 41,
+        x100: 5,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "normal diff, 41 x300 5 x100 an A"
+)]
+fn test_koise_actual_map(replay: &str, beatmap: &str, expected: Expected) {
     let base = get_gameplay_tests_path();
 
     let replay_file = base.join(replay);

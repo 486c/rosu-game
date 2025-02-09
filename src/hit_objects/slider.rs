@@ -106,6 +106,7 @@ impl Slider {
         let hit_error = (self.start_time - input.ts).abs();
 
         if hit_error < hit_window.x50.round() {
+            dbg!("head hit");
             self.hit_result = Some(
                 SliderResult {
                     head: CircleHitResult {
@@ -148,20 +149,27 @@ impl Slider {
 
         if result.state == SliderResultState::Middle {
             // Gets a passed checkpoint 
-            let closest_checkpoint = self.ticks.iter().enumerate().find(|(i, x)| {
+            let closest_checkpoint = self.ticks.iter().enumerate().rev().find(|(i, x)| {
                 x.time < input.ts && !result.passed_checkpoints.contains(i)
             });
 
+            dbg!(closest_checkpoint);
+            
             if let Some((i, checkpoint)) = closest_checkpoint {
                 if let Some(holding_since) = result.holding_since {
                     if holding_since < checkpoint.time {
-                        println!("Passed {} input ts: {}", checkpoint.time, input.ts);
-                        dbg!(&self.ticks);
                         result.passed_checkpoints.push(i)
                     }
                 }
 
                 if (i + 1) == self.ticks.len() {
+                    result.state = SliderResultState::End
+                }
+
+                println!("our: {}", i);
+                println!("ticks: {}", self.ticks.len());
+            } else {
+                if self.ticks.is_empty() {
                     result.state = SliderResultState::End
                 }
             }
