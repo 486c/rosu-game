@@ -2656,6 +2656,7 @@ dependencies = [
 name = "rosu-game"
 version = "0.1.0"
 dependencies = [
+ "approx",
  "bytemuck",
  "cfg-if",
  "cgmath",

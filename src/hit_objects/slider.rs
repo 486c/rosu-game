@@ -49,6 +49,7 @@ pub struct SliderResult {
     pub passed_checkpoints: Vec<usize>,
     pub end_passed: bool,
     pub holding_since: Option<f64>,
+    pub in_radius_since: Option<f64>,
 }
 
 pub struct Slider {
@@ -57,6 +58,12 @@ pub struct Slider {
 
     pub curve: Curve,
     pub pos: Pos, // TODO: Make the same as in circle
+
+    /// Total repeats
+    /// Example:
+    /// `*===R===R===*` => 3 repeats
+    /// `*===R===*` => 2 repeats
+    /// `*===*` => 1 repeats
     pub repeats: i32,
 
     /// Including all ticks aka checkpoints
@@ -72,6 +79,51 @@ impl Slider {
     #[inline]
     pub fn end_time(&self) -> f64 {
         self.start_time + self.duration
+    }
+    
+    /// Returns slide index for certain time
+    /// Indexes starts from 1
+    /// Example:
+    /// `*===R===*`
+    ///  ^ ^ ^   ^
+    ///  1 2 3   4
+    ///
+    ///  1 - Slider head at 0
+    ///  3 - Reverse at 50
+    ///  4 - Slider end at 100
+    ///  2 - Position we want to know slide of at 25
+    ///  For that time we will get 1
+    ///  If time were 75 we should get 2
+    #[inline]
+    pub fn slide(&self, time: f64) -> i32 {
+        let v1 = time - self.start_time;
+        let v2 = self.duration / self.repeats as f64;
+        ((v1 / v2).floor() as i32 + 1).max(1)
+    }
+    
+    /// Gets progress taking slides and repeats into
+    /// account
+    ///
+    /// 0.0 >= Return value <= 1.0
+    #[inline]
+    pub fn get_slider_progress(&self, time: f64) -> f64 {
+        let v1 = time - self.start_time;
+        let v2 = self.duration / self.repeats as f64;
+        let slide = (v1 / v2).floor() + 1.0;
+
+        let slide_start = self.start_time + (v2 * (slide - 1.0));
+
+        let current = time;
+        let end = slide_start + v2;
+
+        let min = slide_start.min(end);
+        let max = slide_start.max(end);
+
+        if slide % 2.0 == 0.0 {
+            1.0 - ((current - min)) / (max - min)
+        } else {
+            ((current - min)) / (max - min)
+        }
     }
 
     pub fn is_visible(&self, time: f64, preempt: f32) -> bool {
@@ -106,7 +158,7 @@ impl Slider {
         let hit_error = (self.start_time - input.ts).abs();
 
         if hit_error < hit_window.x50.round() {
-            dbg!("head hit");
+            //dbg!("head hit");
             self.hit_result = Some(
                 SliderResult {
                     head: CircleHitResult {
@@ -118,6 +170,7 @@ impl Slider {
                     end_passed: false,
                     state: SliderResultState::Middle,
                     holding_since: Some(input.ts),
+                    in_radius_since: Some(input.ts),
                 }
             );
             return;
@@ -130,7 +183,9 @@ impl Slider {
         hit_window: &HitWindow,
         circle_diameter: f32
     ) {
-        let result = match &mut self.hit_result {
+        let mut slider_radius = circle_diameter as f64 / 2.0;
+
+        let result = match &self.hit_result {
             Some(v) => v,
             None => return,
         };
@@ -138,13 +193,66 @@ impl Slider {
         if result.state == SliderResultState::Passed {
             return
         }
-
-        if !input.keys.is_key_hit() && result.holding_since.is_some() {
-            result.holding_since = None
+        
+        // TODO we should check if we are in radious only on 
+        // checkpoints (slider points)
+        if result.state != SliderResultState::End {
+            slider_radius *= 2.4;
         }
 
-        if input.keys.is_key_hit() && result.holding_since.is_none() {
-            result.holding_since = Some(input.ts)
+        // Position at slider for current input
+        let slider_progress = self.get_slider_progress(input.ts);
+
+        let pos_at_slider = self.curve.position_at(
+            slider_progress
+        );
+
+        // Checking if cursor inside circle on slider 
+        let (cx, cy) = (
+            self.pos.x as f64 + pos_at_slider.x as f64, 
+            self.pos.y as f64 + pos_at_slider.y as f64
+        );
+        let (px, py) = (input.pos.x, input.pos.y);
+
+        let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
+        let is_inside_circle = distance <= slider_radius;
+
+        let result = self.hit_result.as_mut().unwrap();
+
+        println!("ts: {} | prg: {}", input.ts, &slider_progress);
+        println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
+        println!(
+            "is: {} | distance: {} | radious: {} | circle_diameter: {}", 
+            &is_inside_circle, &distance, &slider_radius,
+           circle_diameter / 2.0
+        );
+        println!("pos: ({cx}, {cy})");
+        
+        // Try to evaluate holding time 
+        // and cursor position only if
+        // input time is actually inside slider duration
+        // attempt to avoid incorrect calculation
+        // when incoming input is after slider end time
+        if input.ts <= self.start_time + self.duration {
+            if !input.keys.is_key_hit() 
+            && result.holding_since.is_some() {
+                result.holding_since = None
+            }
+
+            if input.keys.is_key_hit() 
+            && result.holding_since.is_none() {
+                result.holding_since = Some(input.ts)
+            }
+
+            if !is_inside_circle
+            && result.in_radius_since.is_some() {
+                result.in_radius_since = None
+            }
+
+            if is_inside_circle
+            && result.in_radius_since.is_none() {
+                result.in_radius_since = Some(input.ts)
+            }
         }
 
         if result.state == SliderResultState::Middle {
@@ -153,8 +261,6 @@ impl Slider {
                 x.time < input.ts && !result.passed_checkpoints.contains(i)
             });
 
-            dbg!(closest_checkpoint);
-            
             if let Some((i, checkpoint)) = closest_checkpoint {
                 if let Some(holding_since) = result.holding_since {
                     if holding_since < checkpoint.time {
@@ -165,9 +271,6 @@ impl Slider {
                 if (i + 1) == self.ticks.len() {
                     result.state = SliderResultState::End
                 }
-
-                println!("our: {}", i);
-                println!("ticks: {}", self.ticks.len());
             } else {
                 if self.ticks.is_empty() {
                     result.state = SliderResultState::End
@@ -176,8 +279,44 @@ impl Slider {
         }
 
         if result.state == SliderResultState::End {
-            if let Some(holding_since) = result.holding_since {
-                if holding_since < self.start_time + self.duration {
+            if input.ts < self.start_time + self.duration {
+                return;
+            }
+
+            match (result.holding_since, result.in_radius_since) {
+                (None, None) => {
+                    if input.ts >= self.start_time + self.duration {
+                        result.state = SliderResultState::Passed;
+                    }
+                },
+                (None, Some(in_radius)) => {
+                    if in_radius <= self.start_time + self.duration {
+                        result.state = SliderResultState::Passed;
+                        result.end_passed = true;
+                    }
+                },
+                (Some(holding), None) => {
+                    if holding <= self.start_time + self.duration {
+                        result.state = SliderResultState::Passed;
+                        result.end_passed = true;
+                    }
+                },
+                (Some(holding), Some(in_radius)) => {
+                    if holding < self.start_time + self.duration 
+                    && in_radius < self.start_time + self.duration {
+                        result.state = SliderResultState::Passed;
+                        result.end_passed = true;
+                    }
+                },
+            };
+            /*
+            if let (Some(holding_since), Some(in_radius_since)) = (
+                result.holding_since, result.in_radius_since
+            ) {
+                if (holding_since <= self.start_time + self.duration 
+                || in_radius_since <= self.start_time + self.duration)
+                && input.ts >= self.start_time + self.duration 
+                {
                     result.state = SliderResultState::Passed;
                     result.end_passed = true;
                 }
@@ -186,6 +325,7 @@ impl Slider {
                     result.state = SliderResultState::Passed;
                 }
             }
+            */
         }
     }
 

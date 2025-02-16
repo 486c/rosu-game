@@ -9,7 +9,7 @@ use wgpu::{
 };
 use winit::dpi::PhysicalSize;
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, get_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, calc_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 static SLIDER_SCALE: f32 = 1.0;
@@ -117,7 +117,6 @@ pub struct OsuRenderer<'or> {
     depth_texture: DepthTexture,
 
     quad_debug: QuadRenderer<'or>,
-
 
     slider_reverse_arrow_quad: QuadRenderer<'or>,
 
@@ -1331,7 +1330,7 @@ impl<'or> OsuRenderer<'or> {
 
     pub fn on_cs_change(&mut self, cs: f32) {
         let _span = tracy_client::span!("osu_renderer::on_cs_change");
-        let hit_circle_diameter = get_hitcircle_diameter(cs);
+        let hit_circle_diameter = calc_hitcircle_diameter(cs);
 
         self.hit_circle_diameter = hit_circle_diameter;
 

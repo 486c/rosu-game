@@ -10,7 +10,20 @@ pub fn lerp(a: f64, b: f64, v: f64) -> f64 {
     a + v * (b - a)
 }
 
-pub fn get_hitcircle_diameter(cs: f32) -> f32 {
+pub fn diff_rate(diff: f32, min: f32, mid: f32, max: f32) -> f32 {
+	if diff > 5.0 {
+		return mid + (max-mid)*(diff-5.0)/5.0
+	}
+
+	if diff < 5.0 {
+		return mid - (mid-min)*(5.0-diff)/5.0
+	}
+
+	return mid
+}
+
+pub fn calc_hitcircle_diameter(cs: f32) -> f32 {
+    //diff_rate(cs, 54.4, 32.0, 9.6) * 1.00041
     ((1.0 - 0.7 * (cs - 5.0) / 5.0) / 2.0) * 128.0 * 1.00041
 }
 

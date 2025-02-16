@@ -8,7 +8,7 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, get_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, calc_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
 };
 use crate::processor::OsuProcessor;
 
@@ -172,7 +172,7 @@ impl<'s> OsuState<'s> {
         };
 
         self.osu_renderer.on_cs_change(cs);
-        self.current_hit_circle_diameter = get_hitcircle_diameter(cs);
+        self.current_hit_circle_diameter = calc_hitcircle_diameter(cs);
     }
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {

@@ -24,7 +24,6 @@ impl Circle {
         time > self.start_time - preempt as f64 && time < self.start_time + CIRCLE_FADEOUT_TIME + hit_window.x50
     }
 
-
     pub fn is_judgements_visible(&self, time: f64, preempt: f32) -> bool {
         time > self.start_time - preempt as f64 && time < self.start_time + (CIRCLE_FADEOUT_TIME * 2.0) + (JUDGMENTS_FADEOUT_TIME * 2.0)
     }

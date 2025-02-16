@@ -114,7 +114,7 @@ impl<'a> ApplicationHandler for OsuApp<'a> {
 
 fn main() {
     let _client = tracy_client::Client::start();
-        
+    
     /*
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)

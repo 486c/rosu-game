@@ -170,18 +170,6 @@ impl Object {
                                 angle,
                             }
                         );
-
-                        /*
-                        ticks.push(
-                            Tick {
-                                time: slide_start,
-                                angle,
-                                pos: todo!(),
-                                slide: todo!(),
-                                is_reverse: todo!(),
-                            }
-                        )
-                        */
                     }
 
                     objects.push(Self {

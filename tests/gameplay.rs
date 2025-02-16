@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use osu_replay_parser::replay::Replay;
-use rosu::{hit_objects::{hit_window::HitWindow, slider::SliderResultState, Object}, math::get_hitcircle_diameter, processor::OsuProcessor};
+use rosu::{hit_objects::{hit_window::HitWindow, slider::SliderResultState, Object}, math::calc_hitcircle_diameter, processor::OsuProcessor};
 use rosu_map::Beatmap;
 use test_case::case;
 
@@ -24,7 +24,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
 
     let hit_window = HitWindow::from_od(beatmap.overall_difficulty);
 
-    let circle_diameter = get_hitcircle_diameter(beatmap.circle_size);
+    let circle_diameter = calc_hitcircle_diameter(beatmap.circle_size);
 
     processor.process_all(&mut beatmap_objects, &hit_window, circle_diameter);
 
@@ -41,6 +41,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
         match &x.kind {
             rosu::hit_objects::ObjectKind::Circle(circle) => {
                 if let Some(result) = &circle.hit_result {
+                    println!("Circle at {}, result: {:?} at {}", circle.start_time, result.result, result.at);
                     match result.result {
                         rosu::hit_objects::Hit::X300 => out.x300 += 1,
                         rosu::hit_objects::Hit::X100 => out.x100 += 1,
@@ -60,12 +61,14 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                     if hit_result.state == SliderResultState::Passed {
                         // Case when slider was hit completly perfect
                         if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.ticks.len() {
+                            println!("1 | Slider at {}, result: X300", slider.start_time);
                             out.x300 += 1;
                             return;
                         }
 
                         // Case when only slider head was hit
                         if !hit_result.end_passed && hit_result.passed_checkpoints.is_empty() && !slider.ticks.is_empty() {
+                            println!("2 | Slider at {}, result: X50", slider.start_time);
                             out.x50 += 1;
                             return;
                         }
@@ -75,6 +78,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                         if !hit_result.end_passed 
                         && !hit_result.passed_checkpoints.is_empty() 
                         && hit_result.passed_checkpoints.len() != slider.ticks.len() {
+                            println!("3 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
                             return;
                         }
@@ -83,9 +87,26 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                         // ticks is not
                         if hit_result.end_passed 
                         && hit_result.passed_checkpoints.len() != slider.ticks.len() {
+                            println!("4 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
                             return;
                         }
+
+                        if !hit_result.end_passed 
+                        && !hit_result.passed_checkpoints.is_empty() {
+                            println!("5 | Slider at {}, result: X100", slider.start_time);
+                            out.x100 += 1;
+                            return;
+                        }
+
+                        if !hit_result.end_passed
+                        && hit_result.passed_checkpoints.len() == slider.ticks.len() {
+                            println!("6 | Slider at {}, result: X100", slider.start_time);
+                            out.x100 += 1;
+                            return;
+                        }
+
+                        panic!("Some uncovered slider state: {:#?}", hit_result);
                     }
                 }
             },

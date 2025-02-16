@@ -25,7 +25,7 @@ impl<'g> Graphics<'g> {
 
         let size = window.inner_size();
 
-        let supported_backend = wgpu::Backends::VULKAN;
+        let supported_backend = wgpu::Backends::PRIMARY;
         let device_descriptor = wgpu::DeviceDescriptor {
             label: None,
             required_features: wgpu::Features::default(),
@@ -69,6 +69,8 @@ impl<'g> Graphics<'g> {
         let present_mode = PresentMode::AutoVsync;
         let surface_caps = graphics.surface.get_capabilities(&graphics.adapter);
 
+        tracing::info!("Surface caps: {:#?}", &surface_caps);
+
         let surface_format = surface_caps
             .formats
             .iter()
@@ -82,7 +84,7 @@ impl<'g> Graphics<'g> {
 
         let surf_flags = surf_features.flags;
 
-        println!(
+        tracing::info!(
             "{surface_format:?}: 1x: {}, 2x: {}, 4x: {}, 8x: {}",
             surf_flags.sample_count_supported(1),
             surf_flags.sample_count_supported(2),
@@ -100,6 +102,8 @@ impl<'g> Graphics<'g> {
             view_formats: vec![],
             desired_maximum_frame_latency: 1,
         };
+
+        dbg!(&config);
 
         graphics.surface.configure(&graphics.device, &config);
 
