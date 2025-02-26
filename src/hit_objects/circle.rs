@@ -33,13 +33,17 @@ impl Circle {
         input: &OsuInput,
         hit_window: &HitWindow,
         circle_diameter: f32,
-    ) {
+    ) -> bool {
         if self.hit_result.is_some() {
-            return;
+            return false;
         }
 
         if !input.keys.is_key_hit() {
-            return;
+            return false;
+        }
+
+        if input.hold {
+            return false;
         }
 
         let (cx, cy) = (self.pos.x as f64, self.pos.y as f64);
@@ -48,7 +52,7 @@ impl Circle {
         let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
 
         if !(distance <= (circle_diameter / 2.0) as f64) {
-            return;
+            return false;
         }
 
         let hit_error = (self.start_time - input.ts).abs();
@@ -59,7 +63,7 @@ impl Circle {
                 pos: input.pos,
                 result: Hit::X300,
             });
-            return;
+            return true;
         }
 
         if hit_error < hit_window.x100.round() {
@@ -68,7 +72,7 @@ impl Circle {
                 pos: input.pos,
                 result: Hit::X100,
             });
-            return;
+            return true;
         }
 
         if hit_error < hit_window.x50.round() {
@@ -77,7 +81,10 @@ impl Circle {
                 pos: input.pos,
                 result: Hit::X50,
             });
-            return;
+
+            return true;
         }
+
+        return false;
     }
 }

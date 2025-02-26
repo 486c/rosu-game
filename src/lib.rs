@@ -24,4 +24,4 @@ mod osu_db;
 mod song_importer_ui;
 mod osu_cursor_renderer;
 mod frameless_source;
-mod osu_input;
+pub mod osu_input;

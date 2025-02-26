@@ -27,8 +27,13 @@ impl KeyboardState {
 pub struct OsuInput {
     /// A timestamp relative to the beginning of the map
     pub ts: f64, 
+
     /// Cursors position
     pub pos: Vector2<f64>,
+
     /// Keys pressed
     pub keys: KeyboardState,
+
+    /// Is current input is holding one
+    pub hold: bool,
 }

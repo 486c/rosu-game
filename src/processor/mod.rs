@@ -32,6 +32,7 @@ impl OsuProcessor {
     }
 
     pub fn store_cursor_moved(&mut self, ts: f64, pos: Vector2<f64>) {
+        /*
         self.set_cursor_pos(pos);
         let last = self.replay_log.last_input();
 
@@ -48,6 +49,7 @@ impl OsuProcessor {
                 keys: KeyboardState::empty(),
             });
         }
+        */
     }
     
     /// Processes all inputs frame by frame
@@ -57,20 +59,21 @@ impl OsuProcessor {
         hit_window: &HitWindow,
         circle_diameter: f32,
     ) {
-        for input in &self.queue {
+        'input_loop: for input in &self.queue {
             for object in objects.iter_mut() {
                 match &mut object.kind {
                     crate::hit_objects::ObjectKind::Circle(circle) => {
-                        circle.update(
+                        let res = circle.update(
                             input,
                             hit_window,
                             circle_diameter
                         );
+
+                        if res {
+                            continue 'input_loop;
+                        }
+
                     },
-                    // Slider has a few states
-                    // 1. SLIDER_START
-                    // 2. All of the checkpoints aka slider ticks (also reverse slides)
-                    // 2. SLIDER_END
                     crate::hit_objects::ObjectKind::Slider(slider) => {
                         slider.update(
                             input,
@@ -85,34 +88,6 @@ impl OsuProcessor {
                         );
 
                         continue;
-                        /*
-                        // if result is present that means slider head is already hit
-                        if let Some(result) = &slider.result {
-                        } else {
-                            let result = slider.is_head_hittable(
-                                input.ts,
-                                hit_window,
-                                input.pos,
-                                circle_diameter
-                            );
-
-                            if result.is_none() {
-                                continue
-                            }
-
-                            let result = result.unwrap();
-
-                            slider.result = Some(SliderResult {
-                                head: CircleHitResult {
-                                    at: input.ts,
-                                    pos: input.pos,
-                                    result
-                                },
-                                passed_checkpoints: Vec::new(),
-                                end_passed: false,
-                            })
-                        }
-                        */
                     },
                 }
             }
@@ -126,6 +101,7 @@ impl OsuProcessor {
     /// This function treats KeyboardState with reversed meaning
     /// `true` means that particular key is released
     pub fn store_keyboard_released(&mut self, ts: f64, state: KeyboardState) {
+        /*
         let last = self.replay_log.last_input();
 
         if let Some(last) = last {
@@ -148,10 +124,12 @@ impl OsuProcessor {
         } else {
             tracing::warn!("Trying to store release without previous input")
         }
+        */
 
     }
     
     pub fn store_keyboard_pressed(&mut self, ts: f64, state: KeyboardState) {
+        /*
         let last = self.replay_log.last_input();
 
         if let Some(last) = last {
@@ -174,9 +152,10 @@ impl OsuProcessor {
                 keys: state,
             });
         }
+        */
     }
 
-    fn store_input(&mut self, input: OsuInput) {
+    pub fn store_input(&mut self, input: OsuInput) {
         self.queue.push(input.clone());
         self.replay_log.store_input(input);
     }
@@ -199,18 +178,65 @@ impl From<Replay> for OsuProcessor {
                     m1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M1),
                     m2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M2),
                 },
+                hold: false,
             };
 
             inputs.push(input);
         }
+        
+        // Post proccesing frames
+        // stole from osu!lazer
 
-        inputs.iter().for_each(|x| {
-            println!("time: {} | k1: {}, k2: {}", x.ts, x.keys.k1, x.keys.k2);
+        if inputs.len() >= 2 && inputs[1].ts < inputs[0].ts {
+            inputs[1].ts = inputs[0].ts;
+            inputs[0].ts = 0.0;
+        }
+
+        if inputs.len() >= 3 && inputs[0].ts > inputs[2].ts {
+            inputs[0].ts = inputs[2].ts;
+            inputs[1].ts = inputs[2].ts;
+        }
+
+        if inputs.len() >= 2 && inputs[1].pos == (256.0, -500.0).into() {
+            inputs.remove(1);
+        }
+
+        if inputs.len() >= 1 && inputs[0].pos == (256.0, -500.0).into() {
+            inputs.remove(0);
+        }
+
+        let mut current_frame: Option<OsuInput> = None;
+        let mut new_inputs = Vec::new();
+
+        for legacy_frame in &inputs {
+            if let Some(current_frame) = &current_frame {
+                if legacy_frame.ts < current_frame.ts {
+                    continue
+                }
+            }
+
+            current_frame = Some(legacy_frame.clone());
+            new_inputs.push(legacy_frame.clone());
+        }
+
+
+        // Calculating is frame is hold
+        let mut last = false;
+        for input in &mut new_inputs {
+            if input.keys.is_key_hit() && last {
+                input.hold = true;
+            }
+
+            last = input.keys.is_key_hit();
+        }
+        
+        new_inputs.iter().for_each(|x| {
+            println!("{} | is pressed: {} is_held: {}", x.ts, x.keys.is_key_hit(), x.hold);
         });
 
         Self {
             replay_log: ReplayLog::default(),
-            queue: inputs,
+            queue: new_inputs,
             last_cursor_pos: Vector2::new(0.0, 0.0),
         }
     }

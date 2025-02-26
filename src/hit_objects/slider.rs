@@ -48,6 +48,7 @@ pub struct SliderResult {
     pub head: CircleHitResult,
     pub passed_checkpoints: Vec<usize>,
     pub end_passed: bool,
+    pub lenience_passed: bool,
     pub holding_since: Option<f64>,
     pub in_radius_since: Option<f64>,
 }
@@ -158,7 +159,6 @@ impl Slider {
         let hit_error = (self.start_time - input.ts).abs();
 
         if hit_error < hit_window.x50.round() {
-            //dbg!("head hit");
             self.hit_result = Some(
                 SliderResult {
                     head: CircleHitResult {
@@ -171,6 +171,7 @@ impl Slider {
                     state: SliderResultState::Middle,
                     holding_since: Some(input.ts),
                     in_radius_since: Some(input.ts),
+                    lenience_passed: false,
                 }
             );
             return;
@@ -196,9 +197,7 @@ impl Slider {
         
         // TODO we should check if we are in radious only on 
         // checkpoints (slider points)
-        if result.state != SliderResultState::End {
-            slider_radius *= 2.4;
-        }
+        slider_radius *= 2.4;
 
         // Position at slider for current input
         let slider_progress = self.get_slider_progress(input.ts);
@@ -218,7 +217,8 @@ impl Slider {
         let is_inside_circle = distance <= slider_radius;
 
         let result = self.hit_result.as_mut().unwrap();
-
+        
+        /*
         println!("ts: {} | prg: {}", input.ts, &slider_progress);
         println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
         println!(
@@ -227,6 +227,28 @@ impl Slider {
            circle_diameter / 2.0
         );
         println!("pos: ({cx}, {cy})");
+        */
+
+
+        // oh right, did i forget to say that we check slider end not at
+        // slider end time?
+        let lenience_hack_time = (self.start_time + self.duration / 2.0)
+            .max(self.start_time + self.duration - 36.0);
+
+        if !result.lenience_passed {
+            if input.ts >= lenience_hack_time {
+                //println!("LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", lenience_hack_time, result.holding_since, result.in_radius_since);
+                match (result.holding_since, result.in_radius_since) {
+                    (Some(holding_since), Some(in_radius_since)) => {
+                        if holding_since <= lenience_hack_time
+                        && in_radius_since <= lenience_hack_time {
+                            result.lenience_passed = true
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
         
         // Try to evaluate holding time 
         // and cursor position only if
@@ -255,6 +277,9 @@ impl Slider {
             }
         }
 
+
+
+
         if result.state == SliderResultState::Middle {
             // Gets a passed checkpoint 
             let closest_checkpoint = self.ticks.iter().enumerate().rev().find(|(i, x)| {
@@ -278,8 +303,17 @@ impl Slider {
             }
         }
 
+
+
         if result.state == SliderResultState::End {
             if input.ts < self.start_time + self.duration {
+                return;
+            }
+        
+            // TODO temp for testing
+            if result.lenience_passed {
+                result.state = SliderResultState::Passed;
+                result.end_passed = true;
                 return;
             }
 

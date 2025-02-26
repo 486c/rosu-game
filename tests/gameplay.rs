@@ -53,11 +53,11 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
             },
             rosu::hit_objects::ObjectKind::Slider(slider) => {
                 if let Some(hit_result) = &slider.hit_result {
-                    println!("=============");
-                    dbg!(slider.start_time);
-                    dbg!(hit_result);
-                    dbg!(&slider.ticks);
-                    println!("=============");
+                    //println!("=============");
+                    //dbg!(slider.start_time);
+                    //dbg!(hit_result);
+                    //dbg!(&slider.ticks);
+                    //println!("=============");
                     if hit_result.state == SliderResultState::Passed {
                         // Case when slider was hit completly perfect
                         if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.ticks.len() {
@@ -94,7 +94,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
 
                         if !hit_result.end_passed 
                         && !hit_result.passed_checkpoints.is_empty() {
-                            println!("5 | Slider at {}, result: X100", slider.start_time);
+                            println!("5 | Slider at {}, result: X100, end at {}", slider.start_time, slider.end_time());
                             out.x100 += 1;
                             return;
                         }
@@ -393,6 +393,7 @@ fn test_two_sliders(replay: &str, beatmap: &str, expected: Expected) {
     );
 }
 
+
 #[case(
     "sliders_and_jumps.osr", 
     "sliders_and_jumps.osu",
@@ -407,6 +408,45 @@ fn test_two_sliders(replay: &str, beatmap: &str, expected: Expected) {
     "1 x100, 6x300"
 )]
 fn test_sliders_and_jumps(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
+
+#[case(
+    "slider_with_stack.osr", 
+    "slider_with_stack.osu",
+    Expected {
+        x300: 4,
+        x100: 0,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "4 x300"
+)]
+#[case(
+    "slider_with_stack2.osr", 
+    "slider_with_stack2.osu",
+    Expected {
+        x300: 3,
+        x100: 6,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "3 x300, 6 x100"
+)]
+fn test_sliders_with_stacks(replay: &str, beatmap: &str, expected: Expected) {
     let base = get_gameplay_tests_path();
 
     let replay_file = base.join(replay);
@@ -469,7 +509,7 @@ fn test_slider_with_ticks_and_reverse(replay: &str, beatmap: &str, expected: Exp
         xgeki: 0,
         xmiss: 0,
     };
-    "normal diff, 46 x300 an SS"
+    "koise normal diff, 46 x300 an SS"
 )]
 #[case(
     "koise2.osr", 
@@ -482,9 +522,22 @@ fn test_slider_with_ticks_and_reverse(replay: &str, beatmap: &str, expected: Exp
         xgeki: 0,
         xmiss: 0,
     };
-    "normal diff, 41 x300 5 x100 an A"
+    "koise normal diff, 41 x300 5 x100 an A"
 )]
-fn test_koise_actual_map(replay: &str, beatmap: &str, expected: Expected) {
+#[case(
+    "aozora_hard.osr", 
+    "aozora_hard.osu",
+    Expected {
+        x300: 65,
+        x100: 2,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "aozora hard diff, 65 x300 2 x100 an S"
+)]
+fn test_actual_ranked_map(replay: &str, beatmap: &str, expected: Expected) {
     let base = get_gameplay_tests_path();
 
     let replay_file = base.join(replay);
