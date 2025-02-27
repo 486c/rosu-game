@@ -277,9 +277,6 @@ impl Slider {
             }
         }
 
-
-
-
         if result.state == SliderResultState::Middle {
             // Gets a passed checkpoint 
             let closest_checkpoint = self.ticks.iter().enumerate().rev().find(|(i, x)| {
@@ -315,8 +312,13 @@ impl Slider {
                 result.state = SliderResultState::Passed;
                 result.end_passed = true;
                 return;
+            } else {
+                result.end_passed = false;
+                result.state = SliderResultState::Passed;
+                return;
             }
 
+            /*
             match (result.holding_since, result.in_radius_since) {
                 (None, None) => {
                     if input.ts >= self.start_time + self.duration {
@@ -343,7 +345,6 @@ impl Slider {
                     }
                 },
             };
-            /*
             if let (Some(holding_since), Some(in_radius_since)) = (
                 result.holding_since, result.in_radius_since
             ) {
