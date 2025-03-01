@@ -178,7 +178,7 @@ impl From<Replay> for OsuProcessor {
                     m1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M1),
                     m2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M2),
                 },
-                hold: false,
+                hold: KeyboardState::default(),
             };
 
             inputs.push(input);
@@ -221,17 +221,23 @@ impl From<Replay> for OsuProcessor {
 
 
         // Calculating is frame is hold
-        let mut last = false;
+        let mut last = KeyboardState::default();
         for input in &mut new_inputs {
-            if input.keys.is_key_hit() && last {
-                input.hold = true;
-            }
 
-            last = input.keys.is_key_hit();
+            input.hold = KeyboardState {
+                k1: input.keys.k1 && last.k1,
+                k2: input.keys.k2 && last.k2,
+                m1: input.keys.m1 && last.m1,
+                m2: input.keys.m2 && last.m2,
+            };
+
+
+
+            last = input.keys.clone();
         }
         
         new_inputs.iter().for_each(|x| {
-            println!("{} | is pressed: {} is_held: {}", x.ts, x.keys.is_key_hit(), x.hold);
+            println!("{} | is pressed: k1: {} k2: {} | is_hold: k1: {} k2: {}", x.ts, x.keys.k1, x.keys.k2, x.hold.k1, x.hold.k2);
         });
 
         Self {

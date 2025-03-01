@@ -42,7 +42,7 @@ impl Circle {
             return false;
         }
 
-        if input.hold {
+        if !input.is_key_hit_no_hold() {
             return false;
         }
 

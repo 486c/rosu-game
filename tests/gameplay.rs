@@ -549,3 +549,29 @@ fn test_actual_ranked_map(replay: &str, beatmap: &str, expected: Expected) {
         expected
     );
 }
+
+#[case(
+    "stacks.osr", 
+    "stacks.osu",
+    Expected {
+        x300: 5,
+        x100: 0,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "stack of five, with one key beign held"
+)]
+fn test_stacks_one_key_hold(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
