@@ -537,6 +537,19 @@ fn test_slider_with_ticks_and_reverse(replay: &str, beatmap: &str, expected: Exp
     };
     "aozora hard diff, 65 x300 2 x100 an S"
 )]
+#[case(
+    "getta_banban.osr", 
+    "getta_banban.osu",
+    Expected {
+        x300: 236,
+        x100: 6,
+        x50: 1,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "getta banban hard diff, 236 x300 6 x100 x50 an A"
+)]
 fn test_actual_ranked_map(replay: &str, beatmap: &str, expected: Expected) {
     let base = get_gameplay_tests_path();
 

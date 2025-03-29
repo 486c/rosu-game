@@ -38,11 +38,11 @@ impl Circle {
             return false;
         }
 
-        if !input.keys.is_key_hit() {
+        if !input.keys.is_keys_hit() {
             return false;
         }
 
-        if !input.is_key_hit_no_hold() {
+        if !input.is_keys_hit_no_hold() {
             return false;
         }
 

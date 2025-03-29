@@ -40,8 +40,7 @@ impl<'g> Graphics<'g> {
             gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
         });
 
-
-        let power_preferences = wgpu::PowerPreference::None;
+        let power_preferences = wgpu::PowerPreference::HighPerformance;
         let surface = instance.create_surface(window).unwrap();
 
         let adapter_options = RequestAdapterOptions {

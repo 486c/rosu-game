@@ -66,9 +66,31 @@ impl Rgb {
     }
 }
 
+pub fn mix_colors_linear(color1: &Rgb, color2: &Rgb, ratio: f32) -> Rgb {
+    let inv_ratio = 1.0 - ratio;
+
+    Rgb::new(
+        ((color1.r() as f32 * ratio) + (color2.r() as f32 * inv_ratio)) as u8,
+        ((color1.g() as f32 * ratio) + (color2.g() as f32 * inv_ratio)) as u8,
+        ((color1.b() as f32 * ratio) + (color2.b() as f32 * inv_ratio)) as u8,
+    )
+}
+
 impl Default for Rgb {
     fn default() -> Self {
         Self::new(255, 255, 255)
+    }
+}
+
+impl From<[u8; 3]> for Rgb {
+    fn from(value: [u8; 3]) -> Self {
+        Self::new(value[0], value[1], value[2])
+    }
+}
+
+impl From<&[u8; 3]> for Rgb {
+    fn from(value: &[u8; 3]) -> Self {
+        Self::new(value[0], value[1], value[2])
     }
 }
 

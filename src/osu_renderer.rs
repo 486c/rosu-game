@@ -12,7 +12,7 @@ use crate::{
     camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, calc_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
-static SLIDER_SCALE: f32 = 1.0;
+static SLIDER_SCALE: f32 = 2.0;
 pub const QUAD_INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 // TODO: Move it outta her
@@ -216,7 +216,7 @@ impl<'or> OsuRenderer<'or> {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("uniform_buffer"),
-                contents: bytemuck::bytes_of(&camera),
+                contents: bytemuck::bytes_of(&camera.gpu),
                 usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             });
 
@@ -773,6 +773,17 @@ impl<'or> OsuRenderer<'or> {
             }
         };
     }
+
+    pub fn clear_cached_slider_textures(&self, objects: &mut [Object]) {
+        for obj in objects {
+            match &mut obj.kind {
+                hit_objects::ObjectKind::Slider(slider) => {
+                    slider.render = None;
+                },
+                _ => {}
+            }
+        }
+    }
     
     // TODO split into separate functions to avoid endless nesting and general mess
     pub fn prepare_objects(
@@ -1138,7 +1149,7 @@ impl<'or> OsuRenderer<'or> {
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("uniform_buffer"),
-                    contents: bytemuck::bytes_of(&ortho),
+                    contents: bytemuck::bytes_of(&ortho.gpu),
                     usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                 });
 
@@ -1394,7 +1405,7 @@ impl<'or> OsuRenderer<'or> {
 
         self.graphics
             .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera)); // TODO
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
 
         self.quad_debug.resize_camera(new_size);
         self.quad_debug.transform_camera(self.scale, self.offsets);

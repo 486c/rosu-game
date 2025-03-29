@@ -1,0 +1,24 @@
+[package]
+name = "replay_viewer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytemuck = "1.22.0"
+egui_taffy = "0.3.0"
+osu-replay-parser = { git = "https://github.com/486c/osr-parser"}
+rosu-game = { path = "../" }
+winit = { workspace = true }
+wgpu = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui_extras = { workspace = true }
+rosu-map = { workspace = true }
+
+pollster = "0.3.0"
+egui-winit = "0.31.1"
+cgmath = { git = "https://github.com/rustgd/cgmath.git", features = ["bytemuck"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+web-sys = "0.3.70"           # to access the DOM (to hide the loading text)

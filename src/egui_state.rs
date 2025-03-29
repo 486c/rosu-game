@@ -88,7 +88,6 @@ impl EguiState {
             pixels_per_point: self.state.egui_ctx().pixels_per_point()
         };
 
-
         let mut encoder =
             graphics
                 .device

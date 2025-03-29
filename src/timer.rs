@@ -39,7 +39,8 @@ impl Timer {
 
         self.now = Instant::now();
     }
-
+    
+    #[inline]
     pub fn get_time(&self) -> f64 {
         self.last_time
     }
@@ -53,7 +54,7 @@ impl Timer {
         self.last_time = 0.0;
         self.paused = true;
     }
-    
+
     /// Updates and returns current time
     pub fn update(&mut self) -> f64 {
         // TODO refactor

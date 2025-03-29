@@ -175,8 +175,8 @@ impl From<Replay> for OsuProcessor {
                 keys: KeyboardState {
                     k1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::K1),
                     k2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::K2),
-                    m1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M1),
-                    m2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M2),
+                    //m1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M1), TODO think about this
+                    //m2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M2),
                 },
                 hold: KeyboardState::default(),
             };
@@ -186,7 +186,6 @@ impl From<Replay> for OsuProcessor {
         
         // Post proccesing frames
         // stole from osu!lazer
-
         if inputs.len() >= 2 && inputs[1].ts < inputs[0].ts {
             inputs[1].ts = inputs[0].ts;
             inputs[0].ts = 0.0;
@@ -227,11 +226,9 @@ impl From<Replay> for OsuProcessor {
             input.hold = KeyboardState {
                 k1: input.keys.k1 && last.k1,
                 k2: input.keys.k2 && last.k2,
-                m1: input.keys.m1 && last.m1,
-                m2: input.keys.m2 && last.m2,
+                //m1: input.keys.m1 && last.m1,
+                //m2: input.keys.m2 && last.m2,
             };
-
-
 
             last = input.keys.clone();
         }
@@ -257,8 +254,8 @@ fn test_input_released() {
         KeyboardState {
             k1: true,
             k2: false,
-            m1: false,
-            m2: false,
+            //m1: false,
+            //m2: false,
         }
     );
 
@@ -267,8 +264,8 @@ fn test_input_released() {
         KeyboardState {
             k1: true,
             k2: false,
-            m1: false,
-            m2: false,
+            //m1: false,
+            //m2: false,
         }
     );
 
@@ -277,26 +274,26 @@ fn test_input_released() {
         KeyboardState {
             k1: true,
             k2: false,
-            m1: false,
-            m2: false,
+            //m1: false,
+            //m2: false,
         }
     );
 
     let last_input = processor.replay_log.last_input().unwrap();
 
-    assert_eq!(last_input.keys.is_key_hit(), false);
+    assert_eq!(last_input.keys.is_keys_hit(), false);
 
     processor.store_keyboard_released(
         200.0, 
         KeyboardState {
             k1: true,
             k2: false,
-            m1: false,
-            m2: false,
+            //m1: false,
+            //m2: false,
         }
     );
 
     let last_input = processor.replay_log.last_input().unwrap();
-    assert_eq!(last_input.keys.is_key_hit(), false);
+    assert_eq!(last_input.keys.is_keys_hit(), false);
     assert_eq!(last_input.ts, 150.0);
 }

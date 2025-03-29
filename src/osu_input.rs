@@ -4,21 +4,17 @@ use cgmath::Vector2;
 pub struct KeyboardState {
     pub k1: bool,
     pub k2: bool,
-    pub m1: bool,
-    pub m2: bool,
 }
 
 impl KeyboardState {
-    pub fn is_key_hit(&self) -> bool {
-        self.k1 || self.k2 || self.m1 || self.m2
+    pub fn is_keys_hit(&self) -> bool {
+        self.k1 || self.k2
     }
 
     pub fn empty() -> Self {
         Self {
             k1: false,
             k2: false,
-            m1: false,
-            m2: false,
         }
     }
 }
@@ -28,8 +24,6 @@ impl Default for KeyboardState {
         Self {
             k1: false,
             k2: false,
-            m1: false,
-            m2: false,
         }
     }
 }
@@ -50,13 +44,24 @@ pub struct OsuInput {
 }
 
 impl OsuInput {
-    /// Retruns only there's input which is not currently hold
-    pub fn is_key_hit_no_hold(&self) -> bool {
+    /// Returns true if there's input which is not currently being held
+    pub fn is_keys_hit_no_hold(&self) -> bool {
         let k1 = self.keys.k1 && !self.hold.k1;
         let k2 = self.keys.k2 && !self.hold.k2;
-        let m1 = self.keys.m1 && !self.hold.m1;
-        let m2 = self.keys.m2 && !self.hold.m2;
 
-        k1 || k2 || m1 || m2
+        k1 || k2
+    }
+    
+    /// Returns true if there's any input that currently being held
+    pub fn is_keys_hold(&self) -> bool {
+        (self.keys.k1 && self.hold.k1) || (self.keys.k2 && self.hold.k2)
+    }
+
+    pub fn is_k1_hold(&self) -> bool {
+        self.keys.k1 && self.hold.k1
+    }
+
+    pub fn is_k2_hold(&self) -> bool {
+        self.keys.k2 && self.hold.k2
     }
 }

@@ -67,7 +67,7 @@ impl<'qr> QuadRenderer<'qr> {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("uniform_buffer"),
-                contents: bytemuck::bytes_of(&camera),
+                contents: bytemuck::bytes_of(&camera.gpu),
                 usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             });
 
@@ -262,7 +262,7 @@ impl<'qr> QuadRenderer<'qr> {
 
         self.graphics
             .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera));
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu));
     }
 
     pub fn transform_camera(&mut self, scale: f32, offset: Vector2<f32>) {
@@ -270,7 +270,7 @@ impl<'qr> QuadRenderer<'qr> {
 
         self.graphics
             .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera));
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu));
     }
 
     pub fn resize_vertex_centered(&self, width: f32, height: f32) {

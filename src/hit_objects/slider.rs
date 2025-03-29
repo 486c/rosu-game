@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cgmath::Vector2;
 use rosu_map::{section::hit_objects::Curve, util::Pos};
 
-use crate::{osu_input::OsuInput, texture::Texture};
+use crate::{osu_input::{KeyboardState, OsuInput}, texture::Texture};
 
 use super::{circle::CircleHitResult, hit_window::HitWindow, Hit, Rectangle, SLIDER_FADEOUT_TIME};
 
@@ -51,6 +51,7 @@ pub struct SliderResult {
     pub lenience_passed: bool,
     pub holding_since: Option<f64>,
     pub in_radius_since: Option<f64>,
+    pub start_keys: u8,
 }
 
 pub struct Slider {
@@ -143,7 +144,7 @@ impl Slider {
             return;
         }
 
-        if !input.keys.is_key_hit() {
+        if !input.is_keys_hit_no_hold() {
             return;
         }
 
@@ -172,6 +173,21 @@ impl Slider {
                     holding_since: Some(input.ts),
                     in_radius_since: Some(input.ts),
                     lenience_passed: false,
+                    start_keys: {
+                        if input.keys.k1 && !input.hold.k1 {
+                            1
+                        } else if input.keys.k2 && !input.hold.k2 {
+                            2
+                        } else { panic!("Hitting a slider without any keys pressed?") }
+                        /*
+                        if input.keys.k1 {
+                            1
+                        } 
+                        else if input.keys.k2 {
+                            2
+                        } else { panic!("Hitting a slider without any keys pressed?") }
+                        */
+                    },
                 }
             );
             return;
@@ -191,10 +207,11 @@ impl Slider {
             None => return,
         };
 
+
         if result.state == SliderResultState::Passed {
             return
         }
-        
+
         // TODO we should check if we are in radious only on 
         // checkpoints (slider points)
         slider_radius *= 2.4;
@@ -218,16 +235,14 @@ impl Slider {
 
         let result = self.hit_result.as_mut().unwrap();
         
-        /*
-        println!("ts: {} | prg: {}", input.ts, &slider_progress);
-        println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
-        println!(
-            "is: {} | distance: {} | radious: {} | circle_diameter: {}", 
-            &is_inside_circle, &distance, &slider_radius,
-           circle_diameter / 2.0
-        );
-        println!("pos: ({cx}, {cy})");
-        */
+        //println!("ts: {} | prg: {}", input.ts, &slider_progress);
+        //println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
+        //println!(
+            //"is: {} | distance: {} | radious: {} | circle_diameter: {}", 
+            //&is_inside_circle, &distance, &slider_radius,
+           //circle_diameter / 2.0
+        //);
+        //println!("pos: ({cx}, {cy})");
 
 
         // oh right, did i forget to say that we check slider end not at
@@ -249,6 +264,13 @@ impl Slider {
                 }
             }
         }
+
+        if result.start_keys > 0 {
+            if result.start_keys == 2 && !input.keys.k1 
+            || result.start_keys == 1 && !input.keys.k2 {
+                result.start_keys = 0;
+            }
+        }
         
         // Try to evaluate holding time 
         // and cursor position only if
@@ -256,12 +278,24 @@ impl Slider {
         // attempt to avoid incorrect calculation
         // when incoming input is after slider end time
         if input.ts <= self.start_time + self.duration {
-            if !input.keys.is_key_hit() 
+            let mouse_down_acceptance = if result.start_keys == 1 { 
+                input.is_k1_hold()
+            } else {
+                input.is_k2_hold()
+            };
+
+            let is_holding = if result.start_keys < 1 {
+                input.is_keys_hold()
+            } else {
+                mouse_down_acceptance
+            };
+
+            if !is_holding
             && result.holding_since.is_some() {
                 result.holding_since = None
             }
 
-            if input.keys.is_key_hit() 
+            if is_holding
             && result.holding_since.is_none() {
                 result.holding_since = Some(input.ts)
             }
@@ -299,8 +333,6 @@ impl Slider {
                 }
             }
         }
-
-
 
         if result.state == SliderResultState::End {
             if input.ts < self.start_time + self.duration {
