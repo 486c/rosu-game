@@ -307,6 +307,17 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 occlusion_query_set: None,
             });
 
+            // Lines
+            render_pass.set_pipeline(&self.cursor_renderer.lines_pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.cursor_renderer.lines_vertex_buffer.slice(..));
+
+            render_pass.draw(
+                self.replay_frame_start_idx as u32..self.replay_frame_end_idx as u32,
+                0..1
+            );
+            
+            // Points
             render_pass.set_pipeline(&self.cursor_renderer.points_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
 
@@ -323,13 +334,31 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 0,
                 self.replay_frame_start_idx as u32..self.replay_frame_end_idx as u32,
             );
+            
+
+
+            /*
+
+            render_pass.set_vertex_buffer(1, self.cursor_renderer.points_instance_buffer.slice(..));
+
+            render_pass.set_index_buffer(
+                self.cursor_renderer.one_point_index_buffer.slice(..),
+                wgpu::IndexFormat::Uint16,
+            );
+
+            render_pass.draw_indexed(
+                0..1,
+                0,
+                self.replay_frame_start_idx as u32..self.replay_frame_end_idx as u32,
+            );
+            */
         }
 
         let span = tracy_client::span!("state::render::queue_submit");
         self.graphics.queue.submit([encoder.finish()]);
         drop(span);
 
-        self.time.update();
+        self.slider_time = self.time.update();
         self.update_replay_posititon();
     }
 

@@ -20,8 +20,6 @@ pub struct App<'app> {
     graphics: Option<Arc<Graphics<'app>>>,
     replay_state: Option<ReplayViewerState<'app>>,
     egui_state: Option<EguiState>,
-    
-    //osu_state: Option<>,
 }
 
 impl<'app> App<'app> {

@@ -52,6 +52,12 @@ pub struct AnalyzeCursorRenderer<'acr> {
     /// Points
     pub points_pipeline: RenderPipeline,
     pub points_instance_buffer: wgpu::Buffer,
+
+    pub lines_pipeline: RenderPipeline,
+    pub lines_vertex_data: Vec<Vertex>,
+
+    pub lines_vertex_buffer: wgpu::Buffer,
+
     points_instance_data: Vec<PointsInstance>,
 }
 
@@ -59,11 +65,31 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
     pub fn new(graphics: Arc<Graphics<'acr>>) -> Self {
         let surface_config = graphics.get_surface_config();
         
+
+        let vertex_line = vec![Vertex {
+            pos: Vector3::new(1.0, 1.0, 0.0),
+            uv: [0.0, 0.0],
+        }];
+
+        let lines_vertex_buffer =
+            graphics
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("hit_circle_buffer"),
+                    contents: bytemuck::cast_slice(&vertex_line),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                });
+        
         let point_shader = graphics
             .device
             .create_shader_module(wgpu::include_wgsl!("point.wgsl"));
 
+        let lines_shader = graphics
+            .device
+            .create_shader_module(wgpu::include_wgsl!("line.wgsl"));
+
         let points_instance_data = Vec::new();
+
         let points_instance_buffer =
             graphics
                 .device
@@ -88,6 +114,70 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
                         count: None,
                     }],
                     label: Some("camera_bind_group_layout"),
+                });
+
+
+        let lines_pipeline_layout =
+            graphics
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("points pipeline Layout"),
+                    bind_group_layouts: &[
+                        &camera_bind_group_layout,
+                    ],
+                    push_constant_ranges: &[],
+                });
+
+        let lines_pipeline =
+            graphics
+                .device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("points render pipeline"),
+                    cache: None,
+                    layout: Some(&lines_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &lines_shader,
+                        entry_point: Some("vs_main"),
+                        buffers: &[Vertex::desc()],
+                        compilation_options: Default::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &lines_shader,
+                        entry_point: Some("fs_main"),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: surface_config.format,
+                            blend: Some(wgpu::BlendState {
+                                color: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                                alpha: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                            }),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                        compilation_options: Default::default(),
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::LineStrip,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: Some(wgpu::Face::Back),
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        unclipped_depth: false,
+                        conservative: false,
+                    },
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState {
+                        count: 1,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
+                    multiview: None,
                 });
 
         let points_pipeline_layout =
@@ -158,6 +248,9 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
             points_pipeline,
             points_instance_buffer,
             points_instance_data,
+            lines_pipeline,
+            lines_vertex_data: Vec::new(),
+            lines_vertex_buffer,
         }
     }
 
@@ -168,6 +261,7 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
     pub fn clear_cursor_data(&mut self) {
         let _span = tracy_client::span!("analyze_cursor_renderer::clear_cursor_data");
         self.points_instance_data.clear();
+        self.lines_vertex_data.clear();
     }
 
     pub fn write_buffers(&mut self) {
@@ -198,6 +292,14 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
             self.points_instance_buffer.destroy();
             self.points_instance_buffer = buffer;
         }
+
+        buffer_write_or_init!(
+            self.graphics.queue,
+            self.graphics.device,
+            self.lines_vertex_buffer,
+            &self.lines_vertex_data,
+            Vertex
+        )
     }
 
     pub fn append_cursor_from_slice<T: Iterator<Item=PointsInstance>>(&mut self, iter: T) {
@@ -210,7 +312,14 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
                     alpha: 1.0,
                     scale: 1.0,
                 }
-            )
+            );
+
+            self.lines_vertex_data.push(
+                Vertex {
+                    pos: Vector3::new(inst.pos[0], inst.pos[1], 1.0),
+                    uv: [0.0, 0.0],
+                }
+            );
         }
 
         self.write_buffers();
