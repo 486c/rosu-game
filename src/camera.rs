@@ -123,7 +123,6 @@ impl Camera {
                     label: Some("camera_bind_group_layout"),
                 });
 
-
         let bind_group = graphics
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -144,6 +143,19 @@ impl Camera {
             bind_group,
             bind_group_layout,
         }
+    }
+
+    pub fn set_ortho(
+        &mut self,
+        graphics: &Graphics,
+        left: f32, 
+        right: f32, 
+        bottom: f32, 
+        top: f32
+    ) {
+        self.gpu.proj = ortho(left, right, bottom, top, -1.0, 1.0);
+
+        self.write_buffers(graphics);
     }
 
     pub fn move_camera(&mut self, delta: Vector2<f32>) {

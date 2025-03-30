@@ -82,6 +82,9 @@ pub struct OsuRenderer<'or> {
     // Camera
     camera: Camera,
 
+    // Purely for reusability
+    slider_texture_camera: Camera,
+
     // Approach circle
     approach_circle_pipeline: RenderPipeline,
     //approach_circle_texture: Texture,
@@ -223,6 +226,14 @@ impl<'or> OsuRenderer<'or> {
             graphics_width as f32,
             graphics_height as f32,
             1.0,
+        );
+
+        let slider_texture_camera = Camera::ortho(
+            &graphics,
+            0.0,
+            0.0,
+            0.0,
+            0.0
         );
 
         let slider_settings_buffer = graphics
@@ -712,6 +723,7 @@ impl<'or> OsuRenderer<'or> {
             slider_ticks_instance_data,
             slider_ticks_instance_buffer,
             slider_reverse_arrow_quad,
+            slider_texture_camera,
         }
     }
 
@@ -1119,7 +1131,7 @@ impl<'or> OsuRenderer<'or> {
             DepthTexture::new(&self.graphics, bbox_width as u32, bbox_height as u32, 1);
         
         // Do not create a new camera each time?
-        let ortho = Camera::ortho(
+        self.slider_texture_camera.set_ortho(
             &self.graphics,
             0.0, bbox_width, bbox_height, 0.0
         );
@@ -1227,7 +1239,7 @@ impl<'or> OsuRenderer<'or> {
 
             render_pass.set_pipeline(&self.slider_pipeline);
 
-            render_pass.set_bind_group(0, ortho.bind_group(), &[]);
+            render_pass.set_bind_group(0, self.slider_texture_camera.bind_group(), &[]);
             render_pass.set_bind_group(1, &self.slider_settings_bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.slider_vertex_buffer.slice(..));
