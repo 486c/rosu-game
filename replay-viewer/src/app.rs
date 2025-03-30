@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use egui_wgpu::wgpu::RequestAdapterOptionsBase;
 use rosu::{egui_state::EguiState, graphics::{Graphics, GraphicsInitialized}};
-use wgpu::{InstanceDescriptor, Surface};
+use wgpu::{InstanceDescriptor, PowerPreference, Surface};
 use winit::{application::ApplicationHandler, dpi::PhysicalSize, event_loop::EventLoopProxy, window::{Theme, Window}};
 
 use crate::state::ReplayViewerState;
@@ -51,6 +51,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
+        let _span = tracy_client::span!("app::window_event");
         let Some(window) = self.window.as_ref() else {
             println!("Window is not initialazed");
             return;
@@ -68,13 +69,17 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                     let proxy = self.proxy.take().unwrap();
 
                     pollster::block_on(async move {
-                        let instance = wgpu::Instance::new(InstanceDescriptor::default());
+                        let instance = wgpu::Instance::new(&InstanceDescriptor::default());
 
                         let size = window.inner_size();
                         let surface = instance.create_surface(window).unwrap();
 
                         let mut request_adapter_options = 
-                            wgpu::RequestAdapterOptions::default();
+                            wgpu::RequestAdapterOptions {
+                                power_preference: PowerPreference::HighPerformance,
+                                force_fallback_adapter: false,
+                                compatible_surface: None,
+                            };
 
                         request_adapter_options.compatible_surface = Some(&surface);
 
@@ -170,6 +175,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 dbg!(path);
             },
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
+                let _span = tracy_client::span!("app::keyboard_input");
                 if let Some(state) = &mut self.replay_state {
                     match event.physical_key {
                         winit::keyboard::PhysicalKey::Code(key_code) => {
@@ -186,12 +192,51 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                             //tracing::warn!("Got undefined keyboard input"),
                     }
                 }
-            }
+            },
+            winit::event::WindowEvent::MouseWheel { delta, .. } => {
+                let _span = tracy_client::span!("app::mouse_wheel");
+                if let Some(state) = &mut self.replay_state {
+                    match delta {
+                        winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                            println!("({}, {})", x ,y);
+                            if y > 0.0 {
+                                println!("Zoom in");
+                                state.zoom_in();
+                            } else {
+                                println!("Zoom out");
+                                state.zoom_out();
+                            }
+                        },
+                        winit::event::MouseScrollDelta::PixelDelta(physical_position) => println!("pixel delta"),
+                    }
+                }
+            },
+            winit::event::WindowEvent::CursorMoved { position, .. } => {
+                let _span = tracy_client::span!("app::cursor_moved");
+                if let Some(state) = &mut self.replay_state {
+                    state.on_mouse_moved(&position);
+                }
+            },
+            winit::event::WindowEvent::MouseInput { state, button, .. } => {
+                let _span = tracy_client::span!("app::mouse_input");
+                if let Some(replay_state) = &mut self.replay_state {
+                    match state {
+                        winit::event::ElementState::Pressed => {
+                            replay_state.on_mouse_pressed(button)
+                        },
+                        winit::event::ElementState::Released => {
+                            replay_state.on_mouse_released(button)
+                        },
+                    }
+                }
+
+            },
             _ => {}
         }
     }
 
     fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        let _span = tracy_client::span!("app::about_to_wait");
         let window = self.window.as_ref().unwrap();
         window.request_redraw();
     }

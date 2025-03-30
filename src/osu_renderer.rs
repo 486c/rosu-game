@@ -1,5 +1,7 @@
 use std::{mem::size_of, sync::Arc};
 
+use std::num::NonZero;
+
 use cgmath::Vector2;
 use smallvec::SmallVec;
 use wgpu::{
@@ -25,6 +27,15 @@ macro_rules! buffer_write_or_init {
         let buffer_len = buffer_bytes_size / size_of::<$t>() as u64;
 
         if data_len <= buffer_len {
+            /*
+            let mut view = $queue.write_buffer_with(
+                &$buffer,
+                0,
+                NonZero::new(buffer_bytes_size).unwrap()
+            ).unwrap();
+
+            view.copy_from_slice(bytemuck::cast_slice($data))
+            */
             $queue.write_buffer(&$buffer, 0, bytemuck::cast_slice($data))
         } else {
             let buffer = $device.create_buffer_init(
@@ -34,11 +45,14 @@ macro_rules! buffer_write_or_init {
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             });
 
+            $buffer.destroy();
+
             $buffer = buffer;
         }
     }};
 }
 
+#[derive(Debug)]
 pub struct JudgementsEntry {
     pos: Vector2<f64>,
     alpha: f32,
@@ -67,8 +81,6 @@ pub struct OsuRenderer<'or> {
 
     // Camera
     camera: Camera,
-    camera_bind_group: BindGroup,
-    camera_buffer: wgpu::Buffer,
 
     // Approach circle
     approach_circle_pipeline: RenderPipeline,
@@ -207,47 +219,11 @@ impl<'or> OsuRenderer<'or> {
 
         /* Camera stuff */
         let camera = Camera::new(
+            &graphics,
             graphics_width as f32,
             graphics_height as f32,
             1.0,
         );
-
-        let camera_buffer = graphics
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("uniform_buffer"),
-                contents: bytemuck::bytes_of(&camera.gpu),
-                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            });
-
-        let camera_bind_group_layout =
-            graphics
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                    label: Some("camera_bind_group_layout"),
-                });
-
-        let camera_bind_group = graphics
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &camera_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                }],
-                label: Some("camera_bind_group"),
-            });
-
 
         let slider_settings_buffer = graphics
                 .device
@@ -292,7 +268,7 @@ impl<'or> OsuRenderer<'or> {
                     label: Some("approach circle pipeline Layout"),
                     bind_group_layouts: &[
                         //&approach_circle_texture.bind_group_layout,
-                        &camera_bind_group_layout,
+                        &camera.bind_group_layout(),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -306,13 +282,13 @@ impl<'or> OsuRenderer<'or> {
                     layout: Some(&approach_circle_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &approach_circle_shader,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[Vertex::desc(), ApproachCircleInstance::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &approach_circle_shader,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: surface_config.format,
                             blend: Some(wgpu::BlendState {
@@ -356,7 +332,7 @@ impl<'or> OsuRenderer<'or> {
                     label: Some("hitcircle pipeline Layout"),
                     bind_group_layouts: &[
                         &Texture::default_bind_group_layout(&graphics, 1),
-                        &camera_bind_group_layout,
+                        &camera.bind_group_layout(),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -370,14 +346,14 @@ impl<'or> OsuRenderer<'or> {
                     layout: Some(&hit_circle_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &hit_circle_shader,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[Vertex::desc(), HitCircleInstance::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         compilation_options: Default::default(),
                         module: &hit_circle_shader,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: surface_config.format,
                             blend: Some(wgpu::BlendState {
@@ -416,7 +392,7 @@ impl<'or> OsuRenderer<'or> {
                     label: Some("hitcircle pipeline Layout"),
                     bind_group_layouts: &[
                         &Texture::default_bind_group_layout(&graphics, 1),
-                        &camera_bind_group_layout,
+                        &camera.bind_group_layout(),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -430,14 +406,14 @@ impl<'or> OsuRenderer<'or> {
                     layout: Some(&hit_circle_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &quad_colored_shader,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[Vertex::desc(), HitCircleInstance::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         compilation_options: Default::default(),
                         module: &quad_colored_shader,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: surface_config.format,
                             blend: Some(wgpu::BlendState {
@@ -507,7 +483,7 @@ impl<'or> OsuRenderer<'or> {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("slider test pipeline Layout"),
                     bind_group_layouts: &[
-                        &camera_bind_group_layout,
+                        &camera.bind_group_layout(),
                         &slider_settings_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
@@ -522,14 +498,14 @@ impl<'or> OsuRenderer<'or> {
                     layout: Some(&slider_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &slider_shader,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[Vertex::desc(), SliderInstance::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &slider_shader,
                         compilation_options: Default::default(),
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: surface_config.format,
                             blend: None,
@@ -602,7 +578,7 @@ impl<'or> OsuRenderer<'or> {
                     bind_group_layouts: &[
                         //&Texture::default_bind_group_layout(&graphics, 1),
                         &slider_to_screen_bind_group_layout,
-                        &camera_bind_group_layout,
+                        &camera.bind_group_layout(),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -617,13 +593,13 @@ impl<'or> OsuRenderer<'or> {
                     vertex: wgpu::VertexState {
                         compilation_options: Default::default(),
                         module: &slider_to_screen_shader,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[Vertex::desc(), SliderInstance::desc()],
                     },
                     fragment: Some(wgpu::FragmentState {
                         compilation_options: Default::default(),
                         module: &slider_to_screen_shader,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: surface_config.format,
                             blend: Some(wgpu::BlendState {
@@ -699,8 +675,6 @@ impl<'or> OsuRenderer<'or> {
             scale,
             quad_verticies,
             camera,
-            camera_bind_group,
-            camera_buffer,
             approach_circle_pipeline,
             approach_circle_instance_buffer,
             approach_circle_instance_data,
@@ -745,6 +719,7 @@ impl<'or> OsuRenderer<'or> {
         &self,
         config: &Config,
     ) {
+        let _span = tracy_client::span!("osu_renderer::prepare");
         self.graphics
             .queue
             .write_buffer(&self.slider_settings_buffer, 0, bytemuck::bytes_of(&config.slider));
@@ -775,6 +750,7 @@ impl<'or> OsuRenderer<'or> {
     }
 
     pub fn clear_cached_slider_textures(&self, objects: &mut [Object]) {
+        let _span = tracy_client::span!("osu_renderer::clear_cached_slider_textures");
         for obj in objects {
             match &mut obj.kind {
                 hit_objects::ObjectKind::Slider(slider) => {
@@ -1141,46 +1117,12 @@ impl<'or> OsuRenderer<'or> {
 
         let depth_texture =
             DepthTexture::new(&self.graphics, bbox_width as u32, bbox_height as u32, 1);
-
-        let ortho = Camera::ortho(0.0, bbox_width, bbox_height, 0.0);
-
-        let camera_buffer =
-            self.graphics
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("uniform_buffer"),
-                    contents: bytemuck::bytes_of(&ortho.gpu),
-                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-                });
-
-        let camera_bind_group_layout =
-            self.graphics
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                    label: Some("camera_bind_group_layout"),
-                });
-
-        let camera_bind_group =
-            self.graphics
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &camera_bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: camera_buffer.as_entire_binding(),
-                    }],
-                    label: Some("camera_bind_group"),
-                });
+        
+        // Do not create a new camera each time?
+        let ortho = Camera::ortho(
+            &self.graphics,
+            0.0, bbox_width, bbox_height, 0.0
+        );
 
         self.slider_instance_data.clear();
 
@@ -1267,7 +1209,7 @@ impl<'or> OsuRenderer<'or> {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -1285,7 +1227,7 @@ impl<'or> OsuRenderer<'or> {
 
             render_pass.set_pipeline(&self.slider_pipeline);
 
-            render_pass.set_bind_group(0, &camera_bind_group, &[]);
+            render_pass.set_bind_group(0, ortho.bind_group(), &[]);
             render_pass.set_bind_group(1, &self.slider_settings_bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.slider_vertex_buffer.slice(..));
@@ -1403,9 +1345,7 @@ impl<'or> OsuRenderer<'or> {
             1,
         );
 
-        self.graphics
-            .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
+        self.camera.write_buffers(&self.graphics);
 
         self.quad_debug.resize_camera(new_size);
         self.quad_debug.transform_camera(self.scale, self.offsets);
@@ -1429,6 +1369,28 @@ impl<'or> OsuRenderer<'or> {
             &self.slider_to_screen_verticies,
             Vertex
         );
+    }
+
+    pub fn zoom_camera(&mut self, zoom_factor: f32, zoom_center: Vector2<f32>) {
+        self.camera.zoom(zoom_factor, zoom_center);
+        self.quad_debug.zoom_camera(zoom_factor, zoom_center);
+        self.slider_reverse_arrow_quad.zoom_camera(zoom_factor, zoom_center);
+    }
+
+    pub fn move_camera(&mut self, delta: Vector2<f32>) {
+        self.camera.move_camera(delta);
+        self.quad_debug.move_camera(delta);
+        self.slider_reverse_arrow_quad.move_camera(delta);
+    }
+
+    pub fn write_camera_buffers(&mut self) {
+        // TODO: Too much cameras to update lmao
+
+        // Gameplay camera
+        self.camera.write_buffers(&self.graphics);
+
+        self.quad_debug.write_camera_buffer();
+        self.slider_reverse_arrow_quad.write_camera_buffer();
     }
 
     pub fn write_buffers(&mut self) {
@@ -1509,6 +1471,11 @@ impl<'or> OsuRenderer<'or> {
     /// Responsible for managing and rendering judgments queue
     pub fn render_judgements(&mut self, atlas: &AtlasTexture, view: &TextureView) {
         let _span = tracy_client::span!("osu_renderer::render_judgements");
+
+        if self.judgements_queue.is_empty() {
+            return;
+        }
+
         for jdg in &self.judgements_queue {
             let image_index = match jdg.result {
                 hit_objects::Hit::X300 => 0,
@@ -1549,7 +1516,7 @@ impl<'or> OsuRenderer<'or> {
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("slider render pass"),
+                label: Some("render objects render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -1578,7 +1545,7 @@ impl<'or> OsuRenderer<'or> {
                         
                         // hit circle itself
                         render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
-                        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                        render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
                         render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
                         render_pass.set_vertex_buffer(1, self.hit_circle_instance_buffer.slice(..));
                         render_pass.set_index_buffer(
@@ -1616,7 +1583,7 @@ impl<'or> OsuRenderer<'or> {
                         //let (texture, vertex_buffer, follow) = &self.slider_to_screen_textures[current_slider];
                         let slider_to_screen = &self.slider_to_screen_textures[current_slider];
 
-                        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                        render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
                         render_pass.set_vertex_buffer(0, slider_to_screen.buffer.slice(..));
 
                         render_pass.set_bind_group(0, &slider_to_screen.texture.bind_group, &[]);
@@ -1649,7 +1616,7 @@ impl<'or> OsuRenderer<'or> {
                         // follow circle
                         if let Some(follow) = &slider_to_screen.follow_circle {
                             render_pass.set_pipeline(&self.hit_circle_pipeline);
-                            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                            render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
                             render_pass.set_bind_group(0, &skin.sliderb0.bind_group, &[]);
                             render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
                             render_pass.set_vertex_buffer(1, self.follow_points_instance_buffer.slice(..));
@@ -1669,7 +1636,7 @@ impl<'or> OsuRenderer<'or> {
                         // Hit circle on top of everything
                         render_pass.set_pipeline(&self.quad_colored_pipeline);
                         render_pass.set_bind_group(0, &skin.hit_circle.bind_group, &[]);
-                        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                        render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
 
                         render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
 
@@ -1704,7 +1671,7 @@ impl<'or> OsuRenderer<'or> {
 
             // Approach circles should be always on top
             render_pass.set_pipeline(&self.approach_circle_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
 
             render_pass.set_vertex_buffer(0, self.hit_circle_vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.approach_circle_instance_buffer.slice(..));

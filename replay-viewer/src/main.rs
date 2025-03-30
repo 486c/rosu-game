@@ -7,7 +7,6 @@ use std::num::NonZeroU64;
 
 use app::{App, AppEvents};
 use egui::Rect;
-use egui_taffy::{taffy::{self, prelude::{fr, percent, span}, style_helpers, Display, Style}, tui, TuiBuilderLogic};
 use rosu::graphics::GraphicsInitialized;
 use winit::event_loop::{ControlFlow, EventLoop};
 
@@ -17,6 +16,10 @@ use {
 };
 
 fn main() {
+    env_logger::init();
+    log::info!("Started");
+
+    let _client = tracy_client::Client::start();
     let event_loop = EventLoop::<AppEvents>::with_user_event().build().unwrap();
     let proxy = event_loop.create_proxy();
 

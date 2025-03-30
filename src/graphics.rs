@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use wgpu::{Instance, InstanceDescriptor, MemoryHints, PresentMode, RequestAdapterOptions, SurfaceTexture};
+use wgpu::{BackendOptions, Instance, InstanceDescriptor, MemoryHints, PresentMode, RequestAdapterOptions, SurfaceTexture};
 use winit::window::Window;
 
 pub struct GraphicsInitialized<'gi> {
@@ -33,11 +33,15 @@ impl<'g> Graphics<'g> {
             memory_hints: MemoryHints::default() 
         };
 
-        let instance = Instance::new(InstanceDescriptor {
+        let instance = Instance::new(&InstanceDescriptor {
             backends: supported_backend,
-            dx12_shader_compiler: Default::default(),
+            //dx12_shader_compiler: Default::default(),
             flags: wgpu::InstanceFlags::empty(),
-            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+            //gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+            backend_options: BackendOptions {
+                gl: Default::default(),
+                dx12: Default::default(),
+            },
         });
 
         let power_preferences = wgpu::PowerPreference::HighPerformance;

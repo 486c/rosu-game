@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{num::NonZero, sync::Arc};
 
 use cgmath::Vector3;
 use rosu::{buffer_write_or_init, graphics::Graphics, rgb::Rgb, vertex::Vertex};
@@ -55,8 +55,6 @@ pub struct AnalyzeCursorRenderer<'acr> {
     points_instance_data: Vec<PointsInstance>,
 }
 
-
-
 impl<'acr> AnalyzeCursorRenderer<'acr> {
     pub fn new(graphics: Arc<Graphics<'acr>>) -> Self {
         let surface_config = graphics.get_surface_config();
@@ -72,7 +70,7 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("Hit Instance Buffer"),
                     contents: bytemuck::cast_slice(&points_instance_data),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                    usage: BufferUsages::VERTEX,
                 });
 
         let camera_bind_group_layout =
@@ -112,13 +110,13 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
                     layout: Some(&points_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &point_shader,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[Vertex::desc(), PointsInstance::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &point_shader,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: surface_config.format,
                             blend: Some(wgpu::BlendState {
@@ -163,12 +161,47 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
         }
     }
 
+    pub fn data_mut(&mut self) -> &mut [PointsInstance] {
+        &mut self.points_instance_data
+    }
 
     pub fn clear_cursor_data(&mut self) {
+        let _span = tracy_client::span!("analyze_cursor_renderer::clear_cursor_data");
         self.points_instance_data.clear();
     }
 
+    pub fn write_buffers(&mut self) {
+        let _span = tracy_client::span!("analyze_cursor_renderer::write_buffers");
+
+        let data_len = self.points_instance_data.len() as u64;
+        let buffer_bytes_size = self.points_instance_buffer.size();
+
+        let buffer_len = buffer_bytes_size / size_of::<PointsInstance>() as u64;
+
+        if data_len <= buffer_len {
+            let mut view = self.graphics.queue.write_buffer_with(
+                &self.points_instance_buffer,
+                0,
+                NonZero::new(buffer_bytes_size).unwrap()
+            ).unwrap();
+
+            view.copy_from_slice(bytemuck::cast_slice(&self.points_instance_data))
+        } else {
+            let buffer = self.graphics.device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(&self.points_instance_data),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
+
+            self.points_instance_buffer.destroy();
+            self.points_instance_buffer = buffer;
+        }
+    }
+
     pub fn append_cursor_from_slice<T: Iterator<Item=PointsInstance>>(&mut self, iter: T) {
+        let _span = tracy_client::span!("analyze_cursor_renderer::append_cursor_from_slice");
         for inst in iter {
             self.points_instance_data.push(
                 PointsInstance {
@@ -180,12 +213,6 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
             )
         }
 
-        buffer_write_or_init!(
-            self.graphics.queue,
-            self.graphics.device,
-            self.points_instance_buffer,
-            &self.points_instance_data,
-            PointsInstance 
-        )
+        self.write_buffers();
     }
 }

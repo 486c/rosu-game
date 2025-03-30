@@ -10,13 +10,15 @@ use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
+use std::num::NonZero;
+
 use crate::{buffer_write_or_init, graphics::Graphics,osu_db::{BeatmapEntry, OsuDatabase}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, song_importer_ui::SongImporter, texture::Texture};
 
 const CARD_INNER_MARGIN: Margin = Margin {
-    left: 5.0,
-    right: 0.0,
-    top: 8.0,
-    bottom: 0.0,
+    left: 5,
+    right: 0,
+    top: 8,
+    bottom: 0,
 };
 
 const ROW_HEIGHT: f32 = 72.0;

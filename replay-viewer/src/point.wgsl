@@ -75,7 +75,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		discard;
 	}
 
-	var out = vec4<f32>(color, 0.7);
+	var out = vec4<f32>(color, in.alpha);
 	out.r = in.color.x;
 	out.g = in.color.y;
 	out.b = in.color.z;

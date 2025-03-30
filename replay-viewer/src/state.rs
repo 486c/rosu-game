@@ -7,12 +7,11 @@
 use std::{path::PathBuf, sync::Arc};
 
 use cgmath::Vector2;
-use egui_taffy::{taffy::{self, prelude::{fr, span}, Style}, tui, TuiBuilderLogic};
 use osu_replay_parser::replay::Replay;
 use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
 use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
-use winit::{dpi::PhysicalSize, keyboard::KeyCode};
+use winit::{dpi::{PhysicalPosition, PhysicalSize}, event::MouseButton, keyboard::KeyCode};
 
 use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, replay_log::ReplayLog};
 
@@ -62,12 +61,18 @@ pub struct ReplayViewerState<'rvs> {
 
     zoom: f32,
     offsets: Vector2<f32>,
+
+    mouse_pos: Vector2<f32>,
+    left_mouse_holding: bool,
 }
 
 impl<'rvs> ReplayViewerState<'rvs> {
     pub fn new(graphics: Arc<Graphics<'rvs>>) -> Self {
         let (graphics_width, graphics_height) = graphics.get_surface_size();
-        let camera = Camera::new(graphics_width as f32, graphics_height as f32, 1.0);
+        let camera = Camera::new(
+            &graphics,
+            graphics_width as f32, graphics_height as f32, 1.0
+        );
         let config = Config::default();
         let skin_manager = SkinManager::from_path("./assets", &graphics);
 
@@ -159,6 +164,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
             playing: false,
             zoom: 1.0,
             offsets: Vector2::new(1.0, 1.0),
+            mouse_pos: Vector2::new(0.0, 0.0),
+            left_mouse_holding: false,
         };
 
         r.open_replay(PathBuf::from("/home/lopij/wq/wgpu-tests/tests/data/gameplay/getta_banban.osr"));
@@ -168,6 +175,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     fn open_beatmap(&mut self, beatmap_path: PathBuf) {
+        let _span = tracy_client::span!("state::open_beatmap");
         let map = match Beatmap::from_path(&beatmap_path) {
             Ok(m) => m,
             Err(e) => {
@@ -192,6 +200,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn open_replay(&mut self, replay_path: PathBuf) {
+        let _span = tracy_client::span!("state::open_replay");
         let replay = Replay::open(&replay_path).unwrap();
 
         self.replay = Some(replay.into());
@@ -202,6 +211,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn sync_cursor(&mut self) {
+        let _span = tracy_client::span!("state::sync_cursor");
         let Some(replay) = &self.replay else {
             return;
         };
@@ -252,9 +262,10 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn on_resize(&mut self, new_size: &PhysicalSize<u32>) {
+        let _span = tracy_client::span!("state::on_resize");
         let (scale, offsets) = calc_playfield(new_size.width as f32, new_size.height as f32);
 
-        self.zoom = scale;
+        //self.zoom = scale;
         self.offsets = offsets;
 
         self.camera.resize(new_size);
@@ -268,6 +279,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn render(&mut self, view: &TextureView) {
+        let _span = tracy_client::span!("state::render");
+
         self.render_gameplay_objects(view);
 
         let mut encoder =
@@ -278,6 +291,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             });
 
         {
+            let _span = tracy_client::span!("state::render::record_render_pass");
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -311,13 +325,16 @@ impl<'rvs> ReplayViewerState<'rvs> {
             );
         }
 
+        let span = tracy_client::span!("state::render::queue_submit");
         self.graphics.queue.submit([encoder.finish()]);
+        drop(span);
 
         self.time.update();
         self.update_replay_posititon();
     }
 
     fn update_frame_point_size(&mut self) {
+        let _span = tracy_client::span!("state::update_frame_point_size");
         let quad_verticies = Vertex::quad_centered(
             self.settings.frame_point_size as f32, 
             self.settings.frame_point_size as f32, 
@@ -335,6 +352,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
     
     /// Updates 
     fn update_replay_posititon(&mut self) {
+        let _span = tracy_client::span!("state::update_replay_position");
         let Some(replay) = &self.replay else {
             return;
         };
@@ -348,11 +366,28 @@ impl<'rvs> ReplayViewerState<'rvs> {
             .map(|(i, _frame)| i)
             .unwrap();
 
-
         self.replay_frame_start_idx = self.replay_frame_end_idx.saturating_sub(self.settings.frames_to_show);
+
+        let total = self.replay_frame_end_idx.saturating_sub(self.replay_frame_start_idx);
+
+        if total == 0 {
+            return
+        };
+
+        let mut alpha = 0.0;
+        let step = 1.0 / total as f32;
+
+        for i in self.replay_frame_start_idx..=self.replay_frame_end_idx {
+            self.cursor_renderer.data_mut()[i].alpha = alpha;
+            alpha += step;
+        }
+
+        self.cursor_renderer.write_buffers();
     }
     
     fn render_gameplay_objects(&mut self,  view: &TextureView) {
+        let _span = tracy_client::span!("state::render_gameplay_objects");
+
         // 1. Prepare all objects
         let Some(objects) = &mut self.objects else {
             return;
@@ -400,6 +435,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn render_ui(&mut self, ctx: &egui::Context) {
+        let _span = tracy_client::span!("state::render_ui");
         egui::TopBottomPanel::bottom("bottom")
             .resizable(false)
             .show(ctx, |ui| {
@@ -445,17 +481,16 @@ impl<'rvs> ReplayViewerState<'rvs> {
             if ui.add(egui::Slider::new(
                 &mut self.zoom, 0.0..=50.0
             ).step_by(1.0).text("TEST")).changed() {
-                //self.camera.transform(self.zoom, self.offsets);
+                //self.camera.transform(self.zoom, Vector2::new(100.0, 100.0));
 
                 //self.graphics
                     //.queue
-                    //.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera)); // TODO
+                    //.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
             };
 
             if resp.changed() {
                 self.update_replay_posititon()
             }
-
 
             let resp = ui.add(
                 egui::Slider::new(
@@ -552,6 +587,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
+        let _span = tracy_client::span!("state::on_pressed_down");
         if key_code == KeyCode::ArrowRight {
             self.time.set_time(self.time.get_time() + 1.0);
             self.update_replay_posititon();
@@ -571,5 +607,64 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 self.playing = true;
             }
         }
+    }
+
+    pub fn on_mouse_pressed(&mut self, button: MouseButton) {
+        let _span = tracy_client::span!("state::on_mouse_pressed");
+        if button == MouseButton::Left {
+            self.left_mouse_holding = true;
+        }
+    }
+
+    pub fn on_mouse_released(&mut self, button: MouseButton) {
+        let _span = tracy_client::span!("state::on_mouse_released");
+        if button == MouseButton::Left {
+            self.left_mouse_holding = false;
+        }
+    }
+
+    pub fn on_mouse_moved(&mut self, position: &PhysicalPosition<f64>) {
+        let _span = tracy_client::span!("state::on_mouse_moved");
+        if self.left_mouse_holding {
+            let delta = self.mouse_pos - Vector2::new(position.x as f32, position.y as f32);
+            self.camera.move_camera(delta);
+            self.osu_renderer.move_camera(delta);
+
+            self.graphics
+                .queue
+                .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
+
+            self.osu_renderer.write_camera_buffers();
+        }
+
+        self.mouse_pos = Vector2::new(position.x as f32, position.y as f32)
+    }
+
+    pub fn zoom_in(&mut self) {
+        let _span = tracy_client::span!("state::zoom_in");
+        self.zoom += 0.1;
+
+        self.camera.zoom(0.1, self.mouse_pos);
+
+        self.osu_renderer.zoom_camera(0.1, self.mouse_pos);
+        self.osu_renderer.write_camera_buffers();
+
+        self.graphics
+            .queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
+    }
+
+    pub fn zoom_out(&mut self) {
+        let _span = tracy_client::span!("state::zoom_out");
+        self.zoom -= 0.1;
+
+        self.camera.zoom(-0.1, self.mouse_pos);
+
+        self.osu_renderer.zoom_camera(-0.1, self.mouse_pos);
+        self.osu_renderer.write_camera_buffers();
+
+        self.graphics
+            .queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
     }
 }

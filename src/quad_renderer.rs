@@ -19,8 +19,6 @@ pub struct QuadRenderer<'qr> {
     quad_pipeline: wgpu::RenderPipeline,
     
     camera: Camera,
-    camera_bind_group: wgpu::BindGroup,
-    camera_buffer: wgpu::Buffer,
 
     /// Present if quad renderer is atlas based
     /// All atlas based operations should be
@@ -40,6 +38,7 @@ impl<'qr> QuadRenderer<'qr> {
         let surface_config = graphics.get_surface_config();
 
         let camera = Camera::new(
+            &graphics,
             surface_config.width as f32,
             surface_config.height as f32,
             1.0,
@@ -62,43 +61,6 @@ impl<'qr> QuadRenderer<'qr> {
                     contents: bytemuck::cast_slice(&Vertex::quad_centered(1.0, 1.0)),
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 });
-        
-        let camera_buffer = graphics
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("uniform_buffer"),
-                contents: bytemuck::bytes_of(&camera.gpu),
-                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            });
-
-        let camera_bind_group_layout =
-            graphics
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                    label: Some("camera_bind_group_layout"),
-                });
-
-
-        let camera_bind_group = graphics
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &camera_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                }],
-                label: Some("camera_bind_group"),
-            });
 
         let quad_pipeline_layout =
             graphics
@@ -107,7 +69,7 @@ impl<'qr> QuadRenderer<'qr> {
                     label: None,
                     bind_group_layouts: &[
                         &Texture::default_bind_group_layout(&graphics, 1),
-                        &camera_bind_group_layout,
+                        camera.bind_group_layout(),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -121,14 +83,14 @@ impl<'qr> QuadRenderer<'qr> {
                     layout: Some(&quad_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &quad_shader,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[Vertex::desc(), QuadInstance::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         compilation_options: Default::default(),
                         module: &quad_shader,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: surface_config.format,
                             blend: Some(wgpu::BlendState {
@@ -181,7 +143,7 @@ impl<'qr> QuadRenderer<'qr> {
                     label: Some("atlas quad pipeline layout"),
                     bind_group_layouts: &[
                         &Texture::default_bind_group_layout(&graphics, 1),
-                        &camera_bind_group_layout,
+                        &camera.bind_group_layout(),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -195,14 +157,14 @@ impl<'qr> QuadRenderer<'qr> {
                     layout: Some(&quad_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &atlas_quad_shader,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[AtlasQuadVertex::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         compilation_options: Default::default(),
                         module: &atlas_quad_shader,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: surface_config.format,
                             blend: Some(wgpu::BlendState {
@@ -249,28 +211,34 @@ impl<'qr> QuadRenderer<'qr> {
             quad_vertex_buffer,
             quad_index_buffer,
             quad_pipeline,
-            camera_bind_group,
-            camera_buffer,
             graphics,
             camera,
             atlas,
         }
     }
 
+    pub fn write_camera_buffer(&mut self) {
+        self.camera.write_buffers(&self.graphics);
+    }
+
+    pub fn move_camera(&mut self, delta: Vector2<f32>) {
+        self.camera.move_camera(delta);
+    }
+
+    pub fn zoom_camera(&mut self, zoom_factor: f32, zoom_center: Vector2<f32>) {
+        self.camera.zoom(zoom_factor, zoom_center);
+    }
+
     pub fn resize_camera(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
         self.camera.resize(new_size);
 
-        self.graphics
-            .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu));
+        self.write_camera_buffer();
     }
 
     pub fn transform_camera(&mut self, scale: f32, offset: Vector2<f32>) {
         self.camera.transform(scale, offset);
 
-        self.graphics
-            .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu));
+        self.write_camera_buffer();
     }
 
     pub fn resize_vertex_centered(&self, width: f32, height: f32) {
@@ -399,8 +367,8 @@ impl<'qr> QuadRenderer<'qr> {
 
             if let Some(atlas) = &self.atlas {
                 render_pass.set_pipeline(&atlas.atlas_pipeline);
-                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                render_pass.set_bind_group(0, &texture, &[]);
+                render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
+                render_pass.set_bind_group(0, texture, &[]);
                 render_pass.set_vertex_buffer(0, atlas.atlas_vertex_buffer.slice(..));
 
                 render_pass.draw(
@@ -444,8 +412,8 @@ impl<'qr> QuadRenderer<'qr> {
             });
 
             render_pass.set_pipeline(&self.quad_pipeline);
-            render_pass.set_bind_group(0, &texture, &[]);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(0, texture, &[]);
+            render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
             render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, instances.slice(..));
 
