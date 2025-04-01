@@ -5,7 +5,7 @@ use r2d2::Pool;
 use rosu_map::{section::general::GameMode, Beatmap};
 use rusqlite::{params, Connection};
 
-const DB_PATH: &str = "./rosu.db";
+pub const DEFAULT_DB_PATH: &str = "./rosu.db";
 
 #[derive(Debug, Clone)]
 pub struct BeatmapEntry {
@@ -46,8 +46,8 @@ pub struct OsuDatabase {
 
 impl OsuDatabase {
     // Initial creation of database
-    pub fn create_empty() -> Result<Pool<SqliteConnectionManager>, rusqlite::Error> {
-        let manager = SqliteConnectionManager::file(DB_PATH);
+    pub fn create_empty_from_path<T: AsRef<Path>>(path: T) -> Result<Pool<SqliteConnectionManager>, rusqlite::Error> {
+        let manager = SqliteConnectionManager::file(path);
         let pool = r2d2::Pool::new(manager).unwrap();
 
         const QUERY: &str = "
@@ -70,14 +70,14 @@ impl OsuDatabase {
         Ok(pool)
     }
 
-    pub fn new() -> Result<Self, rusqlite::Error> {
-        let pool = if Path::new(DB_PATH).exists() {
-            let manager = SqliteConnectionManager::file(DB_PATH);
+    pub fn new_from_path<T: AsRef<Path>>(path: T) -> Result<Self, rusqlite::Error> {
+        let pool = if path.as_ref().exists() {
+            let manager = SqliteConnectionManager::file(&path);
             let pool = r2d2::Pool::new(manager).unwrap();
 
             pool
         } else {
-            Self::create_empty()?
+            Self::create_empty_from_path(&path)?
         };
 
         // Setting WAL mode
@@ -86,14 +86,12 @@ impl OsuDatabase {
             conn.pragma_update(None, "journal_mode", "WAL").unwrap();
         }
 
-        tracing::info!("Initialized DB connection at {}", DB_PATH);
+        tracing::info!("Initialized DB connection at {:?}", path.as_ref());
 
         let db = Self {
             cache: Vec::new(),
             conn: pool,
         };
-
-        //db.scan_beatmaps("./songs");
 
         Ok(db)
     }

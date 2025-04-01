@@ -12,7 +12,7 @@ use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
 use std::num::NonZero;
 
-use crate::{buffer_write_or_init, graphics::Graphics,osu_db::{BeatmapEntry, OsuDatabase}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, song_importer_ui::SongImporter, texture::Texture};
+use crate::{buffer_write_or_init, graphics::Graphics,osu_db::{BeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, song_importer_ui::SongImporter, texture::Texture};
 
 const CARD_INNER_MARGIN: Margin = Margin {
     left: 5,
@@ -195,7 +195,7 @@ impl<'ss> SongSelectionState<'ss> {
 
         Self {
             song_importer: SongImporter::new(inner_tx.clone()),
-            db: OsuDatabase::new().unwrap(), // TODO: REMOVE UNRAP
+            db: OsuDatabase::new_from_path(DEFAULT_DB_PATH).unwrap(), // TODO: REMOVE UNRAP
             min: 0,
             max: 0,
             current: 0,
@@ -535,12 +535,12 @@ impl<'ss> SongSelectionState<'ss> {
                 .size(Size::relative(0.6))
                 .size(Size::relative(0.4))
                 .horizontal(|mut strip| {
+                    /*
                     strip.strip(|builder| {
                         builder
                             .size(Size::relative(0.2))
                             .size(Size::relative(0.8))
                             .vertical(|mut strip| {
-                                // INFO ABOUT BEATMAP
                                 strip.cell(|ui| {
                                     self.render_beatmap_card_info(ui);
                                 });
@@ -562,15 +562,13 @@ impl<'ss> SongSelectionState<'ss> {
                                                         ui.set_width(ui.available_rect_before_wrap().width());
                                                         ui.set_height(ui.available_rect_before_wrap().height());
                                                         self.render_beatmap_footer(ui);
-
                                                     });
                                             })
                                         });
                                 })
                             });
                     });
-
-
+                    */
 
                     strip.cell(|ui| {
                         egui::ScrollArea::vertical()
