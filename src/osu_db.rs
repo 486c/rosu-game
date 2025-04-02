@@ -1,4 +1,4 @@
-use std::{fs, path::{self, Path, PathBuf}};
+use std::{fs::{self, File}, io::{BufReader, Read}, path::{self, Path, PathBuf}};
 
 use r2d2_sqlite::SqliteConnectionManager;
 use r2d2::Pool;
@@ -17,6 +17,7 @@ pub struct BeatmapEntry {
     pub creator: String,
     pub version: String,
     pub path: PathBuf,
+    pub hash: String,
 }
 
 impl TryFrom<&rusqlite::Row<'_>> for BeatmapEntry {
@@ -33,6 +34,7 @@ impl TryFrom<&rusqlite::Row<'_>> for BeatmapEntry {
             creator: row.get(5)?,
             version: row.get(6)?,
             path: PathBuf::from(path),
+            hash: row.get(8)?,
         })
     }
 }
@@ -59,8 +61,12 @@ impl OsuDatabase {
                 artist TEXT, 
                 creator TEXT, 
                 version TEXT,
-                path TEXT
-            )
+                path TEXT,
+                hash TEXT NOT NULL
+            );
+
+            CREATE INDEX hash_beatmap
+            ON beatmaps(hash);
         ";
 
         let conn = pool.get().unwrap();
@@ -119,7 +125,17 @@ impl OsuDatabase {
                     // TODO insert in batches
                     if let Some(ext) = entry.path().extension() {
                         if ext == "osu" {
-                            let beatmap = Beatmap::from_path(entry.path()).unwrap();
+
+                            let file = File::open(&entry.path()).unwrap();
+                            let mut reader = BufReader::new(file);
+
+                            let mut buff = Vec::new();
+
+                            reader.read_to_end(&mut buff).unwrap();
+
+                            let beatmap = Beatmap::from_bytes(&buff).unwrap();
+
+                            let md5_hash = md5::compute(&buff);
 
                             if beatmap.mode != GameMode::Osu {
                                 continue
@@ -135,6 +151,7 @@ impl OsuDatabase {
                                 creator: beatmap.creator,
                                 version: beatmap.version,
                                 path: entry.path(),
+                                hash: format!("{:x}", md5_hash),
                             };
 
                             let conn = pool.get().unwrap();
@@ -154,8 +171,8 @@ impl OsuDatabase {
     ) {
         const QUERY: &str = "
             INSERT INTO beatmaps 
-            (beatmapset_id, beatmap_id, title, artist, creator, version, path)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            (beatmapset_id, beatmap_id, title, artist, creator, version, path, hash)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         ";
 
         conn.execute(
@@ -168,6 +185,7 @@ impl OsuDatabase {
                 &entry.creator,
                 &entry.version,
                 format!("{}", &path::absolute(&entry.path).unwrap().display()),
+                &entry.hash
             )
         ).unwrap();
     }
@@ -186,6 +204,25 @@ impl OsuDatabase {
         const QUERY: &str = "SELECT * FROM beatmaps ORDER BY id ASC LIMIT ?1 OFFSET ?1";
 
         let entry = self.conn.get().unwrap().query_row(QUERY, [index], |row| {
+            BeatmapEntry::try_from(row)
+        });
+
+        match entry {
+            Ok(entry) => Some(entry),
+            Err(e) => match e {
+                rusqlite::Error::QueryReturnedNoRows => None,
+                _ => {
+                    tracing::error!("selecting beatmap by index error");
+                    None
+                },
+            },
+        }
+    }
+
+    pub fn get_beatmap_by_hash(&self, hash: &str) -> Option<BeatmapEntry> {
+        const QUERY: &str = "SELECT * FROM beatmaps WHERE hash = ?1";
+
+        let entry = self.conn.get().unwrap().query_row(QUERY, [hash], |row| {
             BeatmapEntry::try_from(row)
         });
 

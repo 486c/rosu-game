@@ -5,8 +5,6 @@ use winit::dpi::PhysicalPosition;
 
 use crate::{buffer_write_or_init, graphics::Graphics, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager};
 
-use std::num::NonZero;
-
 // TODO: control this through settings
 const TRAIL_KEEP_MS: u64 = 55;
 const TARGET_TRAIL_UPDATE_RATE: f64 = 120.0; // Per sec

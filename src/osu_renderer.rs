@@ -1,7 +1,5 @@
 use std::{mem::size_of, sync::Arc};
 
-use std::num::NonZero;
-
 use cgmath::Vector2;
 use smallvec::SmallVec;
 use wgpu::{
