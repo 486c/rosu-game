@@ -169,8 +169,9 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 output.present();
             },
             winit::event::WindowEvent::DroppedFile(path) => {
-                println!("Dropped file");
-                dbg!(path);
+                if let Some(state) = &mut self.replay_state {
+                    state.open_replay(path)
+                }
             },
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
                 let _span = tracy_client::span!("app::keyboard_input");
