@@ -25,6 +25,7 @@ rosu-map = { git = "https://github.com/MaxOhn/rosu-map.git" }
 egui = "0.31.1"
 egui-winit = { version = "0.31.1", default-features = false }
 egui-wgpu = "0.31.1"
+egui_file = "0.22.1"
 egui_extras = "0.31.1"
 
 [dependencies]
@@ -35,6 +36,7 @@ egui = { workspace = true }
 egui-winit = { workspace = true }
 egui-wgpu = { workspace = true }
 egui_extras = { workspace = true }
+egui_file = { workspace = true }
 
 log = "0.4.20"
 bytemuck = { version = "1.14.0", features = ["zeroable_maybe_uninit", "zeroable_atomics"] }
@@ -63,7 +65,6 @@ oneshot = { version = "0.1.8", default-features = false, features = ["std"] }
 #egui_extras = { git = "https://github.com/486c/egui", branch = "0.29.1"}
 #egui_file = "0.19.0"
 
-egui_file = "0.22.1"
 #egui-winit = { git = "https://github.com/486c/egui", branch = "0.29.1", default-features = false}
 #egui-wgpu = { git = "https://github.com/486c/egui", branch = "0.29.1"}
 #egui_extras = { git = "https://github.com/486c/egui", branch = "0.29.1"}

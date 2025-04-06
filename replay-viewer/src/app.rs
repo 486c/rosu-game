@@ -36,7 +36,7 @@ impl<'app> App<'app> {
 
 impl<'app> ApplicationHandler<AppEvents> for App<'app> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let mut attrs = Window::default_attributes();
+        let attrs = Window::default_attributes();
 
         let window = Arc::new(event_loop.create_window(attrs).unwrap());
 
@@ -205,7 +205,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                                 state.zoom_out();
                             }
                         },
-                        winit::event::MouseScrollDelta::PixelDelta(physical_position) => println!("pixel delta"),
+                        winit::event::MouseScrollDelta::PixelDelta(_physical_position) => println!("pixel delta"),
                     }
                 }
             },

@@ -4,16 +4,22 @@
 // 2. Handling replay opening
 // etc
 
-use std::{path::PathBuf, sync::Arc};
+use std::{env, path::{Path, PathBuf}, sync::{mpsc::{Receiver, Sender}, Arc}};
 
 use cgmath::Vector2;
+use egui::Modal;
+use egui_file::FileDialog;
 use osu_replay_parser::replay::Replay;
-use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
+use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein}, osu_db::{OsuDatabase, DEFAULT_DB_PATH}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
 use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, event::MouseButton, keyboard::KeyCode};
 
 use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, replay_log::ReplayLog};
+
+enum ReplayViewerEvents {
+    OpenReplay(PathBuf),
+}
 
 pub struct ReplayViewerSettings {
     /// Amount of frames to show before current position
@@ -27,6 +33,8 @@ pub struct ReplayViewerSettings {
 }
 
 pub struct ReplayViewerState<'rvs> {
+    db: OsuDatabase,
+
     graphics: Arc<Graphics<'rvs>>,
     replay: Option<ReplayLog>,
     cursor_renderer: AnalyzeCursorRenderer<'rvs>,
@@ -64,6 +72,16 @@ pub struct ReplayViewerState<'rvs> {
 
     mouse_pos: Vector2<f32>,
     left_mouse_holding: bool,
+
+    // Stupid egui handling lmao
+    beatmaps_file_dialog: Option<FileDialog>,
+    replay_file_dialog: Option<FileDialog>,
+    modal_text: Option<String>,
+
+
+    // Events
+    tx: Sender<ReplayViewerEvents>,
+    rx: Receiver<ReplayViewerEvents>
 }
 
 impl<'rvs> ReplayViewerState<'rvs> {
@@ -132,7 +150,10 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 label: Some("camera_bind_group"),
             });
 
-        let mut r = Self {
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        Self {
             time: Timer::new(),
             replay: None,
             camera,
@@ -166,12 +187,13 @@ impl<'rvs> ReplayViewerState<'rvs> {
             offsets: Vector2::new(1.0, 1.0),
             mouse_pos: Vector2::new(0.0, 0.0),
             left_mouse_holding: false,
-        };
-
-        r.open_replay(PathBuf::from("/home/lopij/wq/wgpu-tests/tests/data/gameplay/getta_banban.osr"));
-        r.open_beatmap(PathBuf::from("./getta_banban.osu"));
-
-        r
+            db: OsuDatabase::new_from_path(DEFAULT_DB_PATH).unwrap(),
+            beatmaps_file_dialog: None,
+            replay_file_dialog: None,
+            modal_text: None,
+            tx,
+            rx,
+        }
     }
 
     fn open_beatmap(&mut self, beatmap_path: PathBuf) {
@@ -181,6 +203,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             Err(e) => {
                 println!("Failed to parse beatmap");
                 println!("{}", e);
+                self.modal_text = Some("Can't open beatmap".to_owned());
                 return;
             }
         };
@@ -199,9 +222,18 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.objects = Some(out_objects);
     }
 
-    pub fn open_replay(&mut self, replay_path: PathBuf) {
-        let _span = tracy_client::span!("state::open_replay");
-        let replay = Replay::open(&replay_path).unwrap();
+    pub fn open_replay(&mut self, replay_path: impl AsRef<Path>) {
+        let Ok(replay) = Replay::open(&replay_path.as_ref()) else {
+            self.modal_text = Some("Can't open replay file".to_owned());
+            return;
+        };
+
+        let Some(beatmap_entry) = self.db.get_beatmap_by_hash(&replay.map_hash) else {
+            self.modal_text = Some("Can't find a beatmap for that replay".to_owned());
+            return;
+        };
+
+        self.open_beatmap(beatmap_entry.path);
 
         self.replay = Some(replay.into());
 
@@ -265,7 +297,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
         let _span = tracy_client::span!("state::on_resize");
         let (scale, offsets) = calc_playfield(new_size.width as f32, new_size.height as f32);
 
-        //self.zoom = scale;
         self.offsets = offsets;
 
         self.camera.resize(new_size);
@@ -280,6 +311,12 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
     pub fn render(&mut self, view: &TextureView) {
         let _span = tracy_client::span!("state::render");
+
+        self.handle_events();
+
+        if self.objects.is_none() || self.replay.is_none() {
+            return
+        }
 
         self.render_gameplay_objects(view);
 
@@ -334,24 +371,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 0,
                 self.replay_frame_start_idx as u32..self.replay_frame_end_idx as u32,
             );
-            
-
-
-            /*
-
-            render_pass.set_vertex_buffer(1, self.cursor_renderer.points_instance_buffer.slice(..));
-
-            render_pass.set_index_buffer(
-                self.cursor_renderer.one_point_index_buffer.slice(..),
-                wgpu::IndexFormat::Uint16,
-            );
-
-            render_pass.draw_indexed(
-                0..1,
-                0,
-                self.replay_frame_start_idx as u32..self.replay_frame_end_idx as u32,
-            );
-            */
         }
 
         let span = tracy_client::span!("state::render::queue_submit");
@@ -464,14 +483,50 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn render_ui(&mut self, ctx: &egui::Context) {
+        if let Some(modal_text) = &self.modal_text {
+
+            let modal = Modal::new(egui::Id::new("Modal")).show(ctx, |ui| {
+                ui.label(modal_text);
+
+                if ui.button("Ok").clicked() {
+                    //ui.close();
+                }
+            });
+        }
+
+
         let _span = tracy_client::span!("state::render_ui");
+        if let Some(dialog) = &mut self.beatmaps_file_dialog {
+            if dialog.show(ctx).selected() {
+                if let Some(look_path) = dialog.path() {
+                    // TODO: Remove that one shot hack
+                    let (_tx, rx) = oneshot::channel();
+                    self.db.scan_beatmaps(look_path, rx);
+                }
+            }
+        }
+
+        if let Some(dialog) = &mut self.replay_file_dialog {
+            if dialog.show(ctx).selected() {
+                if let Some(look_path) = dialog.path() {
+                    let _ = self.tx.send(ReplayViewerEvents::OpenReplay(look_path.into()));
+                }
+            }
+        }
+
         egui::TopBottomPanel::bottom("bottom")
             .resizable(false)
             .show(ctx, |ui| {
                 let slider_width = ui.available_width();
                 ui.vertical_centered(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(&format!("Time: {:.2}", self.time.get_time()));
+                        ui.label(&format!("Time: {:.2} |", self.time.get_time()));
+
+                        if let Some(replay) = &self.replay {
+                            let idx = self.replay_frame_end_idx;
+                            ui.label(&format!("Frame ms: {} |", replay.frames[idx].ts));
+                            ui.label(&format!("Frame index: {}/{}", idx, replay.frames.len()));
+                        };
                     });
                     ui.spacing_mut().slider_width = slider_width;
 
@@ -500,22 +555,30 @@ impl<'rvs> ReplayViewerState<'rvs> {
             });
 
         egui::SidePanel::left("left").show(ctx, |ui| {
+            if ui.button("Select replay").clicked() {
+                let mut dialog = FileDialog::open_file(env::var("HOME").map_or(None, |x| Some(PathBuf::from(x))))
+                    .title("Select a replay file");
+
+                dialog.open();
+
+                self.replay_file_dialog = Some(dialog);
+            }
+
+            if ui.button("Export beatmaps").clicked() {
+                let mut dialog = FileDialog::select_folder(env::var("HOME").map_or(None, |x| Some(PathBuf::from(x))))
+                    .title("Select Songs folder to begin beatmaps export");
+
+                dialog.open();
+
+                self.beatmaps_file_dialog = Some(dialog);
+            }
+
             ui.heading("Settings");
             let resp = ui.add(
                 egui::Slider::new(
                     &mut self.settings.frames_to_show, 0..=1000
                 ).step_by(1.0).text("Show frames")
             );
-
-            if ui.add(egui::Slider::new(
-                &mut self.zoom, 0.0..=50.0
-            ).step_by(1.0).text("TEST")).changed() {
-                //self.camera.transform(self.zoom, Vector2::new(100.0, 100.0));
-
-                //self.graphics
-                    //.queue
-                    //.write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
-            };
 
             if resp.changed() {
                 self.update_replay_posititon()
@@ -695,5 +758,19 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.graphics
             .queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
+    }
+
+    pub fn handle_events(&mut self) {
+        match self.rx.try_recv() {
+            Ok(event) => match event {
+                ReplayViewerEvents::OpenReplay(path_buf) => {
+                    self.open_replay(&path_buf);
+                },
+            },
+            Err(e) => {
+                // TODO
+                //println!("e")
+            },
+        }
     }
 }

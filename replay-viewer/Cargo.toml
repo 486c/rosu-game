@@ -11,8 +11,10 @@ winit = { workspace = true }
 wgpu = { workspace = true }
 egui = { workspace = true }
 egui-wgpu = { workspace = true }
+egui_file = { workspace = true }
 egui_extras = { workspace = true }
 rosu-map = { workspace = true }
+oneshot = { version = "0.1.8", default-features = false, features = ["std"] }
 
 pollster = "0.3.0"
 egui-winit = "0.31.1"

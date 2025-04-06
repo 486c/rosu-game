@@ -535,7 +535,6 @@ impl<'ss> SongSelectionState<'ss> {
                 .size(Size::relative(0.6))
                 .size(Size::relative(0.4))
                 .horizontal(|mut strip| {
-                    /*
                     strip.strip(|builder| {
                         builder
                             .size(Size::relative(0.2))
@@ -568,7 +567,6 @@ impl<'ss> SongSelectionState<'ss> {
                                 })
                             });
                     });
-                    */
 
                     strip.cell(|ui| {
                         egui::ScrollArea::vertical()
