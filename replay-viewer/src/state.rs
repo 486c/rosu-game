@@ -19,6 +19,7 @@ use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, re
 
 enum ReplayViewerEvents {
     OpenReplay(PathBuf),
+    ResetModal,
 }
 
 pub struct ReplayViewerSettings {
@@ -504,10 +505,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
     pub fn render_ui(&mut self, ctx: &egui::Context) {
         if let Some(modal_text) = &self.modal_text {
 
-            let modal = Modal::new(egui::Id::new("Modal")).show(ctx, |ui| {
+            Modal::new(egui::Id::new("Modal")).show(ctx, |ui| {
                 ui.label(modal_text);
 
                 if ui.button("Ok").clicked() {
+                    let _ = self.tx.send(ReplayViewerEvents::ResetModal);
                 }
             });
         }
@@ -798,6 +800,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 ReplayViewerEvents::OpenReplay(path_buf) => {
                     self.open_replay(&path_buf);
                 },
+                ReplayViewerEvents::ResetModal => self.modal_text = None,
             },
             Err(e) => {
                 // TODO
