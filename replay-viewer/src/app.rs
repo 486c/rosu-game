@@ -44,7 +44,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
 
     fn window_event(
         &mut self,
-        _event_loop: &winit::event_loop::ActiveEventLoop,
+        event_loop: &winit::event_loop::ActiveEventLoop,
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
@@ -59,6 +59,9 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         }
 
         match event {
+            winit::event::WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
             winit::event::WindowEvent::Resized(physical_size) => {
                 // If graphics is still uninitialized
                 if self.graphics.is_none() {
