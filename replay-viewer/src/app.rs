@@ -10,7 +10,6 @@ use crate::state::ReplayViewerState;
 
 pub enum AppEvents {
     GraphicsInitialized(Arc<Graphics<'static>>),
-    Resize(PhysicalSize<u32>),
 }
 
 pub struct App<'app> {
@@ -45,8 +44,8 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
 
     fn window_event(
         &mut self,
-        event_loop: &winit::event_loop::ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
         let _span = tracy_client::span!("app::window_event");
@@ -118,10 +117,6 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                         if proxy.send_event(AppEvents::GraphicsInitialized(graphics)).is_err() {
                             println!("user event is not send");
                         };
-
-                        if proxy.send_event(AppEvents::Resize(size)).is_err() {
-                            println!("user event is not send");
-                        };
                     });
                 }
 
@@ -149,7 +144,6 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 let output = match graphics.get_current_texture() {
                     Ok(texture) => texture,
                     Err(_) => {
-                        //println!("{e}");
                         return
                     },
                 };
@@ -201,13 +195,10 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 let _span = tracy_client::span!("app::mouse_wheel");
                 if let Some(state) = &mut self.replay_state {
                     match delta {
-                        winit::event::MouseScrollDelta::LineDelta(x, y) => {
-                            println!("({}, {})", x ,y);
+                        winit::event::MouseScrollDelta::LineDelta(_x, y) => {
                             if y > 0.0 {
-                                println!("Zoom in");
                                 state.zoom_in();
                             } else {
-                                println!("Zoom out");
                                 state.zoom_out();
                             }
                         },
@@ -239,23 +230,18 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         let _span = tracy_client::span!("app::about_to_wait");
         let window = self.window.as_ref().unwrap();
         window.request_redraw();
     }
 
-    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: AppEvents) {
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: AppEvents) {
         match event {
             AppEvents::GraphicsInitialized(graphics) => {
                 self.egui_state = Some(EguiState::new(&graphics, self.window.as_ref().unwrap()));
                 self.replay_state = Some(ReplayViewerState::new(graphics.clone()));
                 self.graphics = Some(graphics);
-            },
-            AppEvents::Resize(new_size) => {
-                //if let Some(ref mut state) = self.osu_state {
-                    //state.osu_renderer.on_resize(&new_size);
-                //}
             },
         }
     }

@@ -378,7 +378,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         drop(span);
 
         self.slider_time = self.time.update();
-        self.update_replay_posititon();
+        self.update_replay_position_by_time();
     }
 
     fn update_frame_point_size(&mut self) {
@@ -397,9 +397,41 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 usage: BufferUsages::VERTEX,
             });
     }
+
+    fn update_analyze_cursor_buffers(&mut self) {
+        let total = self.replay_frame_end_idx.saturating_sub(self.replay_frame_start_idx);
+
+        if total == 0 {
+            return
+        };
+
+        let mut alpha = 0.0;
+        let step = 1.0 / total as f32;
+
+        for i in self.replay_frame_start_idx..=self.replay_frame_end_idx {
+            self.cursor_renderer.data_mut()[i].alpha = alpha;
+            alpha += step;
+        }
+
+        self.cursor_renderer.write_buffers();
+    }
+
+    /// Calculates and updates data and gpu buffers based
+    /// on current frame indexes
+    fn update_replay_posititon_by_frame_idx(&mut self) {
+        let Some(replay) = &self.replay else {
+            return;
+        };
+
+        let time = replay.frames[self.replay_frame_end_idx].ts;
+
+        self.time.set_time(time);
+        self.update_analyze_cursor_buffers();
+    }
     
-    /// Updates 
-    fn update_replay_posititon(&mut self) {
+    /// Calculates and updates data and gpu buffers based
+    /// on current time
+    fn update_replay_position_by_time(&mut self) {
         let _span = tracy_client::span!("state::update_replay_position");
         let Some(replay) = &self.replay else {
             return;
@@ -416,21 +448,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
         self.replay_frame_start_idx = self.replay_frame_end_idx.saturating_sub(self.settings.frames_to_show);
 
-        let total = self.replay_frame_end_idx.saturating_sub(self.replay_frame_start_idx);
-
-        if total == 0 {
-            return
-        };
-
-        let mut alpha = 0.0;
-        let step = 1.0 / total as f32;
-
-        for i in self.replay_frame_start_idx..=self.replay_frame_end_idx {
-            self.cursor_renderer.data_mut()[i].alpha = alpha;
-            alpha += step;
-        }
-
-        self.cursor_renderer.write_buffers();
+        self.update_analyze_cursor_buffers();
     }
     
     fn render_gameplay_objects(&mut self,  view: &TextureView) {
@@ -489,7 +507,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 ui.label(modal_text);
 
                 if ui.button("Ok").clicked() {
-                    //ui.close();
                 }
             });
         }
@@ -549,7 +566,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
                     if response.changed() {
                         self.time.set_time(self.slider_time);
-                        self.update_replay_posititon()
+                        self.update_replay_position_by_time()
                     }
                 });
             });
@@ -581,7 +598,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             );
 
             if resp.changed() {
-                self.update_replay_posititon()
+                self.update_replay_position_by_time()
             }
 
             let resp = ui.add(
@@ -681,13 +698,27 @@ impl<'rvs> ReplayViewerState<'rvs> {
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
         let _span = tracy_client::span!("state::on_pressed_down");
         if key_code == KeyCode::ArrowRight {
-            self.time.set_time(self.time.get_time() + 1.0);
-            self.update_replay_posititon();
+            if let Some(replay) = &self.replay {
+                self.replay_frame_end_idx = 
+                    (self.replay_frame_end_idx + 1).min(replay.frames.len() - 1);
+
+                self.replay_frame_start_idx = 
+                    (self.replay_frame_start_idx + 1).min(replay.frames.len() - 1);
+
+                self.update_replay_posititon_by_frame_idx();
+            };
         }
 
         if key_code == KeyCode::ArrowLeft {
-            self.time.set_time(self.time.get_time() - 1.0);
-            self.update_replay_posititon();
+            if self.replay.is_some() {
+                self.replay_frame_end_idx = 
+                    self.replay_frame_end_idx.saturating_sub(1);
+
+                self.replay_frame_start_idx = 
+                    self.replay_frame_start_idx.saturating_sub(1);
+
+                self.update_replay_posititon_by_frame_idx();
+            };
         }
 
         if key_code == KeyCode::Space {
