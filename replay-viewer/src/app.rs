@@ -64,7 +64,12 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 // If graphics is still uninitialized
                 if self.graphics.is_none() {
                     let window = self.window.as_ref().unwrap().clone();
-                    let proxy = self.proxy.take().unwrap();
+
+                    // Workaround when event is not received yet
+                    let proxy = match self.proxy.take() {
+                        Some(proxy) => proxy,
+                        None => return,
+                    };
 
                     pollster::block_on(async move {
                         let instance = wgpu::Instance::new(&InstanceDescriptor::default());
