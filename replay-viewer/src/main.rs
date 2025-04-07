@@ -2,8 +2,7 @@ mod app;
 mod state;
 mod analyze_cursor_renderer;
 mod replay_log;
-
-use std::num::NonZeroU64;
+mod lines_vertex;
 
 use app::{App, AppEvents};
 use winit::event_loop::{ControlFlow, EventLoop};

@@ -409,7 +409,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
         let step = 1.0 / total as f32;
 
         for i in self.replay_frame_start_idx..=self.replay_frame_end_idx {
-            self.cursor_renderer.data_mut()[i].alpha = alpha;
+            self.cursor_renderer.points_data_mut()[i].alpha = alpha;
+            self.cursor_renderer.lines_vertex_data_mut()[i].alpha = alpha;
             alpha += step;
         }
 

@@ -4,6 +4,8 @@ use cgmath::Vector3;
 use rosu::{buffer_write_or_init, graphics::Graphics, rgb::Rgb, vertex::Vertex};
 use wgpu::{util::DeviceExt, BufferUsages, RenderPipeline};
 
+use crate::lines_vertex::LinesVertex;
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -54,8 +56,7 @@ pub struct AnalyzeCursorRenderer<'acr> {
     pub points_instance_buffer: wgpu::Buffer,
 
     pub lines_pipeline: RenderPipeline,
-    pub lines_vertex_data: Vec<Vertex>,
-
+    pub lines_vertex_data: Vec<LinesVertex>,
     pub lines_vertex_buffer: wgpu::Buffer,
 
     points_instance_data: Vec<PointsInstance>,
@@ -138,7 +139,7 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
                     vertex: wgpu::VertexState {
                         module: &lines_shader,
                         entry_point: Some("vs_main"),
-                        buffers: &[Vertex::desc()],
+                        buffers: &[LinesVertex::desc()],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
@@ -254,8 +255,12 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
         }
     }
 
-    pub fn data_mut(&mut self) -> &mut [PointsInstance] {
+    pub fn points_data_mut(&mut self) -> &mut [PointsInstance] {
         &mut self.points_instance_data
+    }
+
+    pub fn lines_vertex_data_mut(&mut self) -> &mut [LinesVertex] {
+        &mut self.lines_vertex_data
     }
 
     pub fn clear_cursor_data(&mut self) {
@@ -315,9 +320,9 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
             );
 
             self.lines_vertex_data.push(
-                Vertex {
+                LinesVertex {
                     pos: Vector3::new(inst.pos[0], inst.pos[1], 1.0),
-                    uv: [0.0, 0.0],
+                    alpha: 1.0
                 }
             );
         }
