@@ -24,7 +24,6 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 	out.alpha = model.alpha;
-	//out.color = instance.color;
 
 	let scaled_pos = vec4<f32>(5.0, 5.0, 0.0, 1.0) * vec4<f32>(model.pos, 0.0, 1.0);
 
@@ -38,14 +37,6 @@ fn vs_main(
 
     return out;
 }
-
-
-// Fragment shader
-//@group(0) @binding(0)
-//var texture: texture_2d<f32>;
-//@group(0) @binding(1)
-//var texture_sampler: sampler;
-
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
