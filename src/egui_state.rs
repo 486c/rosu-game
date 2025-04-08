@@ -1,4 +1,5 @@
 use egui_wgpu::{Renderer, ScreenDescriptor};
+use egui_winit::EventResponse;
 use winit::{window::Window, event::WindowEvent};
 
 use crate::graphics::Graphics;
@@ -47,10 +48,10 @@ impl EguiState {
         &mut self,
         event: &WindowEvent,
         window: &Window,
-    ) {
-        let _ = self.state.on_window_event(
+    ) -> EventResponse {
+        self.state.on_window_event(
             window, event
-        );
+        )
     }
 
     pub fn render(

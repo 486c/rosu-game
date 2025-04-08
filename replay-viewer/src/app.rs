@@ -55,7 +55,9 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         };
 
         if let Some(egui_state) = &mut self.egui_state {
-            egui_state.on_window_event(&event, &window);
+            if egui_state.on_window_event(&event, &window).consumed {
+                return;
+            };
         }
 
         match event {
