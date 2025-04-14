@@ -1,0 +1,15 @@
+name: rosu-game
+
+on:
+  release:
+    types: ["published"]
+  push:
+    branches: ["master"]
+  pull_request:
+    types: [ opened, reopened, edited, synchronize ]
+    paths-ignore:
+      - '*.md'
+
+jobs:
+  build-replay-viewer:
+    uses: ./.github/workflows/build_replay_viewer.yml

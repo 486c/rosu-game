@@ -93,7 +93,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             graphics_width as f32, graphics_height as f32, 1.0
         );
         let config = Config::default();
-        let skin_manager = SkinManager::from_path("./assets", &graphics);
+        let skin_manager = SkinManager::from_path("./skin", &graphics);
 
         let quad_verticies = Vertex::quad_centered(5.0, 5.0);
 
