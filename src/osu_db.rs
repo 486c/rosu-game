@@ -106,7 +106,8 @@ impl OsuDatabase {
     pub fn scan_beatmaps(&self, look_path: impl AsRef<Path>, stop_rx: oneshot::Receiver<()>) {
         let pool = self.conn.clone();
         let path: PathBuf = look_path.as_ref().to_path_buf();
-
+    
+        // TODO: Maybe keep a worker thread around instead of spawning a new one everytime :D
         std::thread::spawn(move || {
             'main_loop: for entry in fs::read_dir(path).unwrap() {
                 let entry = entry.unwrap();
@@ -125,17 +126,20 @@ impl OsuDatabase {
                     // TODO insert in batches
                     if let Some(ext) = entry.path().extension() {
                         if ext == "osu" {
-
                             let file = File::open(&entry.path()).unwrap();
                             let mut reader = BufReader::new(file);
 
                             let mut buff = Vec::new();
-
                             reader.read_to_end(&mut buff).unwrap();
 
-                            let beatmap = Beatmap::from_bytes(&buff).unwrap();
+                            let md5_hash = format!("{:x}", md5::compute(&buff));
 
-                            let md5_hash = md5::compute(&buff);
+                            let conn = pool.get().unwrap();
+                            if Self::get_beatmap_by_hash_external(&conn, &md5_hash).is_some() {
+                                continue;
+                            }
+
+                            let beatmap = Beatmap::from_bytes(&buff).unwrap();
 
                             if beatmap.mode != GameMode::Osu {
                                 continue
@@ -151,11 +155,10 @@ impl OsuDatabase {
                                 creator: beatmap.creator,
                                 version: beatmap.version,
                                 path: entry.path(),
-                                hash: format!("{:x}", md5_hash),
+                                hash: md5_hash,
                             };
 
-                            let conn = pool.get().unwrap();
-                            Self::insert_beatmap(&conn, &entry);
+                            Self::insert_beatmap_external(&conn, &entry);
                         }
                     }
                 }
@@ -165,7 +168,7 @@ impl OsuDatabase {
         });
     }
 
-    pub fn insert_beatmap(
+    pub fn insert_beatmap_external(
         conn: &Connection, 
         entry: &BeatmapEntry,
     ) {
@@ -223,6 +226,28 @@ impl OsuDatabase {
         const QUERY: &str = "SELECT * FROM beatmaps WHERE hash = ?1";
 
         let entry = self.conn.get().unwrap().query_row(QUERY, [hash], |row| {
+            BeatmapEntry::try_from(row)
+        });
+
+        match entry {
+            Ok(entry) => Some(entry),
+            Err(e) => match e {
+                rusqlite::Error::QueryReturnedNoRows => None,
+                _ => {
+                    tracing::error!("selecting beatmap by index error");
+                    None
+                },
+            },
+        }
+    }
+
+    pub fn get_beatmap_by_hash_external(
+        conn: &Connection, 
+        hash: &str
+    ) -> Option<BeatmapEntry> {
+        const QUERY: &str = "SELECT * FROM beatmaps WHERE hash = ?1";
+
+        let entry = conn.query_row(QUERY, [hash], |row| {
             BeatmapEntry::try_from(row)
         });
 
