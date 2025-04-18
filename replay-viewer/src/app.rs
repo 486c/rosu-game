@@ -50,7 +50,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
     ) {
         let _span = tracy_client::span!("app::window_event");
         let Some(window) = self.window.as_ref() else {
-            println!("Window is not initialazed");
+            tracing::warn!("Window is not initialazed");
             return;
         };
 
@@ -120,7 +120,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                         let graphics = Arc::new(Graphics::from_initialized(graphics_initialized));
 
                         if proxy.send_event(AppEvents::GraphicsInitialized(graphics)).is_err() {
-                            println!("user event is not send");
+                            tracing::error!("User event is not send");
                         };
                     });
                 }
@@ -139,7 +139,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                     self.egui_state.as_mut(),
                     self.replay_state.as_mut(),
                 ) else {
-                    println!("Graphics is not initialazed, can't draw");
+                    tracing::warn!("Graphics is not initialazed, waiting for initialization event");
                     return;
                 };
 
@@ -207,7 +207,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                                 state.zoom_out();
                             }
                         },
-                        winit::event::MouseScrollDelta::PixelDelta(_physical_position) => println!("pixel delta"),
+                        winit::event::MouseScrollDelta::PixelDelta(_physical_position) => {},
                     }
                 }
             },

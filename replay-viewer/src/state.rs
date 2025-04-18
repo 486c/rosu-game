@@ -19,6 +19,7 @@ use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, re
 
 enum ReplayViewerEvents {
     OpenReplay(PathBuf),
+    ScanBeatmaps(PathBuf),
     ResetModal,
 }
 
@@ -202,8 +203,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         let map = match Beatmap::from_path(&beatmap_path) {
             Ok(m) => m,
             Err(e) => {
-                println!("Failed to parse beatmap");
-                println!("{}", e);
+                tracing::error!("Failed to parse beatmap: {e}");
                 self.modal_text = Some("Can't open beatmap".to_owned());
                 return;
             }
@@ -503,6 +503,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn render_ui(&mut self, ctx: &egui::Context) {
+        let _span = tracy_client::span!("state::render_ui");
+
         if let Some(modal_text) = &self.modal_text {
 
             Modal::new(egui::Id::new("Modal")).show(ctx, |ui| {
@@ -512,26 +514,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     let _ = self.tx.send(ReplayViewerEvents::ResetModal);
                 }
             });
-        }
-
-
-        let _span = tracy_client::span!("state::render_ui");
-        if let Some(dialog) = &mut self.beatmaps_file_dialog {
-            if dialog.show(ctx).selected() {
-                if let Some(look_path) = dialog.path() {
-                    // TODO: Remove that one shot hack
-                    let (_tx, rx) = oneshot::channel();
-                    self.db.scan_beatmaps(look_path, rx);
-                }
-            }
-        }
-
-        if let Some(dialog) = &mut self.replay_file_dialog {
-            if dialog.show(ctx).selected() {
-                if let Some(look_path) = dialog.path() {
-                    let _ = self.tx.send(ReplayViewerEvents::OpenReplay(look_path.into()));
-                }
-            }
         }
 
         egui::TopBottomPanel::bottom("bottom")
@@ -548,6 +530,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                             ui.label(&format!("Frame index: {}/{}", idx, replay.frames.len()));
                         };
                     });
+
                     ui.spacing_mut().slider_width = slider_width;
 
                     let (min, max) = if let Some(replay) = &self.replay {
@@ -576,21 +559,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
         egui::SidePanel::left("left").show(ctx, |ui| {
             if ui.button("Select replay").clicked() {
-                let mut dialog = FileDialog::open_file(env::var("HOME").map_or(None, |x| Some(PathBuf::from(x))))
-                    .title("Select a replay file");
-
-                dialog.open();
-
-                self.replay_file_dialog = Some(dialog);
+                self.spawn_replay_chooser();
             }
 
             if ui.button("Export beatmaps").clicked() {
-                let mut dialog = FileDialog::select_folder(env::var("HOME").map_or(None, |x| Some(PathBuf::from(x))))
-                    .title("Select Songs folder to begin beatmaps export");
-
-                dialog.open();
-
-                self.beatmaps_file_dialog = Some(dialog);
+                self.spawn_beatmaps_directory_chooser();
             }
 
             ui.heading("Settings");
@@ -801,11 +774,40 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     self.open_replay(&path_buf);
                 },
                 ReplayViewerEvents::ResetModal => self.modal_text = None,
+                ReplayViewerEvents::ScanBeatmaps(path_buf) => {
+                    let (_tx, rx) = oneshot::channel();
+                    self.db.scan_beatmaps(path_buf, rx);
+                },
             },
             Err(e) => {
                 // TODO
                 //println!("e")
             },
         }
+    }
+
+    fn spawn_replay_chooser(&self) {
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let file = rfd::FileDialog::new()
+                .add_filter("osu", &["osr"])
+                .pick_file();
+
+            if let Some(file) = file {
+                let _ = tx.send(ReplayViewerEvents::OpenReplay(file.into()));
+            }
+        });
+    }
+
+    fn spawn_beatmaps_directory_chooser(&self) {
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let directory = rfd::FileDialog::new()
+                .pick_folder();
+
+            if let Some(directory) = directory {
+                let _ = tx.send(ReplayViewerEvents::ScanBeatmaps(directory.into()));
+            }
+        });
     }
 }

@@ -119,6 +119,7 @@ impl SkinManager {
     }
 
     pub fn from_path(path: impl AsRef<Path>, graphics: &Graphics) -> Self {
+        tracing::info!("Attempt to initialize SkinManager from path: {}", &path.as_ref().display());
         let skin_ini = {
             let path = {
                 if path.as_ref().join("skin.ini").exists() {

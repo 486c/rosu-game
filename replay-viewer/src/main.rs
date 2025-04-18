@@ -8,7 +8,12 @@ use app::{App, AppEvents};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_target(false)
+        .with_thread_names(true)
+        .init();
+
     log::info!("Started");
 
     let _client = tracy_client::Client::start();

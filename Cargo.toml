@@ -27,6 +27,8 @@ egui-winit = { version = "0.31.1", default-features = false }
 egui-wgpu = "0.31.1"
 egui_file = "0.22.1"
 egui_extras = "0.31.1"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
 
 [dependencies]
 winit = { workspace = true }
@@ -37,6 +39,8 @@ egui-winit = { workspace = true }
 egui-wgpu = { workspace = true }
 egui_extras = { workspace = true }
 egui_file = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true } 
 
 log = "0.4.20"
 bytemuck = { version = "1.14.0", features = ["zeroable_maybe_uninit", "zeroable_atomics"] }
@@ -50,8 +54,6 @@ rodio = "0.19.0"
 raw-window-handle = "0.6.2"
 rust-ini = "0.21.0"
 thiserror = "1.0.63"
-tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
 r2d2_sqlite = "0.25.0"
 r2d2 = "0.8.10"
 rand = "0.8.5"

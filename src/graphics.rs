@@ -106,7 +106,7 @@ impl<'g> Graphics<'g> {
             desired_maximum_frame_latency: 1,
         };
 
-        dbg!(&config);
+        tracing::info!("Initialized with surface config: {:#?}", &config);
 
         graphics.surface.configure(&graphics.device, &config);
 
