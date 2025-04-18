@@ -1,0 +1,41 @@
+name: Build Replay Viewer
+
+on:
+  workflow_call
+
+jobs:
+  check:
+    name: Build Replay Viewer ${{ matrix.os }} ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install stable
+        run: rustup toolchain install stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Build Release
+        run: cargo build --release
+        working-directory: replay-viewer
+
+      - name: Prepare artifacts
+        run: |
+          mkdir /tmp/art
+          cp ./target/release/replay_viewer.exe /tmp/art
+          cp -r ./replay-viewer/skin /tmp/art
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rosu_replay_viewer
+          path: /tmp/art/*
+          retention-days: 5
