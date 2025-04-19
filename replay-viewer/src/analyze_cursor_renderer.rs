@@ -1,8 +1,9 @@
 use std::{num::NonZero, sync::Arc};
 
+use bytemuck::NoUninit;
 use cgmath::Vector3;
 use rosu::{buffer_write_or_init, graphics::Graphics, rgb::Rgb, vertex::Vertex};
-use wgpu::{util::DeviceExt, BufferUsages, RenderPipeline};
+use wgpu::{util::DeviceExt, Buffer, BufferUsages, Device, Queue, RenderPipeline};
 
 use crate::lines_vertex::LinesVertex;
 
@@ -269,8 +270,68 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
         self.lines_vertex_data.clear();
     }
 
+    #[must_use]
+    fn write_buffer<T: NoUninit>(
+        queue: &Queue, 
+        device: &Device,
+        src_buffer: &Buffer, 
+        data_slice: &[T]
+    ) -> Option<Buffer> {
+        let data_len = data_slice.len() as u64;
+        let buffer_bytes_size = src_buffer.size();
+
+        let buffer_len = buffer_bytes_size / size_of::<PointsInstance>() as u64;
+
+        // Handle situations when gpu buffer currently is bigger than data we trying to write
+        if buffer_len > data_len {
+            tracing::warn!(
+                "Recreating a buffer because gpu buffer is bigger slice that we trying to write into it. GPU: {}, Slice: {}",
+                buffer_len, data_len
+            );
+            
+            let buffer = device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(&data_slice),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
+
+            src_buffer.destroy();
+
+            return Some(buffer);
+        }
+
+        if data_len <= buffer_len {
+            let mut view = queue.write_buffer_with(
+                &src_buffer,
+                0,
+                NonZero::new(buffer_bytes_size).unwrap()
+            ).unwrap();
+            
+            // copy_from_slice: source slice length (202368) does not match destination slice length (499680)
+            view.copy_from_slice(bytemuck::cast_slice(&data_slice));
+
+            None
+        } else {
+            let buffer = device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(&data_slice),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                }
+            );
+
+            src_buffer.destroy();
+
+            Some(buffer)
+        }
+    }
+
     pub fn write_buffers(&mut self) {
         let _span = tracy_client::span!("analyze_cursor_renderer::write_buffers");
+
+        /*
 
         let data_len = self.points_instance_data.len() as u64;
         let buffer_bytes_size = self.points_instance_buffer.size();
@@ -296,6 +357,16 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
 
             self.points_instance_buffer.destroy();
             self.points_instance_buffer = buffer;
+        }
+        */
+
+        if let Some(new_buffer) = Self::write_buffer(
+            &self.graphics.queue,
+            &self.graphics.device,
+            &self.points_instance_buffer,
+            &self.points_instance_data
+        ) {
+            self.points_instance_buffer = new_buffer
         }
 
         buffer_write_or_init!(

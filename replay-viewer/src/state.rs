@@ -76,10 +76,7 @@ pub struct ReplayViewerState<'rvs> {
     left_mouse_holding: bool,
 
     // Stupid egui handling lmao
-    beatmaps_file_dialog: Option<FileDialog>,
-    replay_file_dialog: Option<FileDialog>,
     modal_text: Option<String>,
-
 
     // Events
     tx: Sender<ReplayViewerEvents>,
@@ -190,8 +187,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
             mouse_pos: Vector2::new(0.0, 0.0),
             left_mouse_holding: false,
             db: OsuDatabase::new_from_path(DEFAULT_DB_PATH).unwrap(),
-            beatmaps_file_dialog: None,
-            replay_file_dialog: None,
             modal_text: None,
             tx,
             rx,
@@ -238,9 +233,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
         self.replay = Some(replay.into());
 
-        self.sync_cursor();
-
         self.time.reset_time();
+
+        self.sync_cursor();
+        self.update_replay_position_by_time();
+        self.playing = false;
     }
 
     pub fn sync_cursor(&mut self) {
@@ -547,7 +544,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
                     let response = ui.add(
                         egui::Slider::new(
-                            &mut self.slider_time, min..=max).show_value(false)
+                            &mut self.slider_time, min..=max
+                        )
+                        .show_value(false)
                     );
 
                     if response.changed() {
