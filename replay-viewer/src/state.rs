@@ -519,11 +519,16 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 let slider_width = ui.available_width();
                 ui.vertical_centered(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(&format!("Time: {:.2} |", self.time.get_time()));
+                        ui.label("Time:");
+                        let response = ui.add(egui::DragValue::new(&mut self.slider_time));
+                        if response.changed() {
+                            self.time.set_time(self.slider_time);
+                            self.update_replay_position_by_time()
+                        }
 
                         if let Some(replay) = &self.replay {
                             let idx = self.replay_frame_end_idx;
-                            ui.label(&format!("Frame ms: {} |", replay.frames[idx].ts));
+                            ui.label(&format!("Frame ms: {}", replay.frames[idx].ts));
                             ui.label(&format!("Frame index: {}/{}", idx, replay.frames.len()));
                         };
                     });
