@@ -10,7 +10,7 @@ use cgmath::Vector2;
 use egui::Modal;
 use egui_file::FileDialog;
 use osu_replay_parser::replay::Replay;
-use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein}, osu_db::{OsuDatabase, DEFAULT_DB_PATH}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
+use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_hitcircle_diameter, calc_playfield, calculate_preempt_fadein}, osu_db::{OsuDatabase, DEFAULT_DB_PATH}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, processor::OsuProcessor, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
 use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, event::MouseButton, keyboard::KeyCode};
@@ -80,7 +80,9 @@ pub struct ReplayViewerState<'rvs> {
 
     // Events
     tx: Sender<ReplayViewerEvents>,
-    rx: Receiver<ReplayViewerEvents>
+    rx: Receiver<ReplayViewerEvents>,
+
+    circle_diameter: f32,
 }
 
 impl<'rvs> ReplayViewerState<'rvs> {
@@ -190,6 +192,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             modal_text: None,
             tx,
             rx,
+            circle_diameter: 4.0,
         }
     }
 
@@ -215,6 +218,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.preempt = preempt;
         self.fadein = fadein;
         self.hit_window = hit_window;
+        self.circle_diameter = calc_hitcircle_diameter(cs);
         self.objects = Some(out_objects);
     }
 
@@ -223,6 +227,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
             self.modal_text = Some("Can't open replay file".to_owned());
             return;
         };
+
+        let mut processor: OsuProcessor = Replay::open(&replay_path.as_ref()).unwrap().into();
 
         let Some(beatmap_entry) = self.db.get_beatmap_by_hash(&replay.map_hash) else {
             self.modal_text = Some("Can't find a beatmap for that replay".to_owned());
@@ -238,6 +244,14 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.sync_cursor();
         self.update_replay_position_by_time();
         self.playing = false;
+
+        if let Some(objects) = &mut self.objects {
+            processor.process_all(
+                objects,
+                &self.hit_window,
+                self.circle_diameter
+            );
+        }
     }
 
     pub fn sync_cursor(&mut self) {

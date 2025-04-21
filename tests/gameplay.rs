@@ -53,21 +53,21 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
             },
             rosu::hit_objects::ObjectKind::Slider(slider) => {
                 if let Some(hit_result) = &slider.hit_result {
-                    //println!("=============");
-                    //dbg!(slider.start_time);
-                    //dbg!(hit_result);
-                    //dbg!(&slider.ticks);
-                    //println!("=============");
+                    println!("=============");
+                    dbg!(slider.start_time);
+                    dbg!(hit_result);
+                    dbg!(&slider.checkpoints);
+                    println!("=============");
                     if hit_result.state == SliderResultState::Passed {
                         // Case when slider was hit completly perfect
-                        if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.ticks.len() {
+                        if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.checkpoints.len() {
                             println!("1 | Slider at {}, result: X300", slider.start_time);
                             out.x300 += 1;
                             return;
                         }
 
                         // Case when only slider head was hit
-                        if !hit_result.end_passed && hit_result.passed_checkpoints.is_empty() && !slider.ticks.is_empty() {
+                        if !hit_result.end_passed && hit_result.passed_checkpoints.is_empty() && !slider.checkpoints.is_empty() {
                             println!("2 | Slider at {}, result: X50", slider.start_time);
                             out.x50 += 1;
                             return;
@@ -77,7 +77,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                         // one slider tick was hit
                         if !hit_result.end_passed 
                         && !hit_result.passed_checkpoints.is_empty() 
-                        && hit_result.passed_checkpoints.len() != slider.ticks.len() {
+                        && hit_result.passed_checkpoints.len() != slider.checkpoints.len() {
                             println!("3 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
                             return;
@@ -86,7 +86,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                         // Case when slider end was hit but some of the
                         // ticks is not
                         if hit_result.end_passed 
-                        && hit_result.passed_checkpoints.len() != slider.ticks.len() {
+                        && hit_result.passed_checkpoints.len() != slider.checkpoints.len() {
                             println!("4 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
                             return;
@@ -100,7 +100,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                         }
 
                         if !hit_result.end_passed
-                        && hit_result.passed_checkpoints.len() == slider.ticks.len() {
+                        && hit_result.passed_checkpoints.len() == slider.checkpoints.len() {
                             println!("6 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
                             return;

@@ -1,6 +1,6 @@
 use cgmath::Vector3;
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Rgb {
     inner: Vector3<u8>,
 }

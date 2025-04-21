@@ -85,6 +85,7 @@ impl Object {
 
             match &value.kind {
                 rosu_map::section::hit_objects::HitObjectKind::Slider(slider) => {
+                    //dbg!("====++=========");
                     let timing = map.control_points.timing_point_at(value.start_time);
                     let beat_len = timing.unwrap().beat_len; // TODO remove unwrap
                     let tick_every_ms = beat_len / tick_rate;
@@ -95,12 +96,22 @@ impl Object {
                     let duration = slider.duration();
                     let curve = slider.path.curve().clone();
 
-                    let _slide_duration = slider.duration() / f64::from(slider.span_count());
+                    let slide_duration = slider.duration() / f64::from(slider.span_count());
 
                     let mut ticks = Vec::new();
+                    let mut checkpoints = Vec::new();
 
+                    //dbg!(tick_every_ms);
+                    //dbg!(&value.start_time);
+                    //dbg!(duration);
+                    
+                    // Calculating ticks for the slider
                     let mut i = value.start_time + tick_every_ms;
                     while i < value.start_time + duration {
+                        if tick_every_ms >= slide_duration {
+                            break
+                        };
+
                         let v1 = i - value.start_time;
                         let v2 = duration / slider.span_count() as f64;
                         let slide = (v1 / v2).floor() as usize + 1;
@@ -132,12 +143,20 @@ impl Object {
                                 slide,
                                 is_reverse: false,
                             });
+
+                            checkpoints.push(Tick {
+                                pos,
+                                time: i,
+                                slide,
+                                is_reverse: false,
+                            });
                         }
 
                         i += tick_every_ms;
                     }
                 
                     let mut reverse_arrows = Vec::new();
+                    //dbg!(slider.span_count());
                     for repeat in 0..slider.span_count() - 1 {
                         let repeat = repeat + 1;
                         let v2 = duration / slider.span_count() as f64;
@@ -162,7 +181,9 @@ impl Object {
 
                         let angle = -calc_opposite_direction_degree(pos2, pos1);
 
-                        let slide_start = value.start_time + (v2 * (repeat as f64 - 1.0));
+                        let slide_start = value.start_time + (v2 * (repeat as f64));
+
+                        //dbg!(slide_start);
 
                         reverse_arrows.push(
                             slider::ReverseArrow {
@@ -170,7 +191,19 @@ impl Object {
                                 angle,
                             }
                         );
+
+                        checkpoints.push(Tick {
+                            pos: pos1,
+                            time: slide_start,
+                            slide: repeat as usize,
+                            is_reverse: true,
+                        });
                     }
+
+                    checkpoints
+                        .sort_by(|a, b| 
+                            a.time.partial_cmp(&b.time).expect("failed to compare")
+                        );
 
                     objects.push(Self {
                         start_time: value.start_time,
@@ -184,7 +217,8 @@ impl Object {
                             ticks,
                             render: None,
                             reverse_arrows,
-                            hit_result: None
+                            hit_result: None,
+                            checkpoints,
                         }),
                     })
                 }

@@ -9,7 +9,7 @@ use wgpu::{
 };
 use winit::dpi::PhysicalSize;
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_playfield, calc_playfield_scale_factor, calc_progress, calc_hitcircle_diameter, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_hitcircle_diameter, calc_playfield, calc_playfield_scale_factor, calc_progress, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 static SLIDER_SCALE: f32 = 2.0;
@@ -786,11 +786,29 @@ impl<'or> OsuRenderer<'or> {
         for current_index in queue.iter() {
             let object = &objects[*current_index];
 
-            let color = skin.ini.colours.combo_colors.iter()
+            let skin_color = skin.ini.colours.combo_colors.iter()
                 .cycle()
                 .skip(object.color)
                 .next()
                 .unwrap();
+
+            let color = match &object.kind {
+                hit_objects::ObjectKind::Circle(circle) => {
+                    if let Some(hit_result) = &circle.hit_result {
+                        match hit_result.result {
+                            hit_objects::Hit::X300 => Rgb::new(51, 51, 252),
+                            hit_objects::Hit::X100 => Rgb::new(51, 252, 51),
+                            hit_objects::Hit::X50 => Rgb::new(252, 252, 51),
+                            hit_objects::Hit::MISS => Rgb::new(252, 51, 51),
+                        }
+                    } else {
+                        *skin_color
+                    }
+                },
+                hit_objects::ObjectKind::Slider(slider) => {
+                    *skin_color
+                },
+            };
 
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
@@ -822,8 +840,10 @@ impl<'or> OsuRenderer<'or> {
                         // Apply fadeout immediatly
                         let progress = calc_progress(time, hit_result.at, hit_result.at + (CIRCLE_FADEOUT_TIME * 2.0));
                         hit_circle_alpha = 1.0 - progress;
-                        hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
-                        render_approach = false;
+
+                        // TODO this is broken rn
+                        //hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
+                        //render_approach = false;
                     } else {
                         // In case if there are no hit result keep alpha at 1.0 until late x50 hit window point
                         // is passed
@@ -854,7 +874,7 @@ impl<'or> OsuRenderer<'or> {
                         0.0,
                         hit_circle_alpha as f32,
                         hit_circle_scale as f32,
-                        color,
+                        &color,
                     );
 
                     self.hit_circle_instance_data.push(hit_circle_instance);
@@ -1042,7 +1062,7 @@ impl<'or> OsuRenderer<'or> {
                                 0.0,
                                 if approach_alpha > 0.0 { body_alpha as f32 } else { 0.0 }, // TODO XD
                                 1.0,
-                                color,
+                                &color,
                         ));
 
                     let mut slider_tick_indexes = Vec::new();

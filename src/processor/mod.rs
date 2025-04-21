@@ -175,8 +175,6 @@ impl From<Replay> for OsuProcessor {
                 keys: KeyboardState {
                     k1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::K1),
                     k2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::K2),
-                    //m1: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M1), TODO think about this
-                    //m2: frame.z.contains(osu_replay_parser::replay::replay_data::Keys::M2),
                 },
                 hold: KeyboardState::default(),
             };
@@ -234,7 +232,7 @@ impl From<Replay> for OsuProcessor {
         }
         
         new_inputs.iter().for_each(|x| {
-            println!("{} | is pressed: k1: {} k2: {} | is_hold: k1: {} k2: {}", x.ts, x.keys.k1, x.keys.k2, x.hold.k1, x.hold.k2);
+            //println!("{} | is pressed: k1: {} k2: {} | is_hold: k1: {} k2: {}", x.ts, x.keys.k1, x.keys.k2, x.hold.k1, x.hold.k2);
         });
 
         Self {
