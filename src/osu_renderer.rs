@@ -1517,6 +1517,13 @@ impl<'or> OsuRenderer<'or> {
     ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer::render_objects");
 
+        // If any of the buffers is empty dont even try to render
+        if self.hit_circle_instance_buffer.size() == 0
+        && self.approach_circle_instance_buffer.size() == 0 {
+            tracing::warn!("Trying to render with hitcircle or approachcircle buffers being empty!");
+            return Ok(())
+        }
+
         let mut encoder =
             self.graphics
                 .device
