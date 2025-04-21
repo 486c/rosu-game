@@ -68,10 +68,16 @@ pub struct Slider {
     /// `*===*` => 1 repeats
     pub repeats: i32,
 
-    /// Including all ticks aka checkpoints
+    /// Including all ticks
     pub ticks: Vec<Tick>,
-
     pub reverse_arrows: Vec<ReverseArrow>,
+    
+    /// The arrays above used for renderer
+    /// this one is specific for the
+    /// gameplay processing.
+    /// Should contain both ticks and slider reverses
+    pub checkpoints: Vec<Tick>,
+
     pub render: Option<SliderRender>,
 
     pub hit_result: Option<SliderResult>,
@@ -235,14 +241,14 @@ impl Slider {
 
         let result = self.hit_result.as_mut().unwrap();
         
-        //println!("ts: {} | prg: {}", input.ts, &slider_progress);
-        //println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
-        //println!(
-            //"is: {} | distance: {} | radious: {} | circle_diameter: {}", 
-            //&is_inside_circle, &distance, &slider_radius,
-           //circle_diameter / 2.0
-        //);
-        //println!("pos: ({cx}, {cy})");
+        println!("ts: {} | prg: {}", input.ts, &slider_progress);
+        println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
+        println!(
+            "is: {} | distance: {} | radious: {} | circle_diameter: {}", 
+            &is_inside_circle, &distance, &slider_radius,
+           circle_diameter / 2.0
+        );
+        println!("pos: ({cx}, {cy})");
 
 
         // oh right, did i forget to say that we check slider end not at
@@ -252,7 +258,7 @@ impl Slider {
 
         if !result.lenience_passed {
             if input.ts >= lenience_hack_time {
-                //println!("LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", lenience_hack_time, result.holding_since, result.in_radius_since);
+                println!("LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", lenience_hack_time, result.holding_since, result.in_radius_since);
                 match (result.holding_since, result.in_radius_since) {
                     (Some(holding_since), Some(in_radius_since)) => {
                         if holding_since <= lenience_hack_time
@@ -313,7 +319,7 @@ impl Slider {
 
         if result.state == SliderResultState::Middle {
             // Gets a passed checkpoint 
-            let closest_checkpoint = self.ticks.iter().enumerate().rev().find(|(i, x)| {
+            let closest_checkpoint = self.checkpoints.iter().enumerate().rev().find(|(i, x)| {
                 x.time < input.ts && !result.passed_checkpoints.contains(i)
             });
 
@@ -324,11 +330,11 @@ impl Slider {
                     }
                 }
 
-                if (i + 1) == self.ticks.len() {
+                if (i + 1) == self.checkpoints.len() {
                     result.state = SliderResultState::End
                 }
             } else {
-                if self.ticks.is_empty() {
+                if self.checkpoints.is_empty() {
                     result.state = SliderResultState::End
                 }
             }

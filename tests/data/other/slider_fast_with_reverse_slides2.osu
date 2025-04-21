@@ -1,0 +1,76 @@
+osu file format v14
+
+[General]
+AudioFilename: Sako Tomohisa - Getta Banban Anime Size ver..mp3
+AudioLeadIn: 2000
+PreviewTime: 47746
+Countdown: 0
+SampleSet: Soft
+StackLeniency: 0.3
+Mode: 0
+LetterboxInBreaks: 0
+WidescreenStoryboard: 0
+
+[Editor]
+Bookmarks: 591,86279
+DistanceSpacing: 1.1
+BeatDivisor: 4
+GridSize: 4
+TimelineZoom: 1.1
+
+[Metadata]
+Title:Getta Banban Anime Size ver.
+TitleUnicode:ã‚²ãƒƒã‚¿ãƒãƒ³ãƒãƒ³ ã‚¢ãƒ‹ãƒ¡ã‚µã‚¤ã‚ºver.
+Artist:Sako Tomohisa
+ArtistUnicode:ä½é¦™ æ™ºä¹…
+Creator:Gero
+Version:Hard
+Source:ãƒã‚±ãƒƒãƒˆãƒ¢ãƒ³ã‚¹ã‚¿ãƒ¼ ï¼¸ï¼¹
+Tags:Lanturn pkhg ãƒã‚±ãƒ¢ãƒ³â˜†ã‚²ãƒƒãƒˆ Pokemonâ˜†Getto PokÃ©monâ˜†Getto Getto å°å· æ™ºä¹‹ Ogawa Tomoyuki Getter Bangbang Bang Bang Mad-Paced Getter Mad Paced Opening 3 PokÃ©mon the Series: XY Pokemon Pocket Monsters XY ã‚¨ãƒƒã‚¯ã‚¹ãƒ¯ã‚¤ ï¼ˆã‚¨ãƒƒã‚¯ã‚¹ãƒ¯ã‚¤ï¼‰ (ExWye) Nintendo GAME FREAK J-Pop Jpop ã‚¸ã‚§ã‚¤ãƒãƒƒãƒ—
+BeatmapID:747336
+BeatmapSetID:337318
+
+[Difficulty]
+HPDrainRate:7
+CircleSize:4
+OverallDifficulty:7
+ApproachRate:8
+SliderMultiplier:1.6
+SliderTickRate:2
+
+[Events]
+//Background and Video events
+Video,-120,"Video.avi"
+0,0,"BG.jpg",0,0
+//Break Periods
+//Storyboard Layer 0 (Background)
+//Storyboard Layer 1 (Fail)
+//Storyboard Layer 2 (Pass)
+//Storyboard Layer 3 (Foreground)
+//Storyboard Sound Samples
+
+[TimingPoints]
+591,359.281437125748,4,2,1,60,1,0
+3285,-100,4,2,1,80,0,0
+47836,-100,4,1,1,90,0,1
+59243,-100,4,1,1,90,0,0
+59333,-100,4,1,1,90,0,1
+72177,-100,4,1,1,90,0,0
+72267,-100,4,1,1,90,0,1
+72357,-100,4,1,1,90,0,0
+75321,-100,4,1,1,90,0,1
+86010,-100,4,1,1,90,0,0
+86099,-100,4,1,1,90,0,1
+86189,-100,4,1,1,90,0,0
+
+
+[Colours]
+Combo1 : 157,133,203
+Combo2 : 233,72,54
+Combo3 : 226,219,82
+Combo4 : 114,157,222
+Combo5 : 153,200,119
+
+[HitObjects]
+193,151,591,2,0,P|461:142|463:143,2,280
+318,310,2028,6,0,L|354:329,4,40,8|8|8|8|8,0:3|0:3|0:3|0:3|0:3,0:0:0:0:

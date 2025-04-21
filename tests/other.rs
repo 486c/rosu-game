@@ -53,3 +53,52 @@ fn test_slider_ticks() {
         },
     }
 }
+
+#[test]
+fn test_slider_reverse_slides() {
+    let base = get_other_tests_path().join("slider_fast_with_reverse_slides.osu");
+
+    let beatmap = Beatmap::from_path(base).unwrap();
+    let beatmap_objects = Object::from_rosu(&beatmap);
+
+    assert_eq!(beatmap_objects.len(), 1);
+    assert!(matches!(beatmap_objects[0].kind, ObjectKind::Slider(_)));
+
+    match &beatmap_objects[0].kind {
+        ObjectKind::Circle(_) => panic!("should be slider"),
+        ObjectKind::Slider(slider) => {
+            assert_eq!(slider.checkpoints.len(), 8);
+        },
+    }
+}
+
+// 
+#[test]
+fn test_slider_reverse_slides2() {
+    let base = get_other_tests_path().join("slider_fast_with_reverse_slides2.osu");
+
+    let beatmap = Beatmap::from_path(base).unwrap();
+    let beatmap_objects = Object::from_rosu(&beatmap);
+
+    assert_eq!(beatmap_objects.len(), 2);
+    assert!(matches!(beatmap_objects[0].kind, ObjectKind::Slider(_)));
+    assert!(matches!(beatmap_objects[1].kind, ObjectKind::Slider(_)));
+
+    match &beatmap_objects[0].kind {
+        ObjectKind::Circle(_) => panic!("should be slider"),
+        ObjectKind::Slider(slider) => {
+            dbg!(&slider.checkpoints);
+            assert_eq!(slider.checkpoints.len(), 7);
+        },
+    }
+
+    match &beatmap_objects[1].kind {
+        ObjectKind::Circle(_) => panic!("should be slider"),
+        ObjectKind::Slider(slider) => {
+            dbg!(&slider.checkpoints);
+            assert_eq!(slider.checkpoints.len(), 3);
+        },
+    }
+}
+// 
+
