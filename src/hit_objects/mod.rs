@@ -19,7 +19,7 @@ pub const CIRCLE_SCALEOUT_MAX: f64 = 1.4;
 pub const REVERSE_ARROW_FADEOUT: f64 = 200.0;
 pub const REVERSE_ARROW_FADEIN: f64 = 300.0;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Hit {
     X300,
     X100,
