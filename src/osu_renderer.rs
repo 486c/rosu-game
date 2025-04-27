@@ -780,6 +780,7 @@ impl<'or> OsuRenderer<'or> {
         queue: &[usize],
         objects: &[Object],
         skin: &SkinManager,
+        config: &Config,
     ) {
         let _span = tracy_client::span!("osu_renderer::prepare objects");
 
@@ -790,29 +791,29 @@ impl<'or> OsuRenderer<'or> {
                 .cycle()
                 .skip(object.color)
                 .next()
-                .unwrap();
-            
-            /*
-            let color = match &object.kind {
-                hit_objects::ObjectKind::Circle(circle) => {
-                    if let Some(hit_result) = &circle.hit_result {
-                        match hit_result.result {
-                            hit_objects::Hit::X300 => Rgb::new(51, 51, 252),
-                            hit_objects::Hit::X100 => Rgb::new(51, 252, 51),
-                            hit_objects::Hit::X50 => Rgb::new(252, 252, 51),
-                            hit_objects::Hit::MISS => Rgb::new(252, 51, 51),
-                        }
-                    } else {
-                        *skin_color
-                    }
-                },
-                hit_objects::ObjectKind::Slider(slider) => {
-                    *skin_color
-                },
-            };
-            */
+                .expect("failed to cycle for skin colors");
 
-            let color = skin_color;
+            let color = if config.debug_use_judgements_as_colors {
+                match &object.kind {
+                    hit_objects::ObjectKind::Circle(circle) => {
+                        if let Some(hit_result) = &circle.hit_result {
+                            match hit_result.result {
+                                hit_objects::Hit::X300 => Rgb::new(51, 51, 252),
+                                hit_objects::Hit::X100 => Rgb::new(51, 252, 51),
+                                hit_objects::Hit::X50 => Rgb::new(252, 252, 51),
+                                hit_objects::Hit::MISS => Rgb::new(252, 51, 51),
+                            }
+                        } else {
+                            *skin_color
+                        }
+                    },
+                    hit_objects::ObjectKind::Slider(_) => {
+                        *skin_color
+                    },
+                }
+            } else {
+                *skin_color
+            };
 
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
