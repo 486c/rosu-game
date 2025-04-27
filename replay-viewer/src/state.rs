@@ -10,17 +10,18 @@ use cgmath::Vector2;
 use egui::Modal;
 use egui_file::FileDialog;
 use osu_replay_parser::replay::Replay;
-use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_hitcircle_diameter, calc_playfield, calculate_preempt_fadein}, osu_db::{OsuDatabase, DEFAULT_DB_PATH}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, processor::OsuProcessor, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
+use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Hit, Object, ObjectKind}, math::{calc_hitcircle_diameter, calc_playfield, calculate_preempt_fadein}, osu_db::{OsuDatabase, DEFAULT_DB_PATH}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, processor::OsuProcessor, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
 use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, event::MouseButton, keyboard::KeyCode};
 
-use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, replay_log::ReplayLog};
+use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, judgements_list::JudgementPoint, replay_log::ReplayLog};
 
 enum ReplayViewerEvents {
     OpenReplay(PathBuf),
     ScanBeatmaps(PathBuf),
     ResetModal,
+    UpdateReplayPositionByTime(f64),
 }
 
 pub struct ReplayViewerSettings {
@@ -39,6 +40,7 @@ pub struct ReplayViewerState<'rvs> {
 
     graphics: Arc<Graphics<'rvs>>,
     replay: Option<ReplayLog>,
+    judgements_list: Option<Vec<JudgementPoint>>,
     cursor_renderer: AnalyzeCursorRenderer<'rvs>,
     
     playing: bool,
@@ -193,6 +195,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             tx,
             rx,
             circle_diameter: 4.0,
+            judgements_list: None,
         }
     }
 
@@ -251,7 +254,29 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 &self.hit_window,
                 self.circle_diameter
             );
+
+            let mut judgements_list: Vec<JudgementPoint> = Vec::new();
+
+            for obj in objects.iter() {
+                match &obj.kind {
+                    ObjectKind::Circle(circle) => {
+                        if let Some(result) = &circle.hit_result {
+                            if result.result != Hit::X300 {
+                                judgements_list.push(JudgementPoint {
+                                    ts: circle.start_time,
+                                    kind: crate::judgements_list::JudgementObjectKind::Circle,
+                                    hit: result.result,
+                                })
+                            } else { continue; }
+                        }
+                    },
+                    ObjectKind::Slider(_) => continue,
+                }
+            };
+
+            self.judgements_list = Some(judgements_list);
         }
+
     }
 
     pub fn sync_cursor(&mut self) {
@@ -494,7 +519,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.osu_renderer.prepare_objects(
             self.time.get_time(), self.preempt, self.fadein,
             &self.objects_render_queue, &objects,
-            &self.skin_manager
+            &self.skin_manager,
+            &self.gameplay_config
         );
 
         self.osu_renderer.prepare(
@@ -516,8 +542,30 @@ impl<'rvs> ReplayViewerState<'rvs> {
     pub fn render_ui(&mut self, ctx: &egui::Context) {
         let _span = tracy_client::span!("state::render_ui");
 
-        if let Some(modal_text) = &self.modal_text {
+        if let Some(judgements_list) = &self.judgements_list {
+            egui::Window::new("Hit Results").show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for jdg in judgements_list.iter() {
+                        ui.vertical(|ui| {
+                            ui.label(format!(
+                                "{:?} {:?} at {}",
+                                jdg.kind,
+                                jdg.hit,
+                                jdg.ts
+                            ));
 
+                            if ui.button("Jump").clicked() {
+                                let _ = self.tx.send(ReplayViewerEvents::UpdateReplayPositionByTime(jdg.ts));
+                            };
+                        });
+
+                        ui.separator();
+                    }
+                });
+            });
+        };
+
+        if let Some(modal_text) = &self.modal_text {
             Modal::new(egui::Id::new("Modal")).show(ctx, |ui| {
                 ui.label(modal_text);
 
@@ -685,7 +733,26 @@ impl<'rvs> ReplayViewerState<'rvs> {
                         );
                     }
                 };
-            })
+
+                ui.checkbox(
+                    &mut self.gameplay_config.debug_use_judgements_as_colors, 
+                    "Judgements as colors"
+                );
+            });
+
+            ui.collapsing("Current Frame Info", |ui| {
+                if let Some(replay) = &self.replay {
+                    let frame = &replay.frames[self.replay_frame_end_idx];
+
+                    ui.label(format!("Index: {}", self.replay_frame_end_idx));
+                    ui.label(format!("Frame Time: {}", frame.ts));
+                    ui.label(format!("Position: ({:.2}, {:.2})", frame.pos.0, frame.pos.1));
+                    ui.label(format!("Is K1 Pressed: {}", frame.keys.k1));
+                    ui.label(format!("Is K2 Pressed: {}", frame.keys.k2));
+                    ui.label(format!("Is M1 Pressed: {}", frame.keys.m1));
+                    ui.label(format!("Is M2 Pressed: {}", frame.keys.m2));
+                }
+            });
         });
     }
 
@@ -795,6 +862,10 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 ReplayViewerEvents::ScanBeatmaps(path_buf) => {
                     let (_tx, rx) = oneshot::channel();
                     self.db.scan_beatmaps(path_buf, rx);
+                },
+                ReplayViewerEvents::UpdateReplayPositionByTime(ts) => {
+                    self.time.set_time(ts);
+                    self.update_replay_position_by_time();
                 },
             },
             Err(e) => {

@@ -9,7 +9,11 @@ pub struct SliderConfig {
 
 #[derive(Debug)]
 pub struct Config {
+    /// Toggle storing slider textures in the gpu for future reuse
     pub store_slider_textures: bool,
+    /// Will use judgements colors instead of skin colors
+    /// for drawing hit objects, useful for debugging
+    pub debug_use_judgements_as_colors: bool,
     pub slider: SliderConfig,
 }
 
@@ -23,6 +27,7 @@ impl Default for Config {
                 body_color_saturation: 0.62,
                 body_alpha_multiplier: 0.65,
             },
+            debug_use_judgements_as_colors: false,
         }
     }
 }

@@ -39,6 +39,7 @@ pub enum SliderResultState {
     /// Hit a slider head, passed all checkpoints
     /// checking a slider end
     End,
+    /// All processing on slider is done
     Passed
 }
 
@@ -201,8 +202,6 @@ impl Slider {
     ) {
         let mut slider_radius = circle_diameter as f64 / 2.0;
 
-
-
         // TODO we should check if we are in radious only on 
         // checkpoints (slider points)
         slider_radius *= 2.4;
@@ -287,15 +286,15 @@ impl Slider {
 
         if !result.lenience_passed {
             if input.ts >= lenience_hack_time {
-                println!(
-                    "PRE LENIENCE INFO: start_time: {}, duration: {}, end: {}, frame_ts: {}", 
-                    self.start_time, self.duration, self.start_time + self.duration, input.ts
-                );
+                //println!(
+                    //"PRE LENIENCE INFO: start_time: {}, duration: {}, end: {}, frame_ts: {}", 
+                    //self.start_time, self.duration, self.start_time + self.duration, input.ts
+                //);
 
-                println!(
-                    "LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", 
-                    lenience_hack_time, result.holding_since, result.in_radius_since
-                );
+                //println!(
+                    //"LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", 
+                    //lenience_hack_time, result.holding_since, result.in_radius_since
+                //);
                 match (result.holding_since, result.in_radius_since) {
                     (Some(holding_since), Some(in_radius_since)) => {
                         if holding_since <= lenience_hack_time
