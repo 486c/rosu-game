@@ -278,14 +278,12 @@ impl Slider {
         //println!("pos: ({cx}, {cy})");
 
 
-        let mut lenience_hack_time = self.start_time + self.duration;
-
         // oh right, did i forget to say that we check slider end not at
         // slider end time?
-        if self.checkpoints.len() > 0 {
-            lenience_hack_time = (self.start_time + self.duration / 2.0)
+        //
+        // Count slider end as "points" so slider never have =0 points??
+        let lenience_hack_time = (self.start_time + self.duration / 2.0)
                 .max(self.start_time + self.duration - 36.0);
-        }
 
         if !result.lenience_passed {
             if input.ts >= lenience_hack_time {
@@ -330,17 +328,17 @@ impl Slider {
             };
 
             let is_holding = if result.start_keys < 1 {
-                println!("[{}] keys_hold", input.ts);
-                println!("[{}] {:?}", input.ts, input.keys);
+                //println!("[{}] keys_hold", input.ts);
+                //println!("[{}] {:?}", input.ts, input.keys);
                 input.is_keys_hold()
             } else {
-                println!("[{}] mouse_down_acceptance", input.ts);
+                //println!("[{}] mouse_down_acceptance", input.ts);
                 mouse_down_acceptance
             };
 
             if !is_holding
             && result.holding_since.is_some() {
-                println!("Reset holding at input ts {}, previous_holding_since: {:?}", input.ts, &result.holding_since);
+                //println!("Reset holding at input ts {}, previous_holding_since: {:?}", input.ts, &result.holding_since);
                 result.holding_since = None
             }
 
