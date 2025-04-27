@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use osu_replay_parser::replay::Replay;
-use rosu::{hit_objects::{hit_window::HitWindow, slider::SliderResultState, Object}, math::calc_hitcircle_diameter, processor::OsuProcessor};
+use rosu::{hit_objects::{hit_window::HitWindow, slider::SliderResultState, Hit, Object}, math::calc_hitcircle_diameter, processor::OsuProcessor};
 use rosu_map::Beatmap;
 use test_case::case;
 
@@ -37,82 +37,133 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
         xmiss: 0,
     };
 
+    let mut proccessed_sliders = 0;
+    let mut proccessed_circles = 0;
+
+    let mut sliders_with_result = 0;
+    let mut circles_with_result = 0;
+
     beatmap_objects.iter().for_each(|x| {
         match &x.kind {
             rosu::hit_objects::ObjectKind::Circle(circle) => {
+                proccessed_circles += 1;
+
                 if let Some(result) = &circle.hit_result {
-                    println!("Circle at {}, result: {:?} at {}", circle.start_time, result.result, result.at);
+                    if result.result != Hit::X300 {
+                        println!("Circle at {}, result: {:?} at {}", circle.start_time, result.result, result.at);
+                    }
+
                     match result.result {
                         rosu::hit_objects::Hit::X300 => out.x300 += 1,
                         rosu::hit_objects::Hit::X100 => out.x100 += 1,
                         rosu::hit_objects::Hit::X50 => out.x50 += 1,
                         rosu::hit_objects::Hit::MISS => out.xmiss += 1,
                     }
+                    circles_with_result += 1;
                 }
 
             },
             rosu::hit_objects::ObjectKind::Slider(slider) => {
+                proccessed_sliders += 1;
+
                 if let Some(hit_result) = &slider.hit_result {
                     println!("=============");
                     dbg!(slider.start_time);
                     dbg!(hit_result);
                     dbg!(&slider.checkpoints);
                     println!("=============");
+
                     if hit_result.state == SliderResultState::Passed {
                         // Case when slider was hit completly perfect
-                        if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.checkpoints.len() {
-                            println!("1 | Slider at {}, result: X300", slider.start_time);
+                        if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.checkpoints.len() 
+                        && hit_result.head.result == Hit::X300 {
+                            //println!("1 | Slider at {}, result: X300", slider.start_time);
                             out.x300 += 1;
+                            sliders_with_result += 1;
                             return;
                         }
 
                         // Case when only slider head was hit
-                        if !hit_result.end_passed && hit_result.passed_checkpoints.is_empty() && !slider.checkpoints.is_empty() {
+                        if !hit_result.end_passed && hit_result.passed_checkpoints.is_empty() && !slider.checkpoints.is_empty()
+                        && hit_result.head.result == Hit::X300 {
                             println!("2 | Slider at {}, result: X50", slider.start_time);
+                            sliders_with_result += 1;
                             out.x50 += 1;
                             return;
                         }
 
-                        // Case when slider slider head and atleast
+                        // Case when slider head and atleast
                         // one slider tick was hit
                         if !hit_result.end_passed 
                         && !hit_result.passed_checkpoints.is_empty() 
-                        && hit_result.passed_checkpoints.len() != slider.checkpoints.len() {
+                        && hit_result.passed_checkpoints.len() != slider.checkpoints.len() 
+                        && hit_result.head.result == Hit::X300 {
                             println!("3 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
+                            sliders_with_result += 1;
                             return;
                         }
 
                         // Case when slider end was hit but some of the
                         // ticks is not
                         if hit_result.end_passed 
-                        && hit_result.passed_checkpoints.len() != slider.checkpoints.len() {
+                        && hit_result.passed_checkpoints.len() != slider.checkpoints.len() 
+                        && hit_result.head.result == Hit::X300 {
                             println!("4 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
+                            sliders_with_result += 1;
                             return;
                         }
-
+                        
+                        // Case when slider head was hit but end is not passed
+                        // and some of the ticks was passed
                         if !hit_result.end_passed 
-                        && !hit_result.passed_checkpoints.is_empty() {
+                        && !hit_result.passed_checkpoints.is_empty() 
+                        && hit_result.head.result == Hit::X300 {
                             println!("5 | Slider at {}, result: X100, end at {}", slider.start_time, slider.end_time());
                             out.x100 += 1;
+                            sliders_with_result += 1;
+                            return;
+                        }
+                        
+                        // Case when slider head was hit end is not passed, but all ticks were passed
+                        if !hit_result.end_passed
+                        && hit_result.passed_checkpoints.len() == slider.checkpoints.len() 
+                        && hit_result.head.result == Hit::X300 {
+                            println!("6 | Slider at {}, result: X100", slider.start_time);
+                            out.x100 += 1;
+                            sliders_with_result += 1;
                             return;
                         }
 
-                        if !hit_result.end_passed
-                        && hit_result.passed_checkpoints.len() == slider.checkpoints.len() {
-                            println!("6 | Slider at {}, result: X100", slider.start_time);
+                        // Case when everything all ticks and slider end is passed
+                        // but slider head is missed
+                        if hit_result.end_passed
+                        && hit_result.passed_checkpoints.len() == slider.checkpoints.len()
+                        && hit_result.head.result == Hit::MISS {
+                            println!("7 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
+                            sliders_with_result += 1;
                             return;
                         }
 
                         panic!("Some uncovered slider state: {:#?}", hit_result);
-                    }
+                    }                
+                } else {
+                    panic!(
+                        "Slider {} left unprocessed for some reason: {:#?}", 
+                        slider.start_time,
+                        slider.hit_result
+                    );
                 }
             },
         }
     });
-
+    
+    println!("Processed Sliders: {proccessed_sliders}");
+    println!("Processed Circles: {proccessed_circles}");
+    println!("Sliders with result: {sliders_with_result}");
+    println!("Circles with result: {circles_with_result}");
     assert_eq!(out, expected, "Left - Result from processor, Right - expected");
 }
 

@@ -91,7 +91,8 @@ impl Slider {
     
     /// Returns slide index for certain time
     /// Indexes starts from 1
-    /// Example:
+    ///
+    /// # Example:
     /// `*===R===*`
     ///  ^ ^ ^   ^
     ///  1 2 3   4
@@ -185,14 +186,6 @@ impl Slider {
                         } else if input.keys.k2 && !input.hold.k2 {
                             2
                         } else { panic!("Hitting a slider without any keys pressed?") }
-                        /*
-                        if input.keys.k1 {
-                            1
-                        } 
-                        else if input.keys.k2 {
-                            2
-                        } else { panic!("Hitting a slider without any keys pressed?") }
-                        */
                     },
                 }
             );
@@ -208,15 +201,7 @@ impl Slider {
     ) {
         let mut slider_radius = circle_diameter as f64 / 2.0;
 
-        let result = match &self.hit_result {
-            Some(v) => v,
-            None => return,
-        };
 
-
-        if result.state == SliderResultState::Passed {
-            return
-        }
 
         // TODO we should check if we are in radious only on 
         // checkpoints (slider points)
@@ -239,26 +224,80 @@ impl Slider {
         let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
         let is_inside_circle = distance <= slider_radius;
 
-        let result = self.hit_result.as_mut().unwrap();
-        
-        println!("ts: {} | prg: {}", input.ts, &slider_progress);
-        println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
-        println!(
-            "is: {} | distance: {} | radious: {} | circle_diameter: {}", 
-            &is_inside_circle, &distance, &slider_radius,
-           circle_diameter / 2.0
-        );
-        println!("pos: ({cx}, {cy})");
+        let result = match self.hit_result.as_mut() {
+            Some(result) => result,
+            None => {
+                // Init slider state in case if sliderhead missed
+                // but holding and radius is fine
 
+                let start_window_end = self.start_time + hit_window.x50.round();
+                
+                // TODO: Might cause issues, be caution
+                if input.ts >= start_window_end
+                && is_inside_circle
+                && input.is_keys_hold() {
+                    self.hit_result = Some(
+                        SliderResult {
+                            head: CircleHitResult {
+                                at: input.ts,
+                                pos: input.pos,
+                                result: Hit::MISS,
+                            },
+                            passed_checkpoints: vec![],
+                            end_passed: false,
+                            state: SliderResultState::Middle,
+                            holding_since: Some(input.ts),
+                            in_radius_since: Some(input.ts),
+                            lenience_passed: false,
+                            start_keys: {
+                                if input.keys.k1 {
+                                    1
+                                } else if input.keys.k2 {
+                                    2
+                                } else { panic!("Hitting a slider without any keys pressed: keys: {:?}, hold: {:?}", input.keys, input.hold) }
+                            },
+                        }
+                    );
+                }
+
+                return;
+            },
+        };
+
+        if result.state == SliderResultState::Passed {
+            return
+        }
+        
+        //println!("ts: {} | prg: {}", input.ts, &slider_progress);
+        //println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
+        //println!(
+            //"is: {} | distance: {} | radious: {} | circle_diameter: {}", 
+            //&is_inside_circle, &distance, &slider_radius,
+           //circle_diameter / 2.0
+        //);
+        //println!("pos: ({cx}, {cy})");
+
+
+        let mut lenience_hack_time = self.start_time + self.duration;
 
         // oh right, did i forget to say that we check slider end not at
         // slider end time?
-        let lenience_hack_time = (self.start_time + self.duration / 2.0)
-            .max(self.start_time + self.duration - 36.0);
+        if self.checkpoints.len() > 0 {
+            lenience_hack_time = (self.start_time + self.duration / 2.0)
+                .max(self.start_time + self.duration - 36.0);
+        }
 
         if !result.lenience_passed {
             if input.ts >= lenience_hack_time {
-                println!("LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", lenience_hack_time, result.holding_since, result.in_radius_since);
+                println!(
+                    "PRE LENIENCE INFO: start_time: {}, duration: {}, end: {}, frame_ts: {}", 
+                    self.start_time, self.duration, self.start_time + self.duration, input.ts
+                );
+
+                println!(
+                    "LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", 
+                    lenience_hack_time, result.holding_since, result.in_radius_since
+                );
                 match (result.holding_since, result.in_radius_since) {
                     (Some(holding_since), Some(in_radius_since)) => {
                         if holding_since <= lenience_hack_time
@@ -291,13 +330,17 @@ impl Slider {
             };
 
             let is_holding = if result.start_keys < 1 {
+                println!("[{}] keys_hold", input.ts);
+                println!("[{}] {:?}", input.ts, input.keys);
                 input.is_keys_hold()
             } else {
+                println!("[{}] mouse_down_acceptance", input.ts);
                 mouse_down_acceptance
             };
 
             if !is_holding
             && result.holding_since.is_some() {
+                println!("Reset holding at input ts {}, previous_holding_since: {:?}", input.ts, &result.holding_since);
                 result.holding_since = None
             }
 
