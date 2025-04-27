@@ -791,7 +791,8 @@ impl<'or> OsuRenderer<'or> {
                 .skip(object.color)
                 .next()
                 .unwrap();
-
+            
+            /*
             let color = match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
                     if let Some(hit_result) = &circle.hit_result {
@@ -809,6 +810,9 @@ impl<'or> OsuRenderer<'or> {
                     *skin_color
                 },
             };
+            */
+
+            let color = skin_color;
 
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
