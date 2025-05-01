@@ -482,7 +482,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             .rev()
             .find(|(_i, frame)| frame.ts <= self.time.get_time() )
             .map(|(i, _frame)| i)
-            .unwrap();
+            .unwrap_or(0);
 
         self.replay_frame_start_idx = self.replay_frame_end_idx.saturating_sub(self.settings.frames_to_show);
 
