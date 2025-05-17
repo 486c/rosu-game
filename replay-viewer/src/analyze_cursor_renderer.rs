@@ -331,35 +331,6 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
     pub fn write_buffers(&mut self) {
         let _span = tracy_client::span!("analyze_cursor_renderer::write_buffers");
 
-        /*
-
-        let data_len = self.points_instance_data.len() as u64;
-        let buffer_bytes_size = self.points_instance_buffer.size();
-
-        let buffer_len = buffer_bytes_size / size_of::<PointsInstance>() as u64;
-
-        if data_len <= buffer_len {
-            let mut view = self.graphics.queue.write_buffer_with(
-                &self.points_instance_buffer,
-                0,
-                NonZero::new(buffer_bytes_size).unwrap()
-            ).unwrap();
-
-            view.copy_from_slice(bytemuck::cast_slice(&self.points_instance_data))
-        } else {
-            let buffer = self.graphics.device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(&self.points_instance_data),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                }
-            );
-
-            self.points_instance_buffer.destroy();
-            self.points_instance_buffer = buffer;
-        }
-        */
-
         if let Some(new_buffer) = Self::write_buffer(
             &self.graphics.queue,
             &self.graphics.device,

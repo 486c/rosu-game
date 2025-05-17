@@ -4,11 +4,10 @@
 // 2. Handling replay opening
 // etc
 
-use std::{env, path::{Path, PathBuf}, sync::{mpsc::{Receiver, Sender}, Arc}};
+use std::{path::{Path, PathBuf}, sync::{mpsc::{Receiver, Sender}, Arc}};
 
 use cgmath::Vector2;
 use egui::Modal;
-use egui_file::FileDialog;
 use osu_replay_parser::replay::Replay;
 use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Hit, Object, ObjectKind}, math::{calc_hitcircle_diameter, calc_playfield, calculate_preempt_fadein}, osu_db::{OsuDatabase, DEFAULT_DB_PATH}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, processor::OsuProcessor, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
 use rosu_map::Beatmap;
@@ -413,9 +412,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
         let span = tracy_client::span!("state::render::queue_submit");
         self.graphics.queue.submit([encoder.finish()]);
         drop(span);
-
-        self.slider_time = self.time.update();
-        self.update_replay_position_by_time();
+        
+        if !self.time.is_paused() {
+            self.slider_time = self.time.update();
+            self.update_replay_position_by_time();
+        }
     }
 
     fn update_frame_point_size(&mut self) {
@@ -484,7 +485,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
             .map(|(i, _frame)| i)
             .unwrap_or(0);
 
-        self.replay_frame_start_idx = self.replay_frame_end_idx.saturating_sub(self.settings.frames_to_show);
+        self.replay_frame_start_idx = 
+            self.replay_frame_end_idx.saturating_sub(self.settings.frames_to_show);
 
         self.update_analyze_cursor_buffers();
     }
@@ -583,6 +585,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     ui.horizontal(|ui| {
                         ui.label("Time:");
                         let response = ui.add(egui::DragValue::new(&mut self.slider_time));
+
                         if response.changed() {
                             self.time.set_time(self.slider_time);
                             self.update_replay_position_by_time()
