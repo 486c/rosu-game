@@ -25,15 +25,18 @@ impl Timer {
             started_at: Instant::now(),
         }
     }
-
+    
+    #[inline]
     pub fn is_paused(&self) -> bool {
         self.paused == true
     }
 
+    #[inline]
     pub fn pause(&mut self) {
         self.paused = true;
     }
 
+    #[inline]
     pub fn unpause(&mut self) {
         self.paused = false;
 

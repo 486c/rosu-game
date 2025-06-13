@@ -52,6 +52,7 @@ pub struct SliderResult {
     pub lenience_passed: bool,
     pub holding_since: Option<f64>,
     pub in_radius_since: Option<f64>,
+    pub is_tracking: bool,
     pub start_keys: u8,
 }
 
@@ -147,39 +148,71 @@ impl Slider {
         input: &OsuInput,
         hit_window: &HitWindow,
         circle_diameter: f32
-    ) {
+    ) -> Option<()> {
         if self.hit_result.is_some() {
-            return;
+            return None;
         }
 
         if !input.is_keys_hit_no_hold() {
-            return;
+            return None;
         }
 
         let (cx, cy) = (self.pos.x as f64, self.pos.y as f64);
-        let (px, py) = (self.pos.x as f64, self.pos.y as f64);
+        let (px, py) = (input.pos.x as f64, input.pos.y as f64);
 
         let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
 
         if !(distance <= (circle_diameter / 2.0) as f64) {
-            return;
+            return None;
         }
 
         let hit_error = (self.start_time - input.ts).abs();
 
+        let slider_radius = circle_diameter as f64 / 2.0;
+        let slider_ball_progress = self.get_slider_progress(input.ts);
+        let slider_ball_pos = self.curve.position_at(
+            slider_ball_progress
+        );
+        
+        let (cx, cy) = (
+            self.pos.x as f64 + slider_ball_pos.x as f64, 
+            self.pos.y as f64 + slider_ball_pos.y as f64
+        );
+        let (px, py) = (input.pos.x, input.pos.y);
+        let slider_ball_distance = 
+            ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
+
+        let is_inside_slider_ball = slider_ball_distance <= slider_radius;
+
         if hit_error < hit_window.x50.round() {
+            //println!("[{}] Cursor pos: ({:.2}, {:.2}) Hit error: {} distance: {:2.}, circle_radius: {:.2}, is_in_ball: {}, ball_dist: {:.2}, ball_rad: {:.2}", 
+                //input.ts, 
+                //input.pos.x,
+                //input.pos.y,
+                //hit_error, 
+                //distance, 
+                //circle_diameter / 2.0,
+                //is_inside_slider_ball,
+                //slider_ball_distance,
+                //slider_radius
+            //);
+
+            // For situations when head was hit perfectly but not in
+            // slider ball position
+            let head = CircleHitResult {
+                at: input.ts,
+                pos: input.pos,
+                result: { Hit::X300 }
+            };
+
             self.hit_result = Some(
                 SliderResult {
-                    head: CircleHitResult {
-                        at: input.ts,
-                        pos: input.pos,
-                        result: Hit::X300,
-                    },
+                    head,
                     passed_checkpoints: vec![],
                     end_passed: false,
                     state: SliderResultState::Middle,
                     holding_since: Some(input.ts),
-                    in_radius_since: Some(input.ts),
+                    in_radius_since: if is_inside_slider_ball { Some(input.ts) } else { None },
                     lenience_passed: false,
                     start_keys: {
                         if input.keys.k1 && !input.hold.k1 {
@@ -188,10 +221,14 @@ impl Slider {
                             2
                         } else { panic!("Hitting a slider without any keys pressed?") }
                     },
+                    is_tracking: is_inside_slider_ball,
                 }
             );
-            return;
+
+            return Some(());
         }
+
+        return None;
     }
 
     pub fn update_post(
@@ -200,11 +237,7 @@ impl Slider {
         hit_window: &HitWindow,
         circle_diameter: f32
     ) {
-        let mut slider_radius = circle_diameter as f64 / 2.0;
-
-        // TODO we should check if we are in radious only on 
-        // checkpoints (slider points)
-        slider_radius *= 2.4;
+        let slider_radius = circle_diameter as f64 / 2.0;
 
         // Position at slider for current input
         let slider_progress = self.get_slider_progress(input.ts);
@@ -221,7 +254,7 @@ impl Slider {
         let (px, py) = (input.pos.x, input.pos.y);
 
         let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
-        let is_inside_circle = distance <= slider_radius;
+        let is_inside_hit_circle = distance <= slider_radius;
 
         let result = match self.hit_result.as_mut() {
             Some(result) => result,
@@ -230,11 +263,13 @@ impl Slider {
                 // but holding and radius is fine
 
                 let start_window_end = self.start_time + hit_window.x50.round();
+
+                let is_holding = input.is_keys_hold();
+                let is_in_radius = is_inside_hit_circle;
+                let is_tracking = is_holding && is_in_radius;
                 
                 // TODO: Might cause issues, be caution
-                if input.ts >= start_window_end
-                && is_inside_circle
-                && input.is_keys_hold() {
+                if input.ts >= start_window_end {
                     self.hit_result = Some(
                         SliderResult {
                             head: CircleHitResult {
@@ -245,8 +280,8 @@ impl Slider {
                             passed_checkpoints: vec![],
                             end_passed: false,
                             state: SliderResultState::Middle,
-                            holding_since: Some(input.ts),
-                            in_radius_since: Some(input.ts),
+                            holding_since: if is_holding { Some(input.ts) } else { None },
+                            in_radius_since: if is_in_radius { Some(input.ts) } else { None },
                             lenience_passed: false,
                             start_keys: {
                                 if input.keys.k1 {
@@ -255,6 +290,7 @@ impl Slider {
                                     2
                                 } else { panic!("Hitting a slider without any keys pressed: keys: {:?}, hold: {:?}", input.keys, input.hold) }
                             },
+                            is_tracking,
                         }
                     );
                 }
@@ -266,16 +302,6 @@ impl Slider {
         if result.state == SliderResultState::Passed {
             return
         }
-        
-        //println!("ts: {} | prg: {}", input.ts, &slider_progress);
-        //println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
-        //println!(
-            //"is: {} | distance: {} | radious: {} | circle_diameter: {}", 
-            //&is_inside_circle, &distance, &slider_radius,
-           //circle_diameter / 2.0
-        //);
-        //println!("pos: ({cx}, {cy})");
-
 
         // oh right, did i forget to say that we check slider end not at
         // slider end time?
@@ -283,22 +309,28 @@ impl Slider {
         // Count slider end as "points" so slider never have =0 points??
         let lenience_hack_time = (self.start_time + self.duration / 2.0)
                 .max(self.start_time + self.duration - 36.0);
-
+        
+        println!("[{}] holding_since: {:?}, in_radius_since: {:?}, is_tracking: {}", input.ts, result.holding_since, result.in_radius_since, result.is_tracking);
         if !result.lenience_passed {
             if input.ts >= lenience_hack_time {
-                //println!(
-                    //"PRE LENIENCE INFO: start_time: {}, duration: {}, end: {}, frame_ts: {}", 
-                    //self.start_time, self.duration, self.start_time + self.duration, input.ts
-                //);
+                println!(
+                    "[{}] PRE LENIENCE INFO: start_time: {}, duration: {}, end: {}, frame_ts: {}", 
+                    input.ts, self.start_time, self.duration, self.start_time + self.duration, input.ts
+                );
 
-                //println!(
-                    //"LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", 
-                    //lenience_hack_time, result.holding_since, result.in_radius_since
-                //);
+                println!(
+                    "[{}] LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", 
+                    input.ts, lenience_hack_time, result.holding_since, result.in_radius_since
+                );
+
                 match (result.holding_since, result.in_radius_since) {
                     (Some(holding_since), Some(in_radius_since)) => {
                         if holding_since <= lenience_hack_time
                         && in_radius_since <= lenience_hack_time {
+                            //println!(
+                                //"[{}] lenience passed, but lets see: current_hold: {:?}, inside: {:?}", 
+                                //input.ts, is_holding, is_inside_hit_circle
+                            //);
                             result.lenience_passed = true
                         }
                     },
@@ -313,7 +345,13 @@ impl Slider {
                 result.start_keys = 0;
             }
         }
-        
+
+        let is_inside_hit_circle = if result.is_tracking {
+            distance <= slider_radius * 2.4
+        } else {
+            is_inside_hit_circle
+        };
+
         // Try to evaluate holding time 
         // and cursor position only if
         // input time is actually inside slider duration
@@ -329,15 +367,16 @@ impl Slider {
             let is_holding = if result.start_keys < 1 {
                 //println!("[{}] keys_hold", input.ts);
                 //println!("[{}] {:?}", input.ts, input.keys);
+                //println!("[{}] using keys hold = {} | {:?} vs {:?}", input.ts, input.is_keys_hold(), input.keys, input.hold);
                 input.is_keys_hold()
             } else {
-                //println!("[{}] mouse_down_acceptance", input.ts);
+                //println!("[{}] using mouse_down_acceptance", input.ts);
                 mouse_down_acceptance
             };
 
             if !is_holding
             && result.holding_since.is_some() {
-                //println!("Reset holding at input ts {}, previous_holding_since: {:?}", input.ts, &result.holding_since);
+                //println!("[{}] Reset holding, previous_holding_since: {:?}", input.ts, &result.holding_since);
                 result.holding_since = None
             }
 
@@ -346,16 +385,36 @@ impl Slider {
                 result.holding_since = Some(input.ts)
             }
 
-            if !is_inside_circle
+            if !is_inside_hit_circle
             && result.in_radius_since.is_some() {
+                //println!("[{}] Reset in radius, previous_radius_since: {:?}", input.ts, &result.holding_since);
                 result.in_radius_since = None
             }
 
-            if is_inside_circle
+            if is_inside_hit_circle
             && result.in_radius_since.is_none() {
                 result.in_radius_since = Some(input.ts)
             }
+
+            if result.in_radius_since.is_some()
+            && result.holding_since.is_some() {
+                result.is_tracking = true;
+            } else {
+                result.is_tracking = false;
+            }
         }
+
+
+        
+        //println!("ts: {} | prg: {}", input.ts, &slider_progress);
+        //println!("holding_since: {:?} | in_radius_since: {:?}", &result.holding_since, &result.in_radius_since);
+        //println!(
+            //"is: {} | distance: {} | radious: {} | circle_diameter: {}", 
+            //&is_inside_circle, &distance, &slider_radius,
+           //circle_diameter / 2.0
+        //);
+        //println!("pos: ({cx}, {cy})");
+
 
         if result.state == SliderResultState::Middle {
             // Gets a passed checkpoint 
@@ -395,50 +454,6 @@ impl Slider {
                 result.state = SliderResultState::Passed;
                 return;
             }
-
-            /*
-            match (result.holding_since, result.in_radius_since) {
-                (None, None) => {
-                    if input.ts >= self.start_time + self.duration {
-                        result.state = SliderResultState::Passed;
-                    }
-                },
-                (None, Some(in_radius)) => {
-                    if in_radius <= self.start_time + self.duration {
-                        result.state = SliderResultState::Passed;
-                        result.end_passed = true;
-                    }
-                },
-                (Some(holding), None) => {
-                    if holding <= self.start_time + self.duration {
-                        result.state = SliderResultState::Passed;
-                        result.end_passed = true;
-                    }
-                },
-                (Some(holding), Some(in_radius)) => {
-                    if holding < self.start_time + self.duration 
-                    && in_radius < self.start_time + self.duration {
-                        result.state = SliderResultState::Passed;
-                        result.end_passed = true;
-                    }
-                },
-            };
-            if let (Some(holding_since), Some(in_radius_since)) = (
-                result.holding_since, result.in_radius_since
-            ) {
-                if (holding_since <= self.start_time + self.duration 
-                || in_radius_since <= self.start_time + self.duration)
-                && input.ts >= self.start_time + self.duration 
-                {
-                    result.state = SliderResultState::Passed;
-                    result.end_passed = true;
-                }
-            } else {
-                if input.ts > self.start_time + self.duration {
-                    result.state = SliderResultState::Passed;
-                }
-            }
-            */
         }
     }
 
