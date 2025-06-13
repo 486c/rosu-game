@@ -75,11 +75,13 @@ impl OsuProcessor {
 
                     },
                     crate::hit_objects::ObjectKind::Slider(slider) => {
-                        slider.update(
+                        if slider.update(
                             input,
                             hit_window,
                             circle_diameter
-                        );
+                        ).is_some() {
+                            continue 'input_loop;
+                        };
 
                         slider.update_post(
                             input,

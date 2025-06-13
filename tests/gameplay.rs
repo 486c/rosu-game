@@ -66,12 +66,62 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
             rosu::hit_objects::ObjectKind::Slider(slider) => {
                 proccessed_sliders += 1;
 
+
                 if let Some(hit_result) = &slider.hit_result {
                     println!("=============");
                     dbg!(slider.start_time);
                     dbg!(hit_result);
                     dbg!(&slider.checkpoints);
                     println!("=============");
+
+                    let max_possible_hits = 1 + slider.checkpoints.len() + 1;
+                    let mut actual_hits = 0;
+
+                    if hit_result.head.result != Hit::MISS {
+                        actual_hits += 1;
+                    }
+
+                    if hit_result.lenience_passed {
+                        actual_hits += 1;
+                    }
+
+                    actual_hits += hit_result.passed_checkpoints.len();
+
+                    let percent = actual_hits as f32 / max_possible_hits as f32;
+
+                    println!("percent: {:.4}", percent);
+
+                    let allow300 = true;
+                    let allow100 = true;
+
+                    sliders_with_result += 1;
+
+                    if percent >= 0.999 && allow300 {
+                        println!("9 | Slider at {}, result: x300", slider.start_time);
+                        out.x300 += 1;
+                    }
+                    else if percent >= 0.5 && allow100 {
+                        println!("9 | Slider at {}, result: x100", slider.start_time);
+                        out.x100 += 1;
+                    }
+                    else if percent > 0.0 {
+                        println!("9 | Slider at {}, result: x50", slider.start_time);
+                        out.x50 += 1;
+                    }
+                    else {
+                        println!("9 | Slider at {}, result: Miss", slider.start_time);
+                        //out.xmiss += 1;
+                    }
+
+                    return;
+                } else {
+                    panic!("uncovered slider");
+                }
+
+
+                /*
+
+                if let Some(hit_result) = &slider.hit_result {
 
                     if hit_result.state == SliderResultState::Passed {
                         // Case when slider was hit completly perfect
@@ -139,7 +189,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                         // Case when everything all ticks and slider end is passed
                         // but slider head is missed
                         if hit_result.end_passed
-                        && hit_result.passed_checkpoints.len() == slider.checkpoints.len()
+                        && if slider.checkpoints.len() > 0 { hit_result.passed_checkpoints.len() == slider.checkpoints.len() } else { false }
                         && hit_result.head.result == Hit::MISS {
                             println!("7 | Slider at {}, result: X100", slider.start_time);
                             out.x100 += 1;
@@ -147,7 +197,72 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                             return;
                         }
 
-                        panic!("Some uncovered slider state: {:#?}", hit_result);
+                        // Case when slider end is hit but head is missed
+                        // and slider doesnt contain any checkpoints
+                        if hit_result.end_passed
+                        && slider.checkpoints.is_empty()
+                        && hit_result.head.result == Hit::MISS {
+                            // start_circle + checkpoints (ticks + repeats) + endcircle
+                            let max_possible_hits = 1 + slider.checkpoints.len() + 1;
+                            let mut actual_hits = 0;
+
+                            if hit_result.head.result != Hit::MISS {
+                                actual_hits += 1;
+                            }
+
+                            if hit_result.lenience_passed {
+                                actual_hits += 1;
+                            }
+
+                            actual_hits += hit_result.passed_checkpoints.len();
+
+                            let percent = actual_hits as f32 / max_possible_hits as f32;
+
+                            let allow300 = true;
+                            let allow100 = true;
+
+                            sliders_with_result += 1;
+
+                            if percent >= 0.999 && allow300 {
+                                println!("9 | Slider at {}, result: x300", slider.start_time);
+                                out.x300 += 1;
+                            }
+                            else if percent >= 0.5 && allow100 {
+                                println!("9 | Slider at {}, result: x100", slider.start_time);
+                                out.x100 += 1;
+                            }
+                            else if percent > 0.0 {
+                                println!("9 | Slider at {}, result: x50", slider.start_time);
+                                out.x50 += 1;
+                            }
+                            else {
+                                println!("9 | Slider at {}, result: Miss", slider.start_time);
+                            }
+
+                            return;
+                        }
+
+                        // Case when everything is missed
+                        if !hit_result.end_passed
+                        && (
+                            hit_result.passed_checkpoints.len() != slider.checkpoints.len() 
+                            || hit_result.passed_checkpoints.is_empty()
+                        )
+                        && hit_result.head.result == Hit::MISS {
+                            println!("8 | Slider at {}, result: Miss", slider.start_time);
+                            sliders_with_result += 1;
+                            return;
+                        }
+
+                        if hit_result.end_passed
+                        && hit_result.head.result == Hit::X100 {
+                            println!("10 | Slider at {}, result: x100", slider.start_time);
+                            sliders_with_result += 1;
+                            out.x100 += 1;
+                            return;
+                        }
+
+                        panic!("Some uncovered slider state: {:#?} \n\n {:#?}", hit_result, slider.checkpoints);
                     }                
                 } else {
                     panic!(
@@ -156,6 +271,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                         slider.hit_result
                     );
                 }
+            */
             },
         }
     });
@@ -164,6 +280,18 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
     println!("Processed Circles: {proccessed_circles}");
     println!("Sliders with result: {sliders_with_result}");
     println!("Circles with result: {circles_with_result}");
+
+    beatmap_objects.iter().for_each(|x| {
+        match &x.kind {
+            rosu::hit_objects::ObjectKind::Circle(circle) => {
+                if circle.hit_result.is_none() {
+                    println!("Circle without result at {}", circle.start_time);
+                }
+            },
+            rosu::hit_objects::ObjectKind::Slider(slider) => return,
+        }
+    });
+
     assert_eq!(out, expected, "Left - Result from processor, Right - expected");
 }
 
@@ -600,6 +728,19 @@ fn test_slider_with_ticks_and_reverse(replay: &str, beatmap: &str, expected: Exp
         xmiss: 0,
     };
     "getta banban hard diff, 236 x300 6 x100 x50 an A"
+)]
+#[case(
+    "gin_no_kaze.osr", 
+    "gin_no_kaze.osu",
+    Expected {
+        x300: 332,
+        x100: 21,
+        x50: 1,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "gin no kaze, an A"
 )]
 fn test_actual_ranked_map(replay: &str, beatmap: &str, expected: Expected) {
     let base = get_gameplay_tests_path();
