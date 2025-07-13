@@ -48,7 +48,6 @@ pub struct SliderResult {
     pub state: SliderResultState,
     pub head: CircleHitResult,
     pub passed_checkpoints: Vec<usize>,
-    pub end_passed: bool,
     pub lenience_passed: bool,
     pub holding_since: Option<f64>,
     pub in_radius_since: Option<f64>,
@@ -214,7 +213,6 @@ impl Slider {
                 SliderResult {
                     head,
                     passed_checkpoints: vec![],
-                    end_passed: false,
                     state: SliderResultState::Middle,
                     holding_since: Some(input.ts),
                     in_radius_since: if is_inside_slider_ball { Some(input.ts) } else { None },
@@ -283,7 +281,6 @@ impl Slider {
                                 result: Hit::MISS,
                             },
                             passed_checkpoints: vec![],
-                            end_passed: false,
                             state: SliderResultState::Middle,
                             holding_since: if is_holding { Some(input.ts) } else { None },
                             in_radius_since: if is_in_radius { Some(input.ts) } else { None },
@@ -337,7 +334,6 @@ impl Slider {
                                 //input.ts, is_holding, is_inside_hit_circle
                             //);
                             result.lenience_passed = true;
-                            result.end_passed = true;
                         }
                     },
                     _ => {}
