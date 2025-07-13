@@ -49,6 +49,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                 proccessed_circles += 1;
 
                 if let Some(result) = &circle.hit_result {
+
                     if result.result != Hit::X300 {
                         println!("Circle at {}, result: {:?} at {}", circle.start_time, result.result, result.at);
                     }
@@ -68,11 +69,27 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
 
 
                 if let Some(hit_result) = &slider.hit_result {
+
+                    match hit_result.state {
+                        SliderResultState::Passed(hit) => {
+                            sliders_with_result += 1;
+
+                            match hit {
+                                rosu::hit_objects::Hit::X300 => out.x300 += 1,
+                                rosu::hit_objects::Hit::X100 => out.x100 += 1,
+                                rosu::hit_objects::Hit::X50 => out.x50 += 1,
+                                rosu::hit_objects::Hit::MISS => {}, //out.xmiss += 1,
+                            }
+                        },
+                        _ => { panic!("super bad") }
+                    }
                     //println!("=============");
                     //dbg!(slider.start_time);
                     //dbg!(hit_result);
                     //dbg!(&slider.checkpoints);
                     //println!("=============");
+
+                    /*
 
                     let max_possible_hits = 1 + slider.checkpoints.len() + 1;
                     let mut actual_hits = 0;
@@ -112,9 +129,11 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                     }
 
                     return;
+                    */
                 } else {
                     panic!("uncovered slider");
                 }
+
             },
         }
     });

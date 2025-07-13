@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cgmath::Vector2;
 use rosu_map::{section::hit_objects::Curve, util::Pos};
 
-use crate::{osu_input::{KeyboardState, OsuInput}, texture::Texture};
+use crate::{osu_input::OsuInput, texture::Texture};
 
 use super::{circle::CircleHitResult, hit_window::HitWindow, Hit, Rectangle, SLIDER_FADEOUT_TIME};
 
@@ -26,7 +26,6 @@ pub struct SliderRender {
     pub quad: Arc<wgpu::Buffer>,
 }
 
-
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
 pub enum SliderResultState {
@@ -36,11 +35,10 @@ pub enum SliderResultState {
     /// Hit a slider head, looking through all
     /// checkpoints
     Middle,
-    /// Hit a slider head, passed all checkpoints
-    /// checking a slider end
-    End,
-    /// All processing on slider is done
-    Passed
+    /// All processing on slider is done.
+    /// Triggered either by time >= start_time + duration
+    /// or by passing lanience check
+    Passed(Hit)
 }
 
 #[derive(Debug)]
@@ -53,6 +51,41 @@ pub struct SliderResult {
     pub in_radius_since: Option<f64>,
     pub is_tracking: bool,
     pub start_keys: u8,
+}
+
+impl SliderResult {
+    // TODO: That's a hell of borrow checker escapism, think a bit more
+    // during next refactor :D
+    #[inline]
+    pub fn calculate_hit_result(&self, total_checkpoints: usize) -> Option<Hit> {
+        let max_possible_hits = 1 + total_checkpoints + 1;
+        let mut actual_hits = 0;
+
+        if self.head.result != Hit::MISS {
+            actual_hits += 1;
+        }
+
+        if self.lenience_passed {
+            actual_hits += 1;
+        }
+
+        actual_hits += self.passed_checkpoints.len();
+
+        let percent = actual_hits as f32 / max_possible_hits as f32;
+
+        if percent >= 0.999 {
+            Some(Hit::X300)
+        }
+        else if percent >= 0.5 {
+            Some(Hit::X100)
+        }
+        else if percent > 0.0 {
+            Some(Hit::X50)
+        }
+        else {
+            Some(Hit::MISS)
+        }
+    }
 }
 
 pub struct Slider {
@@ -239,8 +272,9 @@ impl Slider {
         input: &OsuInput,
         hit_window: &HitWindow,
         circle_diameter: f32
-    ) {
+    ) -> Option<Hit> {
         let slider_radius = circle_diameter as f64 / 2.0;
+        let total_checkpoints = self.checkpoints.len();
 
         // Position at slider for current input
         let slider_progress = self.get_slider_progress(input.ts);
@@ -297,12 +331,15 @@ impl Slider {
                     );
                 }
 
-                return;
+                return None;
             },
         };
 
-        if result.state == SliderResultState::Passed {
-            return
+        match result.state {
+            SliderResultState::Passed(..) => {
+                return None  // TODO: Return AlreadyProcessed or something like this idk
+            },
+            _ => {},
         }
 
         // oh right, did i forget to say that we check slider end not at
@@ -334,6 +371,12 @@ impl Slider {
                                 //input.ts, is_holding, is_inside_hit_circle
                             //);
                             result.lenience_passed = true;
+                            let Some(final_result) = result.calculate_hit_result(total_checkpoints) else {
+                                panic!("Trying to set Passed slider state without final hit result");
+                            };
+
+                            result.state = SliderResultState::Passed(final_result);
+                            return Some(final_result);
                         }
                     },
                     _ => {}
@@ -417,7 +460,6 @@ impl Slider {
         //);
         //println!("pos: ({cx}, {cy})");
 
-
         if result.state == SliderResultState::Middle {
             // Gets a passed checkpoint 
             let closest_checkpoint = self.checkpoints.iter().enumerate().rev().find(|(i, x)| {
@@ -431,22 +473,22 @@ impl Slider {
                     }
                 }
 
-                if (i + 1) == self.checkpoints.len() {
-                    result.state = SliderResultState::End
-                }
-            } else {
-                if self.checkpoints.is_empty() {
-                    result.state = SliderResultState::End
-                }
             }
         }
 
-        if result.state == SliderResultState::End {
-            if input.ts < self.start_time + self.duration {
-                return;
-            }
+        if input.ts >= self.start_time + self.duration {
+            let Some(final_result) = result.calculate_hit_result(total_checkpoints) else {
+                panic!("Trying to set Passed slider state without final hit result");
+            };
+
+            result.state = SliderResultState::Passed(final_result);
+            return Some(final_result);
         }
+
+        None
     }
+    
+
 
     /// (x, y, width, height)
     pub fn bounding_box(&self, radius: f32) -> Rectangle {

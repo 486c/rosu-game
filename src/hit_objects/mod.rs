@@ -20,6 +20,7 @@ pub const REVERSE_ARROW_FADEOUT: f64 = 200.0;
 pub const REVERSE_ARROW_FADEIN: f64 = 300.0;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Hit {
     X300,
     X100,
