@@ -142,7 +142,12 @@ impl Slider {
             && time < self.start_time + self.duration + SLIDER_FADEOUT_TIME
     }
     
-    /// Check first slider head hit
+    /// Check slider head hit
+    /// 
+    /// Return values
+    /// - `Some()` - there's was a successfull hit result
+    /// - `None` - there's no successfull hit result or circle was already
+    /// processed
     pub fn update(
         &mut self, 
         input: &OsuInput,
@@ -310,18 +315,18 @@ impl Slider {
         let lenience_hack_time = (self.start_time + self.duration / 2.0)
                 .max(self.start_time + self.duration - 36.0);
         
-        println!("[{}] holding_since: {:?}, in_radius_since: {:?}, is_tracking: {}", input.ts, result.holding_since, result.in_radius_since, result.is_tracking);
+        //println!("[{}] holding_since: {:?}, in_radius_since: {:?}, is_tracking: {}", input.ts, result.holding_since, result.in_radius_since, result.is_tracking);
         if !result.lenience_passed {
             if input.ts >= lenience_hack_time {
-                println!(
-                    "[{}] PRE LENIENCE INFO: start_time: {}, duration: {}, end: {}, frame_ts: {}", 
-                    input.ts, self.start_time, self.duration, self.start_time + self.duration, input.ts
-                );
+                //println!(
+                    //"[{}] PRE LENIENCE INFO: start_time: {}, duration: {}, end: {}, frame_ts: {}", 
+                    //input.ts, self.start_time, self.duration, self.start_time + self.duration, input.ts
+                //);
 
-                println!(
-                    "[{}] LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", 
-                    input.ts, lenience_hack_time, result.holding_since, result.in_radius_since
-                );
+                //println!(
+                    //"[{}] LENIENCE CHECK: {} | hold: {:?} | rad: {:?}", 
+                    //input.ts, lenience_hack_time, result.holding_since, result.in_radius_since
+                //);
 
                 match (result.holding_since, result.in_radius_since) {
                     (Some(holding_since), Some(in_radius_since)) => {
@@ -331,7 +336,8 @@ impl Slider {
                                 //"[{}] lenience passed, but lets see: current_hold: {:?}, inside: {:?}", 
                                 //input.ts, is_holding, is_inside_hit_circle
                             //);
-                            result.lenience_passed = true
+                            result.lenience_passed = true;
+                            result.end_passed = true;
                         }
                     },
                     _ => {}
@@ -441,17 +447,6 @@ impl Slider {
 
         if result.state == SliderResultState::End {
             if input.ts < self.start_time + self.duration {
-                return;
-            }
-        
-            // TODO temp for testing
-            if result.lenience_passed {
-                result.state = SliderResultState::Passed;
-                result.end_passed = true;
-                return;
-            } else {
-                result.end_passed = false;
-                result.state = SliderResultState::Passed;
                 return;
             }
         }

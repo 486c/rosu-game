@@ -68,11 +68,11 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
 
 
                 if let Some(hit_result) = &slider.hit_result {
-                    println!("=============");
-                    dbg!(slider.start_time);
-                    dbg!(hit_result);
-                    dbg!(&slider.checkpoints);
-                    println!("=============");
+                    //println!("=============");
+                    //dbg!(slider.start_time);
+                    //dbg!(hit_result);
+                    //dbg!(&slider.checkpoints);
+                    //println!("=============");
 
                     let max_possible_hits = 1 + slider.checkpoints.len() + 1;
                     let mut actual_hits = 0;
@@ -88,8 +88,6 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                     actual_hits += hit_result.passed_checkpoints.len();
 
                     let percent = actual_hits as f32 / max_possible_hits as f32;
-
-                    println!("percent: {:.4}", percent);
 
                     let allow300 = true;
                     let allow100 = true;
@@ -117,161 +115,6 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                 } else {
                     panic!("uncovered slider");
                 }
-
-
-                /*
-
-                if let Some(hit_result) = &slider.hit_result {
-
-                    if hit_result.state == SliderResultState::Passed {
-                        // Case when slider was hit completly perfect
-                        if hit_result.end_passed && hit_result.passed_checkpoints.len() == slider.checkpoints.len() 
-                        && hit_result.head.result == Hit::X300 {
-                            //println!("1 | Slider at {}, result: X300", slider.start_time);
-                            out.x300 += 1;
-                            sliders_with_result += 1;
-                            return;
-                        }
-
-                        // Case when only slider head was hit
-                        if !hit_result.end_passed && hit_result.passed_checkpoints.is_empty() && !slider.checkpoints.is_empty()
-                        && hit_result.head.result == Hit::X300 {
-                            println!("2 | Slider at {}, result: X50", slider.start_time);
-                            sliders_with_result += 1;
-                            out.x50 += 1;
-                            return;
-                        }
-
-                        // Case when slider head and atleast
-                        // one slider tick was hit
-                        if !hit_result.end_passed 
-                        && !hit_result.passed_checkpoints.is_empty() 
-                        && hit_result.passed_checkpoints.len() != slider.checkpoints.len() 
-                        && hit_result.head.result == Hit::X300 {
-                            println!("3 | Slider at {}, result: X100", slider.start_time);
-                            out.x100 += 1;
-                            sliders_with_result += 1;
-                            return;
-                        }
-
-                        // Case when slider end was hit but some of the
-                        // ticks is not
-                        if hit_result.end_passed 
-                        && hit_result.passed_checkpoints.len() != slider.checkpoints.len() 
-                        && hit_result.head.result == Hit::X300 {
-                            println!("4 | Slider at {}, result: X100", slider.start_time);
-                            out.x100 += 1;
-                            sliders_with_result += 1;
-                            return;
-                        }
-                        
-                        // Case when slider head was hit but end is not passed
-                        // and some of the ticks was passed
-                        if !hit_result.end_passed 
-                        && !hit_result.passed_checkpoints.is_empty() 
-                        && hit_result.head.result == Hit::X300 {
-                            println!("5 | Slider at {}, result: X100, end at {}", slider.start_time, slider.end_time());
-                            out.x100 += 1;
-                            sliders_with_result += 1;
-                            return;
-                        }
-                        
-                        // Case when slider head was hit end is not passed, but all ticks were passed
-                        if !hit_result.end_passed
-                        && hit_result.passed_checkpoints.len() == slider.checkpoints.len() 
-                        && hit_result.head.result == Hit::X300 {
-                            println!("6 | Slider at {}, result: X100", slider.start_time);
-                            out.x100 += 1;
-                            sliders_with_result += 1;
-                            return;
-                        }
-
-                        // Case when everything all ticks and slider end is passed
-                        // but slider head is missed
-                        if hit_result.end_passed
-                        && if slider.checkpoints.len() > 0 { hit_result.passed_checkpoints.len() == slider.checkpoints.len() } else { false }
-                        && hit_result.head.result == Hit::MISS {
-                            println!("7 | Slider at {}, result: X100", slider.start_time);
-                            out.x100 += 1;
-                            sliders_with_result += 1;
-                            return;
-                        }
-
-                        // Case when slider end is hit but head is missed
-                        // and slider doesnt contain any checkpoints
-                        if hit_result.end_passed
-                        && slider.checkpoints.is_empty()
-                        && hit_result.head.result == Hit::MISS {
-                            // start_circle + checkpoints (ticks + repeats) + endcircle
-                            let max_possible_hits = 1 + slider.checkpoints.len() + 1;
-                            let mut actual_hits = 0;
-
-                            if hit_result.head.result != Hit::MISS {
-                                actual_hits += 1;
-                            }
-
-                            if hit_result.lenience_passed {
-                                actual_hits += 1;
-                            }
-
-                            actual_hits += hit_result.passed_checkpoints.len();
-
-                            let percent = actual_hits as f32 / max_possible_hits as f32;
-
-                            let allow300 = true;
-                            let allow100 = true;
-
-                            sliders_with_result += 1;
-
-                            if percent >= 0.999 && allow300 {
-                                println!("9 | Slider at {}, result: x300", slider.start_time);
-                                out.x300 += 1;
-                            }
-                            else if percent >= 0.5 && allow100 {
-                                println!("9 | Slider at {}, result: x100", slider.start_time);
-                                out.x100 += 1;
-                            }
-                            else if percent > 0.0 {
-                                println!("9 | Slider at {}, result: x50", slider.start_time);
-                                out.x50 += 1;
-                            }
-                            else {
-                                println!("9 | Slider at {}, result: Miss", slider.start_time);
-                            }
-
-                            return;
-                        }
-
-                        // Case when everything is missed
-                        if !hit_result.end_passed
-                        && (
-                            hit_result.passed_checkpoints.len() != slider.checkpoints.len() 
-                            || hit_result.passed_checkpoints.is_empty()
-                        )
-                        && hit_result.head.result == Hit::MISS {
-                            println!("8 | Slider at {}, result: Miss", slider.start_time);
-                            sliders_with_result += 1;
-                            return;
-                        }
-
-                        if hit_result.end_passed
-                        && hit_result.head.result == Hit::X100 {
-                            println!("10 | Slider at {}, result: x100", slider.start_time);
-                            sliders_with_result += 1;
-                            out.x100 += 1;
-                            return;
-                        }
-
-                        panic!("Some uncovered slider state: {:#?} \n\n {:#?}", hit_result, slider.checkpoints);
-                    }                
-                } else {
-                    panic!(
-                        "Slider {} left unprocessed for some reason: {:#?}", 
-                        slider.start_time,
-                        slider.hit_result
-                    );
-                }
-            */
             },
         }
     });
