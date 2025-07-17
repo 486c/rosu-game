@@ -1,4 +1,4 @@
-use egui::{Slider, Ui};
+use egui::{Slider, TextStyle, Ui};
 
 use crate::config::Config;
 
@@ -22,9 +22,11 @@ impl SettingsScreen {
             return
         }
 
-        let width = 512.0;
+        // TODO: calculate dynamicly instead of hardcoded value
+        let width = 512.0; 
+
         // TODO: Animation doesn't work
-        let offset = ctx.animate_bool_with_time_and_easing(
+        let _offset = ctx.animate_bool_with_time_and_easing(
             egui::Id::new("settings_expand_animation"),
             !self.is_open,
             0.125,
@@ -44,6 +46,7 @@ impl SettingsScreen {
             .frame(
                 egui::Frame::NONE
                 .fill(egui::Color32::from_rgba_unmultiplied(4, 4, 4, 253))
+                //.outer_margin(egui::epaint::Marginf { left: -offset, ..Default::default() }),
             )
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
@@ -56,8 +59,9 @@ impl SettingsScreen {
     
     /// Shows a UI that can be placed in any container
     pub fn show_ui(&self, ui: &mut Ui, config: &mut Config) {
+        let heading_font = egui::FontId::new(20.0, egui::FontFamily::Proportional);
 
-        ui.collapsing("Renderer", |ui| {
+        ui.collapsing(egui::RichText::new("Renderer").font(heading_font), |ui| {
             ui.heading("Slider");
 
             ui.checkbox(&mut config.store_slider_textures, "Store slider textures");
