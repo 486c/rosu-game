@@ -384,10 +384,9 @@ impl<'s> OsuState<'s> {
         let _span = tracy_client::span!("osu_state::update");
         self.cursor_renderer.update();
 
-        //tracing::info!("{:.?}", self.sink.get_pos().as_secs_f64() * 1000.0 - self.osu_clock.get_time());
-        
         // Recv all events
         let event = self.event_receiver.try_recv();
+
         match event {
             Ok(event) => {
                 match event {
@@ -488,7 +487,8 @@ impl<'s> OsuState<'s> {
                 let egui_output = self.song_select.render(
                     egui_input, 
                     self.egui.state.egui_ctx(),
-                    &view
+                    &view,
+                    &mut self.config
                 );
                 self.render_egui(&view)?;
                 self.egui.output = Some(egui_output)

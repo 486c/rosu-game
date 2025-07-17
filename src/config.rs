@@ -7,6 +7,13 @@ pub struct SliderConfig {
     pub body_alpha_multiplier: f32,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct JudgementsConfig {
+    pub fade_in_ms: f32,
+    pub stay_on_screen_ms: f32,
+    pub fade_out_ms: f32,
+}
+
 #[derive(Debug)]
 pub struct Config {
     /// Toggle storing slider textures in the gpu for future reuse
@@ -15,6 +22,7 @@ pub struct Config {
     /// for drawing hit objects, useful for debugging
     pub debug_use_judgements_as_colors: bool,
     pub slider: SliderConfig,
+    pub judgements: JudgementsConfig,
 }
 
 impl Default for Config {
@@ -28,6 +36,11 @@ impl Default for Config {
                 body_alpha_multiplier: 0.65,
             },
             debug_use_judgements_as_colors: false,
+            judgements: JudgementsConfig {
+                fade_in_ms: 100.0,
+                stay_on_screen_ms: 100.0,
+                fade_out_ms: 100.0,
+            },
         }
     }
 }

@@ -12,7 +12,7 @@ use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
 use std::num::NonZero;
 
-use crate::{buffer_write_or_init, graphics::Graphics,osu_db::{BeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, song_importer_ui::SongImporter, texture::Texture};
+use crate::{buffer_write_or_init, config::Config, graphics::Graphics, osu_db::{BeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, screen::settings::SettingsScreen, song_importer_ui::SongImporter, texture::Texture};
 
 const CARD_INNER_MARGIN: Margin = Margin {
     left: 5,
@@ -149,6 +149,7 @@ pub enum SongSelectionEvents {
     },
     StartBeatmap(BeatmapEntry),
     ImportSongsDirectory(SongsImportJob),
+    OpenSettings,
 }
 
 pub struct SongSelectionState<'ss> {
@@ -182,6 +183,9 @@ pub struct SongSelectionState<'ss> {
     quad_test_instance_data: Vec<QuadInstance>,
 
     song_importer: SongImporter,
+    settings: SettingsScreen,
+
+
 }
 
 impl<'ss> SongSelectionState<'ss> {
@@ -210,7 +214,11 @@ impl<'ss> SongSelectionState<'ss> {
             quad_renderer,
             quad_test_buffer,
             quad_test_instance_data,
+            settings: SettingsScreen::new(),
         }
+    }
+
+    pub fn open_settings(&self) {
     }
     
     // Spawns a thread to parse a beatmap
@@ -336,6 +344,10 @@ impl<'ss> SongSelectionState<'ss> {
         if key_code == KeyCode::ArrowUp {
             self.need_scroll_to = Some(self.current - 1);
         }
+
+        if key_code == KeyCode::KeyO {
+            let _ = self.inner_tx.send(SongSelectionEvents::OpenSettings);
+        }
     }
     
     fn resize_background_vertex(&self, width: f32, height: f32) {
@@ -442,6 +454,9 @@ impl<'ss> SongSelectionState<'ss> {
 
                         self.current_beatmap = Some(current_beatmap);
                     },
+                    SongSelectionEvents::OpenSettings => {
+                        self.settings.toggle();
+                    }
                     SongSelectionEvents::StartBeatmap(entry) => {
                         let _span = tracy_client::span!("osu_song_select_state::update::event::start_beatmap");
                         self.state_tx.send(OsuStateEvent::StartBeatmap(entry))
@@ -523,13 +538,21 @@ impl<'ss> SongSelectionState<'ss> {
 
     }
 
-    pub fn render(&mut self, input: egui::RawInput, ctx: &egui::Context, view: &TextureView) -> egui::FullOutput {
+    pub fn render(
+        &mut self, 
+        input: egui::RawInput, 
+        ctx: &egui::Context, 
+        view: &TextureView,
+        config: &mut Config
+    ) -> egui::FullOutput {
         self.render_background(view);
 
         ctx.begin_pass(input);
 
         self.song_importer.render(ctx);
-
+        self.settings.render(ctx, config);
+        
+        // TODO: God THIS IS SO TERRIBLE LMAO
         egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |ui| {
             StripBuilder::new(ui)
                 .size(Size::relative(0.6))
