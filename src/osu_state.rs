@@ -185,7 +185,11 @@ impl<'s> OsuState<'s> {
         self.song_select.on_resize(new_size);
     }
 
-    pub fn on_pressed_down(&mut self, key_code: KeyCode) {
+    pub fn on_pressed_down(
+        &mut self, 
+        key_code: KeyCode, 
+        is_cntrl_pressed: bool
+    ) {
         let _span = tracy_client::span!("osu_state::on_pressed_down");
         match self.current_state {
             OsuStates::Playing => {
@@ -219,7 +223,7 @@ impl<'s> OsuState<'s> {
                 }
             },
             OsuStates::SongSelection => {
-                self.song_select.on_pressed_down(key_code);
+                self.song_select.on_pressed_down(key_code, is_cntrl_pressed);
             },
         }
     }

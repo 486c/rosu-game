@@ -316,7 +316,10 @@ impl<'ss> SongSelectionState<'ss> {
         );
     }
 
-    pub fn on_pressed_down(&mut self, key_code: KeyCode) {
+    pub fn on_pressed_down(&mut self, 
+        key_code: KeyCode, 
+        is_cntrl_pressed: bool,
+    ) {
         let _span = tracy_client::span!("osu_song_select_state::on_pressed_down");
 
         if key_code == KeyCode::Enter {
@@ -345,7 +348,7 @@ impl<'ss> SongSelectionState<'ss> {
             self.need_scroll_to = Some(self.current - 1);
         }
 
-        if key_code == KeyCode::KeyO {
+        if key_code == KeyCode::KeyO && is_cntrl_pressed {
             let _ = self.inner_tx.send(SongSelectionEvents::OpenSettings);
         }
     }

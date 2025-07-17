@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rodio::{OutputStream, Sink};
 use rosu::{graphics::Graphics, osu_state::OsuState};
-use winit::{application::ApplicationHandler, event_loop::{ControlFlow, EventLoop}, window::Window};
+use winit::{application::ApplicationHandler, event_loop::{ControlFlow, EventLoop}, keyboard::KeyCode, window::Window};
 
 pub struct OsuApp<'a> {
     window: Option<Arc<Window>>,
@@ -10,6 +10,8 @@ pub struct OsuApp<'a> {
     // TODO keeping it alive this way, until some kind of AudioManager is implemented
     // if this dropped any calls to sink gonna result in whole application lock
     audio_steam: Option<OutputStream>,
+
+    is_cntrl_pressed: bool,
 }
 
 impl<'a> ApplicationHandler for OsuApp<'a> {
@@ -19,12 +21,10 @@ impl<'a> ApplicationHandler for OsuApp<'a> {
 
         self.window = Some(window_orig.clone());
 
-        
         let window = window_orig.clone();
         let graphics = pollster::block_on(async move {
             Graphics::new(window.clone()).await
         });
-
 
         let (stream, stream_handle) = OutputStream::try_default().unwrap();
         let sink = Sink::try_new(&stream_handle).unwrap();
@@ -60,9 +60,17 @@ impl<'a> ApplicationHandler for OsuApp<'a> {
                         winit::keyboard::PhysicalKey::Code(key_code) => {
                             match event.state {
                                 winit::event::ElementState::Pressed => {
-                                    state.on_pressed_down(key_code);
+                                    if key_code == KeyCode::ControlLeft {
+                                        self.is_cntrl_pressed = true;
+                                    }
+
+                                    state.on_pressed_down(key_code, self.is_cntrl_pressed);
                                 },
                                 winit::event::ElementState::Released => {
+                                    if key_code == KeyCode::ControlLeft {
+                                        self.is_cntrl_pressed = false;
+                                    }
+
                                     state.on_pressed_release(key_code);
                                 },
                             }
@@ -130,6 +138,7 @@ fn main() {
         window: None,
         state: None,
         audio_steam: None,
+        is_cntrl_pressed: false,
     };
 
     event_loop.run_app(&mut app).unwrap();
