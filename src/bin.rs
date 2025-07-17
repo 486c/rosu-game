@@ -101,14 +101,12 @@ impl<'a> ApplicationHandler for OsuApp<'a> {
                 if let Some(window) = &mut self.window {
                     window.request_redraw();
                 }
-
-
             },
             _ => {},
         }
 
         if let (Some(state), Some(window)) = (&mut self.state, &self.window) {
-            state.egui.on_window_event(&event, &window);
+            let _ = state.egui.on_window_event(&event, &window);
         };
     }
 

@@ -34,6 +34,8 @@ impl Circle {
         hit_window: &HitWindow,
         circle_diameter: f32,
     ) -> bool {
+        let _span = tracy_client::span!("hit_objects::circle::update");
+
         if self.hit_result.is_some() {
             return false;
         }

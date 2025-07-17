@@ -32,7 +32,8 @@ impl OsuProcessor {
     }
 
     pub fn store_cursor_moved(&mut self, ts: f64, pos: Vector2<f64>) {
-        /*
+        let _span = tracy_client::span!("processor::on_pressed_down");
+
         self.set_cursor_pos(pos);
         let last = self.replay_log.last_input();
 
@@ -41,15 +42,16 @@ impl OsuProcessor {
                 ts,
                 pos,
                 keys: last.keys,
+                hold: last.hold,
             });
         } else {
             self.store_input(OsuInput {
                 ts,
                 pos,
                 keys: KeyboardState::empty(),
+                hold: KeyboardState::empty(),
             });
         }
-        */
     }
     
     /// Processes all inputs frame by frame
@@ -59,6 +61,8 @@ impl OsuProcessor {
         hit_window: &HitWindow,
         circle_diameter: f32,
     ) {
+        let _span = tracy_client::span!("processor::process_all");
+
         'input_loop: for input in &self.queue {
             for object in objects.iter_mut() {
                 match &mut object.kind {
@@ -94,6 +98,8 @@ impl OsuProcessor {
                 }
             }
         }
+
+        self.queue.clear();
     }
     
     pub fn process(&mut self, _ts: f64, _objects: &mut [Object]) {
@@ -103,13 +109,15 @@ impl OsuProcessor {
     /// This function treats KeyboardState with reversed meaning
     /// `true` means that particular key is released
     pub fn store_keyboard_released(&mut self, ts: f64, state: KeyboardState) {
-        /*
+        let _span = tracy_client::span!("processor::store_keyboard_released");
+
         let last = self.replay_log.last_input();
 
         if let Some(last) = last {
             let last = last.keys;
-
-            if !last.is_key_hit() {
+            
+            // Nothing to release
+            if !last.is_keys_hit() {
                 return;
             }
 
@@ -117,21 +125,22 @@ impl OsuProcessor {
                 ts,
                 pos: self.last_cursor_pos,
                 keys: KeyboardState {
-                    k1: if last.k1 && state.k1 { false } else { last.k1 },
-                    k2: if last.k2 && state.k2 { false } else { last.k2 },
-                    m1: if last.m1 && state.m1 { false } else { last.m1 },
-                    m2: if last.m2 && state.m2 { false } else { last.m2 },
+                    k1: state.k1,
+                    k2: state.k2,
+                },
+                hold: KeyboardState {
+                    k1: !(last.k1 && state.k1),
+                    k2: !(last.k2 && state.k2),
                 },
             });
         } else {
             tracing::warn!("Trying to store release without previous input")
         }
-        */
-
     }
     
     pub fn store_keyboard_pressed(&mut self, ts: f64, state: KeyboardState) {
-        /*
+        let _span = tracy_client::span!("processor::store_keyboard_pressed");
+
         let last = self.replay_log.last_input();
 
         if let Some(last) = last {
@@ -141,10 +150,12 @@ impl OsuProcessor {
                 ts,
                 pos: self.last_cursor_pos,
                 keys: KeyboardState {
-                    k1: if last.k1 && !state.k1 { last.k1 } else { state.k1 },
-                    k2: if last.k2 && !state.k2 { last.k2 } else { state.k2 },
-                    m1: if last.m1 && !state.m1 { last.m1 } else { state.m1 },
-                    m2: if last.m2 && !state.m2 { last.m2 } else { state.m2 },
+                    k1: state.k1,
+                    k2: state.k2,
+                },
+                hold: KeyboardState {
+                    k1: last.k1 && state.k1,
+                    k2: last.k2 && state.k2,
                 },
             });
         } else {
@@ -152,12 +163,16 @@ impl OsuProcessor {
                 ts,
                 pos: self.last_cursor_pos,
                 keys: state,
+                hold: KeyboardState {
+                    k1: false,
+                    k2: false,
+                },
             });
         }
-        */
     }
 
     pub fn store_input(&mut self, input: OsuInput) {
+        let _span = tracy_client::span!("processor::store_input");
         self.queue.push(input.clone());
         self.replay_log.store_input(input);
     }

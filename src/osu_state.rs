@@ -347,9 +347,7 @@ impl<'s> OsuState<'s> {
         let _span = tracy_client::span!("osu_state::prepare_objects_for_renderer");
 
         for (i, obj) in self.hit_objects.iter_mut().enumerate().rev() {
-            if obj.is_judgements_visible(time, self.preempt) {
-                self.objects_judgments_render_queue.push(i);
-            };
+            self.objects_judgments_render_queue.push(i);
 
             if !obj.is_visible(time, self.preempt, &self.current_hit_window) {
                 continue;
@@ -365,7 +363,12 @@ impl<'s> OsuState<'s> {
             self.objects_render_queue.push(i);
         }
 
-        self.osu_renderer.prepare_judgements(time, &self.objects_judgments_render_queue, &self.hit_objects);
+        self.osu_renderer.prepare_judgements(
+            time, 
+            &self.objects_judgments_render_queue, 
+            &self.hit_objects,
+            &self.config
+        );
 
         self.osu_renderer.prepare_objects(
             time, self.preempt, self.fadein,
@@ -485,7 +488,11 @@ impl<'s> OsuState<'s> {
                 //self.render_playing(&view);
 
                 self.osu_clock.update();
-                //self.process_inputs(self.osu_clock.get_time());
+                self.input_processor.process_all(
+                    &mut self.hit_objects,
+                    &self.current_hit_window,
+                    self.current_hit_circle_diameter
+                );
             },
             OsuStates::SongSelection => {
                 let egui_output = self.song_select.render(

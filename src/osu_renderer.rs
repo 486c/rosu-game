@@ -735,15 +735,22 @@ impl<'or> OsuRenderer<'or> {
             .write_buffer(&self.slider_settings_buffer, 0, bytemuck::bytes_of(&config.slider));
     }
 
-    pub fn prepare_judgements(&mut self, time: f64, queue: &[usize], objects: &[Object]) {
+    pub fn prepare_judgements(
+        &mut self, 
+        time: f64, 
+        queue: &[usize], 
+        objects: &[Object],
+        config: &Config,
+    ) {
         let _span = tracy_client::span!("osu_renderer::prepare judgements");
+
         for index in queue {
             let object = &objects[*index];
 
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
                     if let Some(hit_result) = &circle.hit_result {
-                        let alpha = 1.0 - calc_progress(time, hit_result.at, hit_result.at + JUDGMENTS_FADEOUT_TIME);
+                        let alpha = 1.0 - calc_progress(time, hit_result.at, hit_result.at + config.judgements.fade_out_ms as f64);
 
                         let entry = JudgementsEntry{
                             pos: Vector2::new(circle.pos.x as f64, circle.pos.y as f64),
@@ -754,7 +761,7 @@ impl<'or> OsuRenderer<'or> {
                         self.judgements_queue.push(entry);
                     }
                 },
-                hit_objects::ObjectKind::Slider(_) => todo!(),
+                hit_objects::ObjectKind::Slider(_) => {},
             }
         };
     }

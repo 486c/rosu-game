@@ -139,6 +139,7 @@ impl Slider {
     ///  If time were 75 we should get 2
     #[inline]
     pub fn slide(&self, time: f64) -> i32 {
+        let _span = tracy_client::span!("hit_objects::slider::slide");
         let v1 = time - self.start_time;
         let v2 = self.duration / self.repeats as f64;
         ((v1 / v2).floor() as i32 + 1).max(1)
@@ -150,6 +151,7 @@ impl Slider {
     /// 0.0 >= Return value <= 1.0
     #[inline]
     pub fn get_slider_progress(&self, time: f64) -> f64 {
+        let _span = tracy_client::span!("hit_objects::slider::get_slider_progress");
         let v1 = time - self.start_time;
         let v2 = self.duration / self.repeats as f64;
         let slide = (v1 / v2).floor() + 1.0;
@@ -186,6 +188,8 @@ impl Slider {
         hit_window: &HitWindow,
         circle_diameter: f32
     ) -> Option<()> {
+        let _span = tracy_client::span!("hit_objects::slider::update");
+
         if self.hit_result.is_some() {
             return None;
         }
@@ -273,6 +277,8 @@ impl Slider {
         hit_window: &HitWindow,
         circle_diameter: f32
     ) -> Option<Hit> {
+        let _span = tracy_client::span!("hit_objects::slider::update_post");
+
         let slider_radius = circle_diameter as f64 / 2.0;
         let total_checkpoints = self.checkpoints.len();
 
