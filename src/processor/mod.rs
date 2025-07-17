@@ -42,7 +42,10 @@ impl OsuProcessor {
                 ts,
                 pos,
                 keys: last.keys,
-                hold: last.hold,
+                hold: KeyboardState {
+                    k1: last.keys.k1,
+                    k2: last.keys.k2,
+                },
             });
         } else {
             self.store_input(OsuInput {
@@ -114,10 +117,10 @@ impl OsuProcessor {
         let last = self.replay_log.last_input();
 
         if let Some(last) = last {
-            let last = last.keys;
+            let last_keys = last.keys;
             
             // Nothing to release
-            if !last.is_keys_hit() {
+            if !last_keys.is_keys_hit() {
                 return;
             }
 
@@ -125,12 +128,12 @@ impl OsuProcessor {
                 ts,
                 pos: self.last_cursor_pos,
                 keys: KeyboardState {
-                    k1: if state.k1 { false } else { last.k1 },
-                    k2: if state.k2 { false } else { last.k2 },
+                    k1: if state.k1 { false } else { last_keys.k1 },
+                    k2: if state.k2 { false } else { last_keys.k2 },
                 },
                 hold: KeyboardState {
-                    k1: !(last.k1 && state.k1),
-                    k2: !(last.k2 && state.k2),
+                    k1: if last.hold.k1 && state.k1 { false } else { last.hold.k1 },
+                    k2: if last.hold.k2 && state.k2 { false } else { last.hold.k2 },
                 },
             });
         } else {
@@ -248,10 +251,6 @@ impl From<Replay> for OsuProcessor {
             last = input.keys.clone();
         }
         
-        new_inputs.iter().for_each(|x| {
-            //println!("{} | is pressed: k1: {} k2: {} | is_hold: k1: {} k2: {}", x.ts, x.keys.k1, x.keys.k2, x.hold.k1, x.hold.k2);
-        });
-
         Self {
             replay_log: ReplayLog::default(),
             queue: new_inputs,
