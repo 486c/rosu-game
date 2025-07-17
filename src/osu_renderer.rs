@@ -750,7 +750,17 @@ impl<'or> OsuRenderer<'or> {
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
                     if let Some(hit_result) = &circle.hit_result {
-                        let alpha = 1.0 - calc_progress(time, hit_result.at, hit_result.at + config.judgements.fade_out_ms as f64);
+                        let fade_in_end = hit_result.at + config.judgements.fade_in_ms as f64;
+                        let fade_out_start = fade_in_end + config.judgements.stay_on_screen_ms as f64;
+                        let fade_out_end = fade_out_start + config.judgements.fade_out_ms as f64;
+
+                        let alpha = if time <= fade_in_end {
+                            calc_progress(time, hit_result.at, fade_in_end)
+                        } else if time >= fade_out_start {
+                            1.0 - calc_progress(time, fade_out_start, fade_out_end)
+                        } else {
+                            1.0
+                        };
 
                         let entry = JudgementsEntry{
                             pos: Vector2::new(circle.pos.x as f64, circle.pos.y as f64),

@@ -204,8 +204,6 @@ impl<'s> OsuState<'s> {
                     let state = KeyboardState {
                         k1: true,
                         k2: false,
-                        //m1: false,
-                        //m2: false,
                     };
 
                     self.input_processor.store_keyboard_pressed(ts, state);
@@ -215,8 +213,6 @@ impl<'s> OsuState<'s> {
                     let state = KeyboardState {
                         k1: false,
                         k2: true,
-                        //m1: false,
-                        //m2: false,
                     };
 
                     self.input_processor.store_keyboard_pressed(ts, state);

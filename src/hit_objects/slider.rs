@@ -330,7 +330,7 @@ impl Slider {
                                     1
                                 } else if input.keys.k2 {
                                     2
-                                } else { panic!("Hitting a slider without any keys pressed: keys: {:?}, hold: {:?}", input.keys, input.hold) }
+                                } else { 0 }
                             },
                             is_tracking,
                         }

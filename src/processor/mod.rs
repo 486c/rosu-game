@@ -125,8 +125,8 @@ impl OsuProcessor {
                 ts,
                 pos: self.last_cursor_pos,
                 keys: KeyboardState {
-                    k1: state.k1,
-                    k2: state.k2,
+                    k1: if state.k1 { false } else { last.k1 },
+                    k2: if state.k2 { false } else { last.k2 },
                 },
                 hold: KeyboardState {
                     k1: !(last.k1 && state.k1),
