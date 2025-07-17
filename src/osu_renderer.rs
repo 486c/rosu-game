@@ -9,7 +9,7 @@ use wgpu::{
 };
 use winit::dpi::PhysicalSize;
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::SliderRender, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_hitcircle_diameter, calc_playfield, calc_playfield_scale_factor, calc_progress, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::{SliderRender, SliderResultState}, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_fade_alpha, calc_hitcircle_diameter, calc_playfield, calc_playfield_scale_factor, calc_progress, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 static SLIDER_SCALE: f32 = 2.0;
@@ -750,17 +750,13 @@ impl<'or> OsuRenderer<'or> {
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
                     if let Some(hit_result) = &circle.hit_result {
-                        let fade_in_end = hit_result.at + config.judgements.fade_in_ms as f64;
-                        let fade_out_start = fade_in_end + config.judgements.stay_on_screen_ms as f64;
-                        let fade_out_end = fade_out_start + config.judgements.fade_out_ms as f64;
-
-                        let alpha = if time <= fade_in_end {
-                            calc_progress(time, hit_result.at, fade_in_end)
-                        } else if time >= fade_out_start {
-                            1.0 - calc_progress(time, fade_out_start, fade_out_end)
-                        } else {
-                            1.0
-                        };
+                        let alpha = calc_fade_alpha(
+                            time,
+                            hit_result.at,
+                            config.judgements.fade_in_ms,
+                            config.judgements.stay_on_screen_ms,
+                            config.judgements.fade_out_ms,
+                        );
 
                         let entry = JudgementsEntry{
                             pos: Vector2::new(circle.pos.x as f64, circle.pos.y as f64),
@@ -771,7 +767,53 @@ impl<'or> OsuRenderer<'or> {
                         self.judgements_queue.push(entry);
                     }
                 },
-                hit_objects::ObjectKind::Slider(_) => {},
+                hit_objects::ObjectKind::Slider(slider) => {
+                    let Some(hit_result) = &slider.hit_result else {
+                        continue
+                    };
+
+                    let head_alpha = calc_fade_alpha(
+                        time,
+                        hit_result.head.at,
+                        config.judgements.fade_in_ms,
+                        config.judgements.stay_on_screen_ms,
+                        config.judgements.fade_out_ms,
+                    );
+
+                    let entry = JudgementsEntry {
+                        pos: Vector2::new(slider.pos.x as f64, slider.pos.y as f64),
+                        alpha: head_alpha as f32,
+                        result: hit_result.head.result,
+                    };
+
+                    self.judgements_queue.push(entry);
+
+                    if let SliderResultState::Passed(end_result) = hit_result.state {
+                        let pos = slider.curve.position_at(1.0);
+
+                        let end_pos = (
+                            (slider.pos.x + pos.x) as f64,
+                            (slider.pos.y + pos.y) as f64
+                        );
+
+                        let end_alpha = calc_fade_alpha(
+                            time,
+                            slider.start_time + slider.duration,
+                            config.judgements.fade_in_ms,
+                            config.judgements.stay_on_screen_ms,
+                            config.judgements.fade_out_ms,
+                        );
+
+                        self.judgements_queue.push(JudgementsEntry {
+                            pos: end_pos.into(),
+                            alpha: end_alpha as f32,
+                            result: end_result,
+                        });
+
+                    }
+
+
+                },
             }
         };
     }
@@ -850,7 +892,7 @@ impl<'or> OsuRenderer<'or> {
                     let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);
 
                     let mut hit_circle_alpha = alpha;
-                    let mut hit_circle_scale = 1.0;
+                    let hit_circle_scale = 1.0;
                     let mut render_approach = true;
 
                     if let Some(hit_result) = &circle.hit_result {

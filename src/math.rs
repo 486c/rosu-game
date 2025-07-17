@@ -97,6 +97,27 @@ pub fn calc_progress(current: f64, start: f64, end: f64) -> f64 {
     (current - start) / (end - start)
 }
 
+#[inline]
+pub fn calc_fade_alpha(
+    time: f64, 
+    start: f64,
+    fade_in_ms: f32, 
+    stay_ms: f32, 
+    fade_out_ms: f32
+) -> f64 {
+    let fade_in_end = start + fade_in_ms as f64;
+    let fade_out_start = fade_in_end + stay_ms as f64;
+    let fade_out_end = fade_out_start + fade_out_ms as f64;
+
+    if time <= fade_in_end {
+        calc_progress(time, start, fade_in_end)
+    } else if time >= fade_out_start {
+        1.0 - calc_progress(time, fade_out_start, fade_out_end)
+    } else {
+        1.0
+    }
+}
+
 
 #[test]
 pub fn test_progress() {
