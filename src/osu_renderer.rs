@@ -1,4 +1,4 @@
-use std::{mem::size_of, sync::Arc};
+use std::{mem::size_of, ops::RangeInclusive, sync::Arc};
 
 use cgmath::Vector2;
 use smallvec::SmallVec;
@@ -750,6 +750,15 @@ impl<'or> OsuRenderer<'or> {
             match &object.kind {
                 hit_objects::ObjectKind::Circle(circle) => {
                     if let Some(hit_result) = &circle.hit_result {
+                        let range = RangeInclusive::new(
+                            hit_result.at - config.judgements.total_time() as f64,
+                            hit_result.at + config.judgements.total_time() as f64
+                        );
+
+                        if !range.contains(&time) {
+                            continue
+                        }
+
                         let alpha = calc_fade_alpha(
                             time,
                             hit_result.at,
@@ -772,23 +781,43 @@ impl<'or> OsuRenderer<'or> {
                         continue
                     };
 
-                    let head_alpha = calc_fade_alpha(
-                        time,
-                        hit_result.head.at,
-                        config.judgements.fade_in_ms,
-                        config.judgements.stay_on_screen_ms,
-                        config.judgements.fade_out_ms,
+                    let head_range = RangeInclusive::new(
+                        hit_result.head.at - config.judgements.total_time() as f64,
+                        hit_result.head.at + config.judgements.total_time() as f64,
                     );
 
-                    let entry = JudgementsEntry {
-                        pos: Vector2::new(slider.pos.x as f64, slider.pos.y as f64),
-                        alpha: head_alpha as f32,
-                        result: hit_result.head.result,
-                    };
+                    let slider_end_time = slider.start_time + slider.duration;
 
-                    self.judgements_queue.push(entry);
+                    let tail_range = RangeInclusive::new(
+                         slider_end_time - config.judgements.total_time() as f64,
+                         slider_end_time + config.judgements.total_time() as f64,
+                    );
+                    
+                    // Judgement for the head
+                    if head_range.contains(&time) {
+                        let head_alpha = calc_fade_alpha(
+                            time,
+                            hit_result.head.at,
+                            config.judgements.fade_in_ms,
+                            config.judgements.stay_on_screen_ms,
+                            config.judgements.fade_out_ms,
+                        );
 
+                        let entry = JudgementsEntry {
+                            pos: Vector2::new(slider.pos.x as f64, slider.pos.y as f64),
+                            alpha: head_alpha as f32,
+                            result: hit_result.head.result,
+                        };
+
+                        self.judgements_queue.push(entry);
+                    }
+                    
+                    // Judgement for the tail
                     if let SliderResultState::Passed(end_result) = hit_result.state {
+                        if !tail_range.contains(&time) {
+                            continue
+                        };
+
                         let pos = slider.curve.position_at(1.0);
 
                         let end_pos = (
@@ -811,11 +840,10 @@ impl<'or> OsuRenderer<'or> {
                         });
 
                     }
-
-
                 },
             }
         };
+
     }
 
     pub fn clear_cached_slider_textures(&self, objects: &mut [Object]) {

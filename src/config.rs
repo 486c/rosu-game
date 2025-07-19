@@ -14,6 +14,14 @@ pub struct JudgementsConfig {
     pub fade_out_ms: f32,
 }
 
+impl JudgementsConfig {
+    pub fn total_time(&self) -> f32 {
+        self.fade_in_ms
+        + self.stay_on_screen_ms
+        + self.fade_out_ms
+    }
+}
+
 #[derive(Debug)]
 pub struct Config {
     /// Toggle storing slider textures in the gpu for future reuse
