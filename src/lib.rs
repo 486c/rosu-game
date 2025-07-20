@@ -17,7 +17,6 @@ pub mod skin_ini;
 pub mod processor;
 pub mod osu_state;
 pub mod egui_state;
-mod ui;
 mod screen;
 mod song_select_state;
 pub mod osu_db;

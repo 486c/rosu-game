@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use egui::{Slider, TextStyle, Ui};
+use egui::{color_picker::show_color, Slider, TextStyle, Ui};
 
 use crate::{config::Config, skin_manager::SkinManager};
 
@@ -61,13 +61,53 @@ impl SettingsScreen {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        self.show_ui(ui)
+                        self.show_settings_ui(ui);
+                        self.show_skin_settings_ui(ui);
                     });
             });
     }
+
+    pub fn show_skin_settings_ui(&self, ui: &mut Ui) {
+        let heading_font = egui::FontId::new(20.0, egui::FontFamily::Proportional);
+
+        let skin = self.skin_manager.read().expect("failed to acquire read lock");
+
+        ui.collapsing(egui::RichText::new("Skin").font(heading_font), |ui| {
+            ui.label(format!("Name: {}", skin.ini.general.name));
+            ui.label(format!("Author: {}", skin.ini.general.author));
+
+            ui.collapsing("Skin colours", |ui| {
+                ui.collapsing("Combo colours", |ui| {
+                    for (i, c) in skin.ini.colours.combo_colors.iter().enumerate() {
+                        ui.group(|ui| {
+                            ui.label(format!("Colour {}: ", i));
+                            show_color(ui, c.to_egui_color(), egui::Vec2::new(30.0, 10.0));
+                        });
+                    }
+                });
+
+                ui.collapsing("Slider colours", |ui| {
+                    ui.label("Slider border color:");
+                    show_color(
+                        ui, 
+                        skin.ini.colours.slider_border.to_egui_color(),
+                        egui::Vec2::new(30.0, 10.0)
+                    );
+
+                    ui.label("Slider body color:");
+                    show_color(
+                        ui, 
+                        skin.ini.colours.slider_body.to_egui_color(),
+                        egui::Vec2::new(30.0, 10.0)
+                    );
+                });
+            });
+
+        });
+    }
     
-    /// Shows a UI that can be placed in any container
-    pub fn show_ui(&self, ui: &mut Ui) {
+    /// Shows a settings UI that can be placed in any container
+    pub fn show_settings_ui(&self, ui: &mut Ui) {
         let heading_font = egui::FontId::new(20.0, egui::FontFamily::Proportional);
 
         let mut config = self.config.write().expect("failed to acquire write lock");

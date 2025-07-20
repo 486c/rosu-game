@@ -8,7 +8,7 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, calc_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer, ui::settings::SettingsView
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, calc_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer
 };
 use crate::processor::OsuProcessor;
 
@@ -37,8 +37,6 @@ pub struct OsuState<'s> {
     pub song_select: SongSelectionState<'s>,
 
     skin_manager: Arc<RwLock<SkinManager>>,
-    config: Arc<RwLock<Config>>,
-    settings_view: SettingsView,
 
     osu_renderer: OsuRenderer<'s>,
 
@@ -99,8 +97,6 @@ impl<'s> OsuState<'s> {
             objects_render_queue: Vec::with_capacity(20),
             hit_objects: Vec::new(),
             skin_manager,
-            config,
-            settings_view: SettingsView::new(event_sender.clone()),
             current_state: OsuStates::SongSelection,
             song_select,
             event_sender,
@@ -289,14 +285,6 @@ impl<'s> OsuState<'s> {
         let _span = tracy_client::span!("osu_state::update_egui");
 
         self.egui.state.egui_ctx().begin_pass(input);
-        
-        /*
-        self.settings_view.window(
-            &self.egui.state.egui_ctx(),
-            &self.skin_manager,
-            &mut self.config,
-        );
-        */
 
         egui::Window::new("Debug Gameplay Window")
             .resizable(false)
