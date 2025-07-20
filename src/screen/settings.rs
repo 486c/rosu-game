@@ -25,6 +25,15 @@ impl SettingsScreen {
     pub fn toggle(&mut self) {
         self.is_open = if self.is_open { false } else { true}
     }
+    
+    pub fn close(&mut self) {
+        self.is_open = false;
+    }
+
+    #[inline]
+    pub fn is_open(&self) -> bool {
+        self.is_open
+    }
 
     pub fn render(&mut self, ctx: &egui::Context) {
         if !self.is_open {

@@ -147,7 +147,8 @@ pub enum SongSelectionEvents {
     },
     StartBeatmap(BeatmapEntry),
     ImportSongsDirectory(SongsImportJob),
-    OpenSettings,
+    ToggleSettings,
+    CloseSettings,
 }
 
 pub struct SongSelectionState<'ss> {
@@ -183,8 +184,6 @@ pub struct SongSelectionState<'ss> {
 
     song_importer: SongImporter,
     settings: SettingsScreen,
-
-
 }
 
 impl<'ss> SongSelectionState<'ss> {
@@ -318,9 +317,10 @@ impl<'ss> SongSelectionState<'ss> {
         );
     }
 
-    pub fn on_pressed_down(&mut self, 
-        key_code: KeyCode, 
-        is_cntrl_pressed: bool,
+    pub fn on_pressed_down(
+        &mut self,
+        key_code: KeyCode,
+        is_cntrl_pressed: bool
     ) {
         let _span = tracy_client::span!("osu_song_select_state::on_pressed_down");
 
@@ -351,7 +351,11 @@ impl<'ss> SongSelectionState<'ss> {
         }
 
         if key_code == KeyCode::KeyO && is_cntrl_pressed {
-            let _ = self.inner_tx.send(SongSelectionEvents::OpenSettings);
+            let _ = self.inner_tx.send(SongSelectionEvents::ToggleSettings);
+        }
+
+        if key_code == KeyCode::Escape && self.settings.is_open() {
+            let _ = self.inner_tx.send(SongSelectionEvents::CloseSettings);
         }
     }
     
@@ -459,9 +463,12 @@ impl<'ss> SongSelectionState<'ss> {
 
                         self.current_beatmap = Some(current_beatmap);
                     },
-                    SongSelectionEvents::OpenSettings => {
+                    SongSelectionEvents::ToggleSettings => {
                         self.settings.toggle();
-                    }
+                    },
+                    SongSelectionEvents::CloseSettings => {
+                        self.settings.close();
+                    },
                     SongSelectionEvents::StartBeatmap(entry) => {
                         let _span = tracy_client::span!("osu_song_select_state::update::event::start_beatmap");
                         self.state_tx.send(OsuStateEvent::StartBeatmap(entry))
