@@ -79,6 +79,7 @@ pollster = "0.3.0"
 #osu-replay-parser = "0.2.0"
 osu-replay-parser = { git = "https://github.com/486c/osr-parser"}
 md5 = "0.7.0"
+rfd = "0.15.4"
 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

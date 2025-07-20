@@ -1,24 +1,29 @@
-use std::sync::{Arc, RwLock};
+use std::{path::PathBuf, sync::{mpsc::{Receiver, Sender}, Arc, RwLock}};
 
 use egui::{color_picker::show_color, Slider, TextStyle, Ui};
 
-use crate::{config::Config, skin_manager::SkinManager};
+use crate::{config::Config, osu_state::OsuStateEvent, skin_manager::SkinManager};
 
 pub struct SettingsScreen {
     config: Arc<RwLock<Config>>,
     skin_manager: Arc<RwLock<SkinManager>>,
-    is_open: bool
+    is_open: bool,
+
+    osu_state_tx: Sender<OsuStateEvent>,
 }
 
 impl SettingsScreen {
     pub fn new(
         config: Arc<RwLock<Config>>,
         skin_manager: Arc<RwLock<SkinManager>>,
+        osu_state_tx: Sender<OsuStateEvent>,
     ) -> Self {
+
         Self {
             is_open: false,
             config,
             skin_manager,
+            osu_state_tx,
         }
     }
 
@@ -82,6 +87,10 @@ impl SettingsScreen {
         let skin = self.skin_manager.read().expect("failed to acquire read lock");
 
         ui.collapsing(egui::RichText::new("Skin").font(heading_font), |ui| {
+            if ui.button("Open skin").clicked() {
+                self.spawn_skin_selector_dialog();
+            }
+
             ui.label(format!("Name: {}", skin.ini.general.name));
             ui.label(format!("Author: {}", skin.ini.general.author));
 
@@ -162,6 +171,19 @@ impl SettingsScreen {
                 &mut config.judgements.fade_out_ms,
                 0.0..=1000.0
             ).text("Fade-out milliseconds"));
+        });
+    }
+
+    fn spawn_skin_selector_dialog(&self) {
+        let tx = self.osu_state_tx.clone();
+
+        std::thread::spawn(move || {
+            let directory = rfd::FileDialog::new()
+                .pick_folder();
+
+            if let Some(directory) = directory {
+                let _ = tx.send(OsuStateEvent::ChangeSkin(directory.into()));
+            }
         });
     }
 }

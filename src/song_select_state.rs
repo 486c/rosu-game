@@ -211,13 +211,13 @@ impl<'ss> SongSelectionState<'ss> {
             current_beatmap: None,
             graphics,
             current_background_image: None,
-            state_tx,
+            state_tx: state_tx.clone(),
             need_scroll_to: None,
             current_audio: None,
             quad_renderer,
             quad_test_buffer,
             quad_test_instance_data,
-            settings: SettingsScreen::new(config.clone(), skin_manager.clone()),
+            settings: SettingsScreen::new(config.clone(), skin_manager.clone(), state_tx.clone()),
             config,
         }
     }
