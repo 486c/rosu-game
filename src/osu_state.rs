@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc}, time::Duration};
+use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc, RwLock}, time::Duration};
 
 use cgmath::Vector2;
 use egui::{RawInput, Slider};
@@ -37,7 +37,7 @@ pub struct OsuState<'s> {
     pub song_select: SongSelectionState<'s>,
 
     skin_manager: SkinManager,
-    config: Config,
+    config: Arc<RwLock<Config>>,
     settings_view: SettingsView,
 
     osu_renderer: OsuRenderer<'s>,
@@ -66,14 +66,18 @@ impl<'s> OsuState<'s> {
     pub fn new(window: Arc<Window>, graphics: Graphics<'s>, sink: Sink) -> Self {
         let egui = EguiState::new(&graphics, &window);
         let skin_manager = SkinManager::from_path("skin", &graphics);
-        let config = Config::default();
+        let config = Arc::new(RwLock::new(Config::default()));
         let graphics = Arc::new(graphics);
 
-        let osu_renderer = OsuRenderer::new(graphics.clone(), &config);
+        let osu_renderer = OsuRenderer::new(graphics.clone(), config.clone());
 
         let (event_sender, event_receiver) = channel::<OsuStateEvent>();
 
-        let song_select = SongSelectionState::new(graphics.clone(), event_sender.clone());
+        let song_select = SongSelectionState::new(
+            graphics.clone(), 
+            event_sender.clone(),
+            config.clone(),
+        );
 
         window.set_cursor_visible(false);
 
@@ -136,7 +140,7 @@ impl<'s> OsuState<'s> {
             let source = FramelessSource::new(Decoder::new(file).expect("Failed to load audio file source"));
             let source = UniformSourceIterator::new(source, 2, 44100);
             self.set_audio(source);
-            println!("open_beatmap: Initialized a new audio file!");
+            tracing::info!("Initialized a new audio file!");
         }
 
         let (preempt, fadein) = calculate_preempt_fadein(map.approach_rate);
@@ -234,8 +238,6 @@ impl<'s> OsuState<'s> {
                     let state = KeyboardState {
                         k1: true,
                         k2: false,
-                        //m1: false,
-                        //m2: false,
                     };
 
                     self.input_processor.store_keyboard_released(ts, state);
@@ -245,8 +247,6 @@ impl<'s> OsuState<'s> {
                     let state = KeyboardState {
                         k1: false,
                         k2: true,
-                        //m1: false,
-                        //m2: false,
                     };
 
                     self.input_processor.store_keyboard_released(ts, state);
@@ -282,12 +282,14 @@ impl<'s> OsuState<'s> {
         let _span = tracy_client::span!("osu_state::update_egui");
 
         self.egui.state.egui_ctx().begin_pass(input);
-
+        
+        /*
         self.settings_view.window(
             &self.egui.state.egui_ctx(),
             &self.skin_manager,
             &mut self.config,
         );
+        */
 
         egui::Window::new("Debug Gameplay Window")
             .resizable(false)
@@ -351,32 +353,28 @@ impl<'s> OsuState<'s> {
 
             match &mut obj.kind {
                 ObjectKind::Slider(slider) => {
-                    self.osu_renderer.prepare_and_render_slider_texture(slider, &self.skin_manager, &self.config);
+                    self.osu_renderer.prepare_and_render_slider_texture(slider, &self.skin_manager);
                 }
                 _ => {},
             }
 
             self.objects_render_queue.push(i);
         }
-
+        
         self.osu_renderer.prepare_judgements(
             time, 
             &self.objects_judgments_render_queue, 
             &self.hit_objects,
-            &self.config
         );
 
         self.osu_renderer.prepare_objects(
             time, self.preempt, self.fadein,
             &self.objects_render_queue, &self.hit_objects,
             &self.skin_manager,
-            &self.config
         );
 
         // Syncing osu state settings with the osu renderer
-        self.osu_renderer.prepare(
-            &self.config
-        );
+        self.osu_renderer.prepare();
 
         // When we are done preparing all objects for rendering
         // we should not forget to upload all that to gpu
@@ -495,7 +493,6 @@ impl<'s> OsuState<'s> {
                     egui_input, 
                     self.egui.state.egui_ctx(),
                     &view,
-                    &mut self.config
                 );
                 self.render_egui(&view)?;
                 self.egui.output = Some(egui_output)

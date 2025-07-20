@@ -1,15 +1,19 @@
+use std::sync::{Arc, RwLock};
+
 use egui::{Slider, TextStyle, Ui};
 
 use crate::config::Config;
 
 pub struct SettingsScreen {
+    config: Arc<RwLock<Config>>,
     is_open: bool
 }
 
 impl SettingsScreen {
-    pub fn new() -> Self {
+    pub fn new(config: Arc<RwLock<Config>>) -> Self {
         Self {
-            is_open: false
+            is_open: false,
+            config,
         }
     }
 
@@ -17,7 +21,7 @@ impl SettingsScreen {
         self.is_open = if self.is_open { false } else { true}
     }
 
-    pub fn render(&mut self, ctx: &egui::Context, config: &mut Config) {
+    pub fn render(&mut self, ctx: &egui::Context) {
         if !self.is_open {
             return
         }
@@ -52,14 +56,16 @@ impl SettingsScreen {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        self.show_ui(ui, config)
+                        self.show_ui(ui)
                     });
             });
     }
     
     /// Shows a UI that can be placed in any container
-    pub fn show_ui(&self, ui: &mut Ui, config: &mut Config) {
+    pub fn show_ui(&self, ui: &mut Ui) {
         let heading_font = egui::FontId::new(20.0, egui::FontFamily::Proportional);
+
+        let mut config = self.config.write().expect("failed to acquire write lock");
 
         ui.collapsing(egui::RichText::new("Renderer").font(heading_font), |ui| {
             ui.heading("Slider");

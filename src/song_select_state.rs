@@ -1,4 +1,4 @@
-use std::{fs::File, io::{Cursor, Read}, path::PathBuf, sync::{mpsc::{Receiver, Sender}, Arc}, time::Duration};
+use std::{fs::File, io::{Cursor, Read}, path::PathBuf, sync::{mpsc::{Receiver, Sender}, Arc, RwLock}, time::Duration};
 
 use egui::{scroll_area::ScrollBarVisibility, Align, Color32, Direction, Label, Margin, RichText, Stroke};
 use egui_extras::{Size, StripBuilder};
@@ -9,8 +9,6 @@ use rodio::{source::UniformSourceIterator, Decoder, Source};
 use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
-
-use std::num::NonZero;
 
 use crate::{buffer_write_or_init, config::Config, graphics::Graphics, osu_db::{BeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, screen::settings::SettingsScreen, song_importer_ui::SongImporter, texture::Texture};
 
@@ -27,19 +25,19 @@ const ROW_HEIGHT: f32 = 72.0;
 // Build only once when loading beatmap because
 // calculating all the stuff + reallocating new strings
 pub struct BeatmapCardInfoMetadata {
-    /// `{} - {} [{}]`
+    // `{} - {} [{}]`
     beatmap_header: String,
 
-    /// `Mapped by {}`
+    // `Mapped by {}`
     mapped_by: String,
 
-    /// `Length: {} BPM: {}-{} Objects: {}`
+    // `Length: {} BPM: {}-{} Objects: {}`
     length_info: String,
     
-    /// `Circles: {} Sliders: {} Spinners: {}`
+    // `Circles: {} Sliders: {} Spinners: {}`
     objects_count: String,
 
-    /// `CS: {} AR: {} OD: {} HP: {} Start: {}`
+    // `CS: {} AR: {} OD: {} HP: {} Start: {}`
     difficutly_info: String,
 }
 
@@ -155,6 +153,7 @@ pub enum SongSelectionEvents {
 pub struct SongSelectionState<'ss> {
     db: OsuDatabase,
     graphics: Arc<Graphics<'ss>>,
+    config: Arc<RwLock<Config>>,
 
     // Min & Max row that we currently need to draw
     min: usize,
@@ -189,7 +188,11 @@ pub struct SongSelectionState<'ss> {
 }
 
 impl<'ss> SongSelectionState<'ss> {
-    pub fn new(graphics: Arc<Graphics<'ss>>, state_tx: Sender<OsuStateEvent>) -> Self {
+    pub fn new(
+        graphics: Arc<Graphics<'ss>>, 
+        state_tx: Sender<OsuStateEvent>,
+        config: Arc<RwLock<Config>>
+    ) -> Self {
         let (inner_tx, inner_rx) = std::sync::mpsc::channel();
 
         let quad_renderer = QuadRenderer::new(graphics.clone(), false);
@@ -214,11 +217,9 @@ impl<'ss> SongSelectionState<'ss> {
             quad_renderer,
             quad_test_buffer,
             quad_test_instance_data,
-            settings: SettingsScreen::new(),
+            settings: SettingsScreen::new(config.clone()),
+            config,
         }
-    }
-
-    pub fn open_settings(&self) {
     }
     
     // Spawns a thread to parse a beatmap
@@ -546,14 +547,13 @@ impl<'ss> SongSelectionState<'ss> {
         input: egui::RawInput, 
         ctx: &egui::Context, 
         view: &TextureView,
-        config: &mut Config
     ) -> egui::FullOutput {
         self.render_background(view);
 
         ctx.begin_pass(input);
 
         self.song_importer.render(ctx);
-        self.settings.render(ctx, config);
+        self.settings.render(ctx);
         
         // TODO: God THIS IS SO TERRIBLE LMAO
         egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |ui| {

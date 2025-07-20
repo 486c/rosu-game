@@ -1,4 +1,4 @@
-use std::{mem::size_of, ops::RangeInclusive, sync::Arc};
+use std::{mem::size_of, ops::RangeInclusive, sync::{Arc, RwLock}};
 
 use cgmath::Vector2;
 use smallvec::SmallVec;
@@ -68,6 +68,8 @@ pub struct SliderToScreenEntry {
 pub struct OsuRenderer<'or> {
     // Graphics State
     graphics: Arc<Graphics<'or>>,
+
+    config: Arc<RwLock<Config>>,
 
     // State
     scale: f32,
@@ -147,7 +149,9 @@ pub struct OsuRenderer<'or> {
 }
 
 impl<'or> OsuRenderer<'or> {
-    pub fn new(graphics: Arc<Graphics<'or>>, config: &Config) -> Self {
+    pub fn new(graphics: Arc<Graphics<'or>>, config: Arc<RwLock<Config>>) -> Self {
+        let config_lock = config.read().expect("failed to acquire config read lock");
+
         let (graphics_width, graphics_height) = graphics.get_surface_size();
         let surface_config = graphics.get_surface_config();
 
@@ -238,7 +242,7 @@ impl<'or> OsuRenderer<'or> {
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("uniform_buffer"),
-                    contents: bytemuck::bytes_of(&config.slider),
+                    contents: bytemuck::bytes_of(&config_lock.slider),
                     usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                 });
 
@@ -678,6 +682,8 @@ impl<'or> OsuRenderer<'or> {
         let slider_reverse_arrow_quad = QuadRenderer::new(graphics.clone(), false);
         slider_reverse_arrow_quad.resize_vertex_centered(10.0, 10.0);
 
+        drop(config_lock);
+
         Self {
             quad_debug,
             graphics,
@@ -722,13 +728,15 @@ impl<'or> OsuRenderer<'or> {
             slider_ticks_instance_buffer,
             slider_reverse_arrow_quad,
             slider_texture_camera,
+            config,
         }
     }
 
     pub fn prepare(
-        &self,
-        config: &Config,
+        &self
     ) {
+        let config = self.config.read().expect("failed to acquire read lock");
+
         let _span = tracy_client::span!("osu_renderer::prepare");
         self.graphics
             .queue
@@ -740,9 +748,10 @@ impl<'or> OsuRenderer<'or> {
         time: f64, 
         queue: &[usize], 
         objects: &[Object],
-        config: &Config,
     ) {
         let _span = tracy_client::span!("osu_renderer::prepare judgements");
+
+        let config = self.config.read().expect("failed to acquire read lock");
 
         for index in queue {
             let object = &objects[*index];
@@ -867,9 +876,10 @@ impl<'or> OsuRenderer<'or> {
         queue: &[usize],
         objects: &[Object],
         skin: &SkinManager,
-        config: &Config,
     ) {
         let _span = tracy_client::span!("osu_renderer::prepare objects");
+
+        let config = self.config.read().expect("failed to acquire read lock");
 
         for current_index in queue.iter() {
             let object = &objects[*current_index];
@@ -1211,9 +1221,10 @@ impl<'or> OsuRenderer<'or> {
         &mut self,
         slider: &mut crate::hit_objects::slider::Slider,
         skin: &SkinManager,
-        config: &Config
     ) {
         let _span = tracy_client::span!("osu_renderer::prepare_and_render_slider_texture");
+
+        let config = self.config.read().expect("failed to acquire read lock");
         let surface_config = self.graphics.get_surface_config();
 
         if !slider.render.is_none() && config.store_slider_textures {
