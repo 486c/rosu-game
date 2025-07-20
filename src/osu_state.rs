@@ -365,7 +365,8 @@ impl<'s> OsuState<'s> {
         self.osu_renderer.prepare_objects(
             time, self.preempt, self.fadein,
             &self.objects_render_queue, 
-            &self.hit_objects
+            &self.hit_objects,
+            &self.current_hit_window
         );
 
         // Syncing osu state settings with the osu renderer

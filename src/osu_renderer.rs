@@ -9,7 +9,7 @@ use wgpu::{
 };
 use winit::dpi::PhysicalSize;
 use crate::{
-    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, slider::{SliderRender, SliderResultState}, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_fade_alpha, calc_hitcircle_diameter, calc_playfield, calc_playfield_scale_factor, calc_progress, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
+    camera::Camera, config::Config, graphics::Graphics, hit_circle_instance::{ApproachCircleInstance, HitCircleInstance}, hit_objects::{self, hit_window::HitWindow, slider::{SliderRender, SliderResultState}, Hit, Object, CIRCLE_FADEOUT_TIME, CIRCLE_SCALEOUT_MAX, JUDGMENTS_FADEOUT_TIME, REVERSE_ARROW_FADEIN, REVERSE_ARROW_FADEOUT, SLIDER_FADEOUT_TIME}, math::{calc_fade_alpha, calc_hitcircle_diameter, calc_playfield, calc_playfield_scale_factor, calc_progress, lerp}, quad_instance::QuadInstance, quad_renderer::QuadRenderer, rgb::Rgb, skin_manager::SkinManager, slider_instance::SliderInstance, texture::{AtlasTexture, DepthTexture, Texture}, vertex::Vertex
 };
 
 static SLIDER_SCALE: f32 = 2.0;
@@ -881,6 +881,7 @@ impl<'or> OsuRenderer<'or> {
         fadein: f32,
         queue: &[usize],
         objects: &[Object],
+        hit_window: &HitWindow,
     ) {
         let _span = tracy_client::span!("osu_renderer::prepare objects");
 
@@ -946,7 +947,7 @@ impl<'or> OsuRenderer<'or> {
 
                         // Hit appears early than the exact hit point is reached
                         // Apply fadeout immediatly
-                        let progress = calc_progress(time, hit_result.at, hit_result.at + (CIRCLE_FADEOUT_TIME * 2.0));
+                        let progress = calc_progress(time, hit_result.at, hit_result.at + CIRCLE_FADEOUT_TIME);
                         hit_circle_alpha = 1.0 - progress;
 
                         hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
@@ -993,7 +994,11 @@ impl<'or> OsuRenderer<'or> {
                     let end_time = start_time + fadein as f64;
 
                     let mut body_alpha =
-                    ((time - start_time) / (end_time - start_time)).clamp(0.0, 0.95);
+                        ((time - start_time) / (end_time - start_time)).clamp(0.0, 0.95);
+
+
+                    //let mut hit_circle_alpha = if approach_alpha > 0.0 { body_alpha as f32 } else { 0.0 };
+                    let mut hit_circle_alpha = calc_progress(time, start_time, end_time).clamp(0.0, 1.0);
 
                     // Calculating current slide
                     let v1 = time - object.start_time;
@@ -1162,14 +1167,42 @@ impl<'or> OsuRenderer<'or> {
                             approach_scale as f32,
                         ));
 
+                    let mut hit_circle_scale = 1.0;
+
+                    if let Some(hit_result) = &slider.hit_result {
+                        let progress = calc_progress(
+                            time,
+                            hit_result.head.at,
+                            hit_result.head.at + CIRCLE_FADEOUT_TIME,
+                        );
+                        
+                        if hit_result.head.result != Hit::MISS {
+                            hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
+                        }
+                        hit_circle_alpha = 1.0 - progress;
+                    } else {
+                        if (end_time..=object.start_time + hit_window.x50).contains(&time) {
+                            hit_circle_alpha = 1.0;
+                        } else if time >= object.start_time + hit_window.x50 {
+                            let progress = calc_progress(
+                                time,
+                                object.start_time + hit_window.x50,
+                                object.start_time + hit_window.x50 + CIRCLE_FADEOUT_TIME,
+                            );
+
+                            hit_circle_alpha = 1.0 - progress;
+                        }
+                    }
+                    
+                    // HIT CIRCLE
                     self.hit_circle_instance_data
                         .push(HitCircleInstance::new(
-                                slider.pos.x,
-                                slider.pos.y,
-                                0.0,
-                                if approach_alpha > 0.0 { body_alpha as f32 } else { 0.0 }, // TODO XD
-                                1.0,
-                                &color,
+                            slider.pos.x,
+                            slider.pos.y,
+                            0.0,
+                            hit_circle_alpha as f32,
+                            hit_circle_scale as f32,
+                            &color,
                         ));
 
                     let mut slider_tick_indexes = Vec::new();

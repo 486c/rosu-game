@@ -13,7 +13,7 @@ use crate::math::{calc_opposite_direction_degree, calc_progress};
 
 // In ms
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;
-pub const CIRCLE_FADEOUT_TIME: f64 = 60.0;
+pub const CIRCLE_FADEOUT_TIME: f64 = 120.0;
 pub const JUDGMENTS_FADEOUT_TIME: f64 = 300.0;
 pub const CIRCLE_SCALEOUT_MAX: f64 = 1.4;
 pub const REVERSE_ARROW_FADEOUT: f64 = 200.0;
