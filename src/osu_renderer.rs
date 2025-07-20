@@ -936,7 +936,7 @@ impl<'or> OsuRenderer<'or> {
                     let approach_scale = lerp(1.0, 4.0, 1.0 - approach_progress).clamp(1.0, 4.0);
 
                     let mut hit_circle_alpha = alpha;
-                    let hit_circle_scale = 1.0;
+                    let mut hit_circle_scale = 1.0;
                     let mut render_approach = true;
 
                     if let Some(hit_result) = &circle.hit_result {
@@ -949,9 +949,8 @@ impl<'or> OsuRenderer<'or> {
                         let progress = calc_progress(time, hit_result.at, hit_result.at + (CIRCLE_FADEOUT_TIME * 2.0));
                         hit_circle_alpha = 1.0 - progress;
 
-                        // TODO this is broken rn
-                        //hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
-                        //render_approach = false;
+                        hit_circle_scale = lerp(1.0, CIRCLE_SCALEOUT_MAX, progress);
+                        render_approach = false;
                     } else {
                         // In case if there are no hit result keep alpha at 1.0 until late x50 hit window point
                         // is passed
