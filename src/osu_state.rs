@@ -36,7 +36,7 @@ pub struct OsuState<'s> {
     pub current_state: OsuStates,
     pub song_select: SongSelectionState<'s>,
 
-    skin_manager: SkinManager,
+    skin_manager: Arc<RwLock<SkinManager>>,
     config: Arc<RwLock<Config>>,
     settings_view: SettingsView,
 
@@ -65,11 +65,14 @@ pub struct OsuState<'s> {
 impl<'s> OsuState<'s> {
     pub fn new(window: Arc<Window>, graphics: Graphics<'s>, sink: Sink) -> Self {
         let egui = EguiState::new(&graphics, &window);
-        let skin_manager = SkinManager::from_path("skin", &graphics);
+        let skin_manager = Arc::new(RwLock::new(
+            SkinManager::from_path("skin", &graphics)
+        ));
+
         let config = Arc::new(RwLock::new(Config::default()));
         let graphics = Arc::new(graphics);
 
-        let osu_renderer = OsuRenderer::new(graphics.clone(), config.clone());
+        let osu_renderer = OsuRenderer::new(graphics.clone(), config.clone(), skin_manager.clone());
 
         let (event_sender, event_receiver) = channel::<OsuStateEvent>();
 
@@ -77,12 +80,13 @@ impl<'s> OsuState<'s> {
             graphics.clone(), 
             event_sender.clone(),
             config.clone(),
+            skin_manager.clone()
         );
 
         window.set_cursor_visible(false);
 
         Self {
-            cursor_renderer: CursorRenderer::new(graphics.clone()),
+            cursor_renderer: CursorRenderer::new(graphics.clone(), skin_manager.clone()),
             event_receiver,
             preempt: 0.0,
             fadein: 0.0,
@@ -110,8 +114,11 @@ impl<'s> OsuState<'s> {
 
     pub fn open_skin(&mut self, path: impl AsRef<Path>) {
         let _span = tracy_client::span!("osu_state::open_skin");
-        let skin_manager = SkinManager::from_path(path, &self.osu_renderer.get_graphics());
-        self.skin_manager = skin_manager;
+        let mut lock = self.skin_manager.write().expect("failed to acquire lock");
+
+        let skin = SkinManager::from_path(path, &self.osu_renderer.get_graphics());
+
+        *lock = skin;
     }
 
     pub fn open_beatmap(&mut self, path: impl AsRef<Path>) {
@@ -353,7 +360,7 @@ impl<'s> OsuState<'s> {
 
             match &mut obj.kind {
                 ObjectKind::Slider(slider) => {
-                    self.osu_renderer.prepare_and_render_slider_texture(slider, &self.skin_manager);
+                    self.osu_renderer.prepare_and_render_slider_texture(slider);
                 }
                 _ => {},
             }
@@ -369,8 +376,8 @@ impl<'s> OsuState<'s> {
 
         self.osu_renderer.prepare_objects(
             time, self.preempt, self.fadein,
-            &self.objects_render_queue, &self.hit_objects,
-            &self.skin_manager,
+            &self.objects_render_queue, 
+            &self.hit_objects
         );
 
         // Syncing osu state settings with the osu renderer
@@ -470,8 +477,8 @@ impl<'s> OsuState<'s> {
 
                 self.osu_renderer.render_objects(
                     &view,
-                    &self.objects_render_queue, &self.hit_objects,
-                    &self.skin_manager,
+                    &self.objects_render_queue, 
+                    &self.hit_objects
                 )?;
 
                 // Clearing objects queue only after they successfully rendered
@@ -500,8 +507,7 @@ impl<'s> OsuState<'s> {
         }
 
         self.cursor_renderer.render_on_view(
-            &view,
-            &self.skin_manager
+            &view
         );
 
         output.present();

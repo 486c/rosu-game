@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc, time::{Duration, Instant}};
+use std::{collections::VecDeque, sync::{Arc, RwLock}, time::{Duration, Instant}};
 
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::dpi::PhysicalPosition;
@@ -12,6 +12,7 @@ const TARGET_TRAIL_UPDATE_RATE: f64 = 120.0; // Per sec
 pub struct CursorRenderer<'cr> {
     graphics: Arc<Graphics<'cr>>,
     quad_renderer: QuadRenderer<'cr>,
+    skin_manager: Arc<RwLock<SkinManager>>,
 
     trail_instance_data: VecDeque<(Instant, QuadInstance)>,
     trail_buffer: wgpu::Buffer,
@@ -23,7 +24,10 @@ pub struct CursorRenderer<'cr> {
 }
 
 impl<'cr> CursorRenderer<'cr> {
-    pub fn new(graphics: Arc<Graphics<'cr>>) -> Self {
+    pub fn new(
+        graphics: Arc<Graphics<'cr>>,
+        skin_manager: Arc<RwLock<SkinManager>>,
+    ) -> Self {
         let quad_renderer = QuadRenderer::new(graphics.clone(), false);
         quad_renderer.resize_vertex_centered(50.0, 50.0);
         let trail_instance_data = VecDeque::with_capacity(10);
@@ -40,6 +44,7 @@ impl<'cr> CursorRenderer<'cr> {
             cursor_instance,
             cursor_buffer,
             last_update: Instant::now(),
+            skin_manager,
         }
     }
 
@@ -72,7 +77,9 @@ impl<'cr> CursorRenderer<'cr> {
         self.quad_renderer.resize_camera(new_size);
     }
 
-    pub fn render_on_view(&mut self, view: &TextureView, skin: &SkinManager) {
+    pub fn render_on_view(&mut self, view: &TextureView) {
+        let skin = self.skin_manager.read().expect("failed");
+
         buffer_write_or_init!(
             self.graphics.queue,
             self.graphics.device,

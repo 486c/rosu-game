@@ -138,7 +138,7 @@ impl SkinManager {
             match skin_ini_bytes {
                 Ok(bytes) => {
                     let skin_ini = SkinIni::parse(&bytes)
-                        .inspect_err(|e| println!("Failed to deserialize skin.ini: {e}")).unwrap_or(SkinIni::default());
+                        .inspect_err(|e| tracing::error!("Failed to deserialize skin.ini: {e}")).unwrap_or(SkinIni::default());
 
                     skin_ini
                 },

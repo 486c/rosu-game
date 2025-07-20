@@ -70,6 +70,7 @@ pub struct OsuRenderer<'or> {
     graphics: Arc<Graphics<'or>>,
 
     config: Arc<RwLock<Config>>,
+    skin_manager: Arc<RwLock<SkinManager>>,
 
     // State
     scale: f32,
@@ -149,7 +150,11 @@ pub struct OsuRenderer<'or> {
 }
 
 impl<'or> OsuRenderer<'or> {
-    pub fn new(graphics: Arc<Graphics<'or>>, config: Arc<RwLock<Config>>) -> Self {
+    pub fn new(
+        graphics: Arc<Graphics<'or>>, 
+        config: Arc<RwLock<Config>>,
+        skin_manager: Arc<RwLock<SkinManager>>
+    ) -> Self {
         let config_lock = config.read().expect("failed to acquire config read lock");
 
         let (graphics_width, graphics_height) = graphics.get_surface_size();
@@ -729,6 +734,7 @@ impl<'or> OsuRenderer<'or> {
             slider_reverse_arrow_quad,
             slider_texture_camera,
             config,
+            skin_manager,
         }
     }
 
@@ -875,11 +881,11 @@ impl<'or> OsuRenderer<'or> {
         fadein: f32,
         queue: &[usize],
         objects: &[Object],
-        skin: &SkinManager,
     ) {
         let _span = tracy_client::span!("osu_renderer::prepare objects");
 
         let config = self.config.read().expect("failed to acquire read lock");
+        let skin = self.skin_manager.read().expect("failed to acquire read lock");
 
         for current_index in queue.iter() {
             let object = &objects[*current_index];
@@ -1220,11 +1226,11 @@ impl<'or> OsuRenderer<'or> {
     pub fn prepare_and_render_slider_texture(
         &mut self,
         slider: &mut crate::hit_objects::slider::Slider,
-        skin: &SkinManager,
     ) {
         let _span = tracy_client::span!("osu_renderer::prepare_and_render_slider_texture");
 
         let config = self.config.read().expect("failed to acquire read lock");
+        let skin = self.skin_manager.read().expect("failed to acquire read lock");
         let surface_config = self.graphics.get_surface_config();
 
         if !slider.render.is_none() && config.store_slider_textures {
@@ -1602,8 +1608,10 @@ impl<'or> OsuRenderer<'or> {
     }
     
     /// Responsible for managing and rendering judgments queue
-    pub fn render_judgements(&mut self, atlas: &AtlasTexture, view: &TextureView) {
+    pub fn render_judgements(&mut self, view: &TextureView) {
         let _span = tracy_client::span!("osu_renderer::render_judgements");
+
+        let skin = self.skin_manager.read().expect("failed");
 
         if self.judgements_queue.is_empty() {
             return;
@@ -1622,11 +1630,11 @@ impl<'or> OsuRenderer<'or> {
                 50.0, 50.0,
                 image_index,
                 jdg.alpha,
-                &atlas
+                &skin.judgments_atlas
             )
         }
 
-        self.quad_debug.render_atlas_test(view, atlas.bind_group());
+        self.quad_debug.render_atlas_test(view, skin.judgments_atlas.bind_group());
     }
 
     /// Render all objects from internal buffers
@@ -1636,9 +1644,10 @@ impl<'or> OsuRenderer<'or> {
         view: &TextureView,
         queue: &[usize],
         objects: &[Object],
-        skin: &SkinManager,
     ) -> Result<(), wgpu::SurfaceError> {
         let _span = tracy_client::span!("osu_renderer::render_objects");
+
+        let skin = self.skin_manager.read().expect("Failed to get skin manager");
 
         // If any of the buffers is empty dont even try to render
         if self.hit_circle_instance_buffer.size() == 0
@@ -1835,8 +1844,11 @@ impl<'or> OsuRenderer<'or> {
             );
             */
         }
+        
+        // Dropping lock since render_judgements requires skin too
+        drop(skin);
 
-        self.render_judgements(&skin.judgments_atlas, &view);
+        self.render_judgements(&view);
 
         let span = tracy_client::span!("osu_renderer render_objects::queue::submit");
         self.graphics

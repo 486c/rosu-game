@@ -2,18 +2,23 @@ use std::sync::{Arc, RwLock};
 
 use egui::{Slider, TextStyle, Ui};
 
-use crate::config::Config;
+use crate::{config::Config, skin_manager::SkinManager};
 
 pub struct SettingsScreen {
     config: Arc<RwLock<Config>>,
+    skin_manager: Arc<RwLock<SkinManager>>,
     is_open: bool
 }
 
 impl SettingsScreen {
-    pub fn new(config: Arc<RwLock<Config>>) -> Self {
+    pub fn new(
+        config: Arc<RwLock<Config>>,
+        skin_manager: Arc<RwLock<SkinManager>>,
+    ) -> Self {
         Self {
             is_open: false,
             config,
+            skin_manager,
         }
     }
 

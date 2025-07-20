@@ -10,7 +10,7 @@ use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
-use crate::{buffer_write_or_init, config::Config, graphics::Graphics, osu_db::{BeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, screen::settings::SettingsScreen, song_importer_ui::SongImporter, texture::Texture};
+use crate::{buffer_write_or_init, config::Config, graphics::Graphics, osu_db::{BeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, screen::settings::SettingsScreen, skin_manager::SkinManager, song_importer_ui::SongImporter, texture::Texture};
 
 const CARD_INNER_MARGIN: Margin = Margin {
     left: 5,
@@ -191,7 +191,8 @@ impl<'ss> SongSelectionState<'ss> {
     pub fn new(
         graphics: Arc<Graphics<'ss>>, 
         state_tx: Sender<OsuStateEvent>,
-        config: Arc<RwLock<Config>>
+        config: Arc<RwLock<Config>>,
+        skin_manager: Arc<RwLock<SkinManager>>,
     ) -> Self {
         let (inner_tx, inner_rx) = std::sync::mpsc::channel();
 
@@ -217,7 +218,7 @@ impl<'ss> SongSelectionState<'ss> {
             quad_renderer,
             quad_test_buffer,
             quad_test_instance_data,
-            settings: SettingsScreen::new(config.clone()),
+            settings: SettingsScreen::new(config.clone(), skin_manager.clone()),
             config,
         }
     }
