@@ -10,7 +10,7 @@ use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
-use crate::{buffer_write_or_init, config::Config, graphics::Graphics, osu_db::{BeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, screen::settings::SettingsScreen, skin_manager::SkinManager, song_importer_ui::SongImporter, texture::Texture};
+use crate::{buffer_write_or_init, config::Config, graphics::Graphics, osu_db::{BeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, screen::settings::SettingsScreen, skin_manager::SkinManager, texture::Texture};
 
 const CARD_INNER_MARGIN: Margin = Margin {
     left: 5,
@@ -182,7 +182,6 @@ pub struct SongSelectionState<'ss> {
     quad_test_buffer: wgpu::Buffer,
     quad_test_instance_data: Vec<QuadInstance>,
 
-    song_importer: SongImporter,
     settings: SettingsScreen,
 }
 
@@ -201,7 +200,6 @@ impl<'ss> SongSelectionState<'ss> {
         let quad_test_instance_data = Vec::new();
 
         Self {
-            song_importer: SongImporter::new(inner_tx.clone()),
             db: OsuDatabase::new_from_path(DEFAULT_DB_PATH).unwrap(), // TODO: REMOVE UNRAP
             min: 0,
             max: 0,
@@ -471,6 +469,7 @@ impl<'ss> SongSelectionState<'ss> {
                     },
                     SongSelectionEvents::StartBeatmap(entry) => {
                         let _span = tracy_client::span!("osu_song_select_state::update::event::start_beatmap");
+                        self.settings.close();
                         self.state_tx.send(OsuStateEvent::StartBeatmap(entry))
                             .expect("Failed to send StartBeatmap event to the OsuState");
                     },
@@ -543,7 +542,7 @@ impl<'ss> SongSelectionState<'ss> {
                     ui.set_width(50.0);
 
                     if ui.button("⚙").clicked() {
-                        self.song_importer.toggle();
+                        self.settings.toggle();
                     };
                 });
         });
@@ -560,7 +559,6 @@ impl<'ss> SongSelectionState<'ss> {
 
         ctx.begin_pass(input);
 
-        self.song_importer.render(ctx);
         self.settings.render(ctx);
         
         // TODO: God THIS IS SO TERRIBLE LMAO
