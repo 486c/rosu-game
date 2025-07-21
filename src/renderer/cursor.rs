@@ -1,3 +1,4 @@
+
 use std::{collections::VecDeque, sync::{Arc, RwLock}, time::{Duration, Instant}};
 
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
@@ -8,19 +9,24 @@ use crate::{buffer_write_or_init, graphics::Graphics, quad_instance::QuadInstanc
 // TODO: control this through settings
 const TRAIL_KEEP_MS: u64 = 55;
 const TARGET_TRAIL_UPDATE_RATE: f64 = 120.0; // Per sec
+const BASE_CURSOR_SIZE: f32 = 50.0;
 
 pub struct CursorRenderer<'cr> {
     graphics: Arc<Graphics<'cr>>,
     quad_renderer: QuadRenderer<'cr>,
-    skin_manager: Arc<RwLock<SkinManager>>,
 
+    skin_manager: Arc<RwLock<SkinManager>>,
+    
     trail_instance_data: VecDeque<(Instant, QuadInstance)>,
     trail_buffer: wgpu::Buffer,
-    
     cursor_instance: QuadInstance,
     cursor_buffer: wgpu::Buffer,
 
     last_update: Instant,
+
+    inner_buffer: Vec<QuadInstance>,
+
+    size: f32,
 }
 
 impl<'cr> CursorRenderer<'cr> {
@@ -29,7 +35,8 @@ impl<'cr> CursorRenderer<'cr> {
         skin_manager: Arc<RwLock<SkinManager>>,
     ) -> Self {
         let quad_renderer = QuadRenderer::new(graphics.clone(), false);
-        quad_renderer.resize_vertex_centered(50.0, 50.0);
+        quad_renderer.resize_vertex_centered(BASE_CURSOR_SIZE, BASE_CURSOR_SIZE);
+
         let trail_instance_data = VecDeque::with_capacity(10);
         let trail_buffer = quad_renderer.create_instance_buffer();
         let cursor_buffer = quad_renderer.create_instance_buffer();
@@ -45,7 +52,19 @@ impl<'cr> CursorRenderer<'cr> {
             cursor_buffer,
             last_update: Instant::now(),
             skin_manager,
+            size: 1.0,
+            inner_buffer: Vec::with_capacity(10),
         }
+    }
+
+    pub fn set_size(&mut self, new_size: f32) {
+        self.size = new_size;
+
+        let new_size_multiplied = BASE_CURSOR_SIZE * new_size;
+        self.quad_renderer.resize_vertex_centered(
+            new_size_multiplied,
+            new_size_multiplied
+        );
     }
 
     pub fn update(&mut self) {
@@ -78,7 +97,7 @@ impl<'cr> CursorRenderer<'cr> {
     }
 
     pub fn render_on_view(&mut self, view: &TextureView) {
-        let skin = self.skin_manager.read().expect("failed");
+        let skin = self.skin_manager.read().expect("failed to acquire skin lock");
 
         buffer_write_or_init!(
             self.graphics.queue,
@@ -87,18 +106,22 @@ impl<'cr> CursorRenderer<'cr> {
             &[self.cursor_instance],
             QuadInstance
         );
-
-        let trail: Vec<QuadInstance> = self.trail_instance_data.iter().map(|(_, instance)| *instance).collect();
+        
+        self.inner_buffer.clear();
+        self.trail_instance_data
+            .iter()
+            .map(|(_, instance)| *instance)
+            .for_each(|x| self.inner_buffer.push(x));
 
         buffer_write_or_init!(
             self.graphics.queue,
             self.graphics.device,
             self.trail_buffer,
-            &trail,
+            &self.inner_buffer,
             QuadInstance
         );
 
-        // 1. Trail
+        // Trail
         self.quad_renderer.render_on_view_instanced(
             view,
             &skin.cursor_trail.bind_group,
@@ -106,7 +129,7 @@ impl<'cr> CursorRenderer<'cr> {
             0..self.trail_instance_data.len() as u32
         );
 
-        // 2. cursor itself
+        // Cursor itself
         self.quad_renderer.render_on_view_instanced(
             view, 
             &skin.cursor.bind_group, 

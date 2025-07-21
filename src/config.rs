@@ -22,6 +22,11 @@ impl JudgementsConfig {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct CursorConfig {
+    pub size: f32,
+}
+
 #[derive(Debug)]
 pub struct Config {
     /// Toggle storing slider textures in the gpu for future reuse
@@ -31,6 +36,7 @@ pub struct Config {
     pub debug_use_judgements_as_colors: bool,
     pub slider: SliderConfig,
     pub judgements: JudgementsConfig,
+    pub cursor: CursorConfig,
 }
 
 impl Default for Config {
@@ -48,6 +54,9 @@ impl Default for Config {
                 fade_in_ms: 100.0,
                 stay_on_screen_ms: 100.0,
                 fade_out_ms: 100.0,
+            },
+            cursor: CursorConfig {
+                size: 1.0
             },
         }
     }

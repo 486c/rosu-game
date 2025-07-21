@@ -8,7 +8,7 @@ use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, calc_hitcircle_diameter}, osu_cursor_renderer::CursorRenderer, osu_db::BeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer
+    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, calc_hitcircle_diameter}, renderer::cursor::CursorRenderer, osu_db::BeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer
 };
 use crate::processor::OsuProcessor;
 
@@ -19,6 +19,7 @@ pub enum OsuStates {
 
 pub enum OsuStateEvent {
     ToSongSelection,
+    SetCursorSize(f32),
     ChangeSkin(PathBuf),
     StartBeatmap(BeatmapEntry),
     PlaySound(i32, Box<dyn Source<Item = f32> + Send + Sync>),
@@ -387,6 +388,9 @@ impl<'s> OsuState<'s> {
         match event {
             Ok(event) => {
                 match event {
+                    OsuStateEvent::SetCursorSize(new_size) => {
+                        self.cursor_renderer.set_size(new_size);
+                    },
                     OsuStateEvent::ChangeSkin(path) => {
                         let _span = tracy_client::span!("osu_state::update::event::change_skin");
                         self.open_skin(path)

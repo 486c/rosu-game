@@ -130,7 +130,7 @@ impl SettingsScreen {
 
         let mut config = self.config.write().expect("failed to acquire write lock");
 
-        ui.collapsing(egui::RichText::new("Renderer").font(heading_font), |ui| {
+        ui.collapsing(egui::RichText::new("Renderer").font(heading_font.clone()), |ui| {
             ui.heading("Slider");
 
             ui.checkbox(&mut config.store_slider_textures, "Store slider textures");
@@ -172,6 +172,18 @@ impl SettingsScreen {
                 0.0..=1000.0
             ).text("Fade-out milliseconds"));
         });
+
+
+        ui.collapsing(egui::RichText::new("Cursor").font(heading_font), |ui| {
+            if ui.add(Slider::new(
+                &mut config.cursor.size,
+                1.0..=10.0
+            )).changed() {
+                let _ = self.osu_state_tx.send(OsuStateEvent::SetCursorSize(config.cursor.size));
+            };
+        });
+
+
     }
 
     fn spawn_skin_selector_dialog(&self) {

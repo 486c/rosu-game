@@ -20,6 +20,6 @@ pub mod egui_state;
 mod screen;
 mod song_select_state;
 pub mod osu_db;
-mod osu_cursor_renderer;
+pub mod renderer;
 mod frameless_source;
 pub mod osu_input;
