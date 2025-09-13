@@ -1,4 +1,5 @@
-use log::{info, warn};
+use log::{error, info, warn};
+use rosu::config::SliderConfig;
 use rosu::graphics::GraphicsInitialized;
 use url::Url;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -11,19 +12,20 @@ use winit::window::Window;
 use winit::{event_loop::EventLoop, platform::web::WindowAttributesExtWebSys};
 use rosu::hit_objects::ObjectKind;
 use rosu::{math::calculate_preempt_fadein, config::Config, graphics::Graphics, osu_renderer::OsuRenderer};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use rosu::skin_manager::SkinManager;
 use rosu::hit_objects::Object;
 use rosu::hit_objects::hit_window::HitWindow;
 use winit::platform::web::WindowExtWebSys;
 use wasm_bindgen_futures::spawn_local;
+use web_time::{Instant, Duration};
 
 static TEST_BEATMAP_BYTES: &[u8] = include_bytes!("../1.osu");
 
 struct OsuWasmState<'ows> {
     osu_renderer: OsuRenderer<'ows>,
-    skin: SkinManager,
-    osu_config: Config,
+    skin: Arc<RwLock<SkinManager>>,
+    osu_config: Arc<RwLock<Config>>,
 
     clock: Timer,
     objects: Vec<Object>,
@@ -32,6 +34,7 @@ struct OsuWasmState<'ows> {
     current_preempt: f32,
     current_fadein: f32,
     current_hit_window: HitWindow,
+    last_frame_ts: Instant,
 }
 
 impl<'ows> OsuWasmState<'ows> {
@@ -67,10 +70,6 @@ impl<'ows> OsuWasmState<'ows> {
         // OsuState, for the future i probably 
         // needed to keep them in sync :)
         for (i, obj) in self.objects.iter_mut().enumerate().rev() {
-            if obj.is_judgements_visible(time, self.current_preempt) {
-                //self.objects_judgments_render_queue.push(i);
-            };
-
             if !obj.is_visible(time, self.current_preempt, &self.current_hit_window) {
                 continue;
             }
@@ -79,8 +78,6 @@ impl<'ows> OsuWasmState<'ows> {
                 ObjectKind::Slider(slider) => {
                     self.osu_renderer.prepare_and_render_slider_texture(
                         slider, 
-                        &self.skin, 
-                        &self.osu_config
                     );
                 }
                 _ => {},
@@ -94,12 +91,10 @@ impl<'ows> OsuWasmState<'ows> {
         self.osu_renderer.prepare_objects(
             time, self.current_preempt, self.current_fadein,
             &self.objects_render_queue, &self.objects,
-            &self.skin
+            &self.current_hit_window,
         );
 
-        self.osu_renderer.prepare(
-            &self.osu_config
-        );
+        self.osu_renderer.prepare();
 
         self.osu_renderer.write_buffers();
 
@@ -113,10 +108,12 @@ impl<'ows> OsuWasmState<'ows> {
         self.osu_renderer.render_objects(
             &view,
             &self.objects_render_queue, &self.objects,
-            &self.skin,
         ).unwrap();
 
         output.present();
+        
+        //info!("Frame elapsed: {:.2}ms", self.last_frame_ts.elapsed().as_millis());
+        self.last_frame_ts = Instant::now();
     }
 }
 
@@ -125,7 +122,8 @@ struct App<'app> {
     // Used as oneshot channel to initialize graphics in async manner
     proxy: Option<EventLoopProxy<AppEvents>>,
     graphics: Option<Arc<Graphics<'app>>>,
-    osu_state: Option<OsuWasmState<'app>>
+    osu_state: Option<OsuWasmState<'app>>,
+    last_ts: Instant,
 }
 
 enum AppEvents {
@@ -140,31 +138,23 @@ impl<'app> App<'app> {
             proxy: Some(proxy),
             graphics: None,
             osu_state: None,
+            last_ts: Instant::now(),
         }
     }
 }
 
 async fn initialize_graphics<'a>(window: Arc<Window>) -> GraphicsInitialized<'a> {
     let size = window.inner_size();
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::GL,
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
         flags: wgpu::InstanceFlags::empty(),
         ..Default::default()
     });
 
-    let limits = wgpu::Limits::downlevel_webgl2_defaults();
-
-    let device_descriptor = wgpu::DeviceDescriptor {
-        label: None,
-        required_features: wgpu::Features::default(),
-        required_limits: limits,
-        memory_hints: MemoryHints::default() 
-    };
-
-    let power_preferences = wgpu::PowerPreference::HighPerformance;
     let surface = instance.create_surface(window).unwrap();
     info!("Initialized surface");
 
+    let power_preferences = wgpu::PowerPreference::HighPerformance;
     let adapter_options = RequestAdapterOptions {
         power_preference: power_preferences,
         force_fallback_adapter: false,
@@ -172,8 +162,22 @@ async fn initialize_graphics<'a>(window: Arc<Window>) -> GraphicsInitialized<'a>
     };
 
     let adapter = instance.request_adapter(&adapter_options).await.unwrap();
-    info!("Initialized adapter");
+    info!("Initialized adapter: {:?}", adapter.get_info());
+    info!("Adapter backend: {:?}", adapter.get_info().backend);
+    info!("Adapter features: {:?}", adapter.features());
+    info!("Adapter limits: {:?}", adapter.limits());
 
+    //let limits = wgpu::Limits::downlevel_webgl2_defaults()
+        //.using_resolution(adapter.limits());
+
+    let limits = wgpu::Limits::default();
+
+    let device_descriptor = wgpu::DeviceDescriptor {
+        label: None,
+        required_features: wgpu::Features::default(),
+        required_limits: limits,
+        memory_hints: MemoryHints::default() 
+    };
 
     let (device, queue) = adapter.request_device(&device_descriptor, None).await.unwrap();
     info!("Initialized device and queue");
@@ -185,7 +189,6 @@ async fn initialize_graphics<'a>(window: Arc<Window>) -> GraphicsInitialized<'a>
         queue,
         size,
     }
-
 }
 
 impl<'app> ApplicationHandler<AppEvents> for App<'app> {
@@ -198,9 +201,21 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         self.window = Some(window.clone());
         
         // Appending canvas to the the page
+        /*
+        powerPreference: 'high-performance',
+        failIfMajorPerformanceCaveat: true,
+        antialias: false, // Disable AA for Firefox
+        alpha: false,     // Disable alpha for better performance
+        depth: true,
+        stencil: true,
+        preserveDrawingBuffer: false,
+        premultipliedAlpha: false,
+        */
         let canvas = self.window.as_ref().unwrap().canvas().unwrap();
         web_sys::window()
-            .and_then(|win| win.document())
+            .and_then(|win| {
+                win.document()
+            })
             .and_then(|doc| {
                 doc.get_element_by_id("app")?.append_child(&canvas).ok()?;
                 Some(())
@@ -210,14 +225,12 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
 
     fn window_event(
         &mut self,
-        event_loop: &winit::event_loop::ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
         match event {
             winit::event::WindowEvent::RedrawRequested => {
-                let window = self.window.as_ref().unwrap();
-
                 if let Some(ref mut state) = self.osu_state {
                     state.on_draw()
                 }
@@ -232,11 +245,11 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                         let graphics = Arc::new(Graphics::from_initialized(initialized_graphics));
 
                         if proxy.send_event(AppEvents::GraphicsInitialized(graphics)).is_err() {
-                            info!("user event is not send");
+                            error!("user event is not send");
                         };
 
                         if proxy.send_event(AppEvents::Resize(new_size)).is_err() {
-                            info!("user event is not send");
+                            error!("user event is not send");
                         };
                     });
                 } else {
@@ -250,6 +263,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
     }
 
     fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.last_ts = Instant::now();
         let window = self.window.as_ref().unwrap();
         window.request_redraw();
     }
@@ -257,10 +271,15 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: AppEvents) {
         match event {
             AppEvents::GraphicsInitialized(graphics) => {
-                let osu_config = Config::default();
-                let osu_renderer = OsuRenderer::new(graphics.clone(), &osu_config);
+                let osu_config = Arc::new(RwLock::new(Config {
+                    store_slider_textures: false,
+                    ..Default::default()
+                }));
+
                 info!("Initialized osu! Renderer");
-                let skin = SkinManager::from_static(&graphics);
+                let skin = Arc::new(RwLock::new(SkinManager::from_static(&graphics).into()));
+
+                let osu_renderer = OsuRenderer::new(graphics.clone(), osu_config.clone(), skin.clone());
                 info!("Initialized static osu! skin");
 
                 let mut state = OsuWasmState {
@@ -274,6 +293,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                     current_fadein: 0.0,
                     current_hit_window: HitWindow::from_od(5.0),
                     osu_config,
+                    last_frame_ts: Instant::now(),
                 };
 
                 state.open_beatmap_from_bytes(&TEST_BEATMAP_BYTES);
