@@ -4,7 +4,7 @@ use std::{collections::VecDeque, sync::{Arc, RwLock}, time::{Duration, Instant}}
 use wgpu::{util::DeviceExt, BufferUsages, TextureView};
 use winit::dpi::PhysicalPosition;
 
-use crate::{buffer_write_or_init, graphics::Graphics, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager};
+use crate::{graphics::Graphics, quad_instance::QuadInstance, quad_renderer::QuadRenderer, skin_manager::SkinManager};
 
 // TODO: control this through settings
 const TRAIL_KEEP_MS: u64 = 55;

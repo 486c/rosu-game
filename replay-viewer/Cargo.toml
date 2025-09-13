@@ -5,13 +5,12 @@ edition = "2021"
 
 [dependencies]
 bytemuck = "1.22.0"
-osu-replay-parser = { git = "https://github.com/486c/osr-parser"}
+osu-replay-parser = { path = "/home/lopij/wq/osr-parser" }
 rosu-game = { path = "../" }
 winit = { workspace = true }
 wgpu = { workspace = true }
 egui = { workspace = true }
 egui-wgpu = { workspace = true }
-egui_file = { workspace = true }
 egui_extras = { workspace = true }
 rosu-map = { workspace = true }
 tracing = { workspace = true }

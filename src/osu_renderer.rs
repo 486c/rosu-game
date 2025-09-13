@@ -16,7 +16,6 @@ static SLIDER_SCALE: f32 = 2.0;
 pub const QUAD_INDECIES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 // TODO: Move it outta her
-#[macro_export]
 macro_rules! buffer_write_or_init {
     ($queue:expr, $device:expr, $buffer:expr, $data:expr, $t: ty) => {{
         let data_len = $data.len() as u64;

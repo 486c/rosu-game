@@ -79,6 +79,7 @@ impl<'g> Graphics<'g> {
             .iter()
             .copied()
             .find(|f| f.is_srgb())
+            //.find(|&f| f == wgpu::TextureFormat::Bgra8UnormSrgb)
             .unwrap_or(surface_caps.formats[0]);
 
         let surf_features = graphics.adapter.get_texture_format_features(

@@ -15,7 +15,8 @@ path = "src/bin.rs"
 
 [workspace]
 members = [
-	"replay-viewer"
+	"replay-viewer",
+	"wasm"
 ]
 
 [workspace.dependencies]
@@ -52,8 +53,6 @@ rodio = "0.19.0"
 raw-window-handle = "0.6.2"
 rust-ini = "0.21.0"
 thiserror = "1.0.63"
-r2d2_sqlite = "0.25.0"
-r2d2 = "0.8.10"
 rand = "0.8.5"
 oneshot = { version = "0.1.8", default-features = false, features = ["std"] }
 
@@ -74,20 +73,25 @@ oneshot = { version = "0.1.8", default-features = false, features = ["std"] }
 cfg-if = "1.0.0"
 getrandom = { version = "0.2.15", features = ["js"] }
 pollster = "0.3.0"
-#osu-replay-parser = "0.2.0"
-osu-replay-parser = { git = "https://github.com/486c/osr-parser"}
+#osu-replay-parser = { git = "https://github.com/486c/osr-parser"}
+osu-replay-parser = { path = "/home/lopij/wq/osr-parser" }
 md5 = "0.7.0"
 rfd = "0.15.4"
 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-time = "1.1.0"
+#rusqlite = { version = "0.32.1", features = ["wasm32-wasi-vfs", "bundled"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 rusqlite = { version = "0.32.1", features = ["bundled"] }
+r2d2_sqlite = "0.25.0"
+r2d2 = "0.8.10"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rusqlite = "0.32.1"
+r2d2_sqlite = "0.25.0"
+r2d2 = "0.8.10"
 
 [dev-dependencies]
 approx = "0.5.1"
