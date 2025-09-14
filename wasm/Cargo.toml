@@ -9,7 +9,6 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-
 rosu-game = { path = "../" }
 winit = { workspace = true }
 rosu-map = { workspace = true }
@@ -28,6 +27,8 @@ web-sys = { version = "0.3.69", features = [
     "HtmlCanvasElement",
 	"Location",
 ]}
-url = "2.5.2"
 image = { version = "0.24.7", default-features = false }
-reqwest-wasm = "0.11.16"
+reqwest-wasm = { version = "0.11.16", default-features = false }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-O']
