@@ -2,23 +2,6 @@ use std::path::Path;
 use crate::{graphics::Graphics, skin_ini::SkinIni, texture::{AtlasTexture, Texture}};
 use image::load_from_memory;
 
-static FALLBACK_EMPTY_BYTES: &[u8] = include_bytes!("../skin/empty.png");
-
-static FALLBACK_HITCIRCLE_BYTES: &[u8] = include_bytes!("../skin/hitcircle.png");
-static FALLBACK_HITCIRCLE_OVERLAY_BYTES: &[u8] = FALLBACK_EMPTY_BYTES;
-static FALLBACK_SLIDERB0_BYTES: &[u8] = include_bytes!("../skin/sliderb0.png");
-
-static FALLBACK_CURSOR_BYTES: &[u8] = include_bytes!("../skin/cursor.png");
-static FALLBACK_CURSOR_TRAIL_BYTES: &[u8] = include_bytes!("../skin/cursortrail.png");
-
-static FALLBACK_HIT_MISS_BYTES: &[u8] = include_bytes!("../skin/hit0.png");
-static FALLBACK_HIT_300_BYTES: &[u8] = include_bytes!("../skin/hit300.png");
-static FALLBACK_HIT_100_BYTES: &[u8] = include_bytes!("../skin/hit100.png");
-static FALLBACK_HIT_50_BYTES: &[u8] = include_bytes!("../skin/hit50.png");
-
-static FALLBACK_SLIDER_TICK_BYTES: &[u8] = include_bytes!("../skin/sliderscorepoint.png");
-static FALLBACK_SLIDER_REVERSE_ARROW_BYTES: &[u8] = include_bytes!("../skin/reversearrow.png");
-
 macro_rules! load_or_fallback_image {
     ($path:expr, $name: expr, $graphics:expr) => {{
         load_or_fallback_texture!($path, $name, $name, $graphics)
@@ -67,57 +50,12 @@ pub struct SkinManager {
     pub sliderb0: Texture,
     pub cursor: Texture,
     pub cursor_trail: Texture,
-    pub debug_texture: Texture,
     pub judgments_atlas: AtlasTexture,
     pub slider_tick: Texture,
     pub slider_reverse_arrow: Texture,
-
-    pub debug_texture2: Texture,
 }
 
 impl SkinManager {
-
-    // Used only in wasm :)
-    pub fn from_static(graphics: &Graphics) -> Self {
-        let skin_ini = SkinIni::default();
-
-        let hit_circle = Texture::from_bytes(FALLBACK_HITCIRCLE_BYTES, &graphics);
-        let hit_circle_overlay = Texture::from_bytes(FALLBACK_HITCIRCLE_OVERLAY_BYTES, &graphics);
-        let sliderb0 = Texture::from_bytes(FALLBACK_SLIDERB0_BYTES, &graphics);
-        let cursor = Texture::from_bytes(FALLBACK_CURSOR_BYTES, &graphics);
-        let cursor_trail = Texture::from_bytes(FALLBACK_CURSOR_TRAIL_BYTES, &graphics);
-        let debug_texture = Texture::from_bytes(FALLBACK_EMPTY_BYTES, &graphics);
-        let debug_texture2 = Texture::from_bytes(FALLBACK_EMPTY_BYTES, &graphics);
-
-        let hit_miss = load_from_memory(FALLBACK_HIT_MISS_BYTES).unwrap();
-        let hit_100 = load_from_memory(FALLBACK_HIT_100_BYTES).unwrap();
-        let hit_50 = load_from_memory(FALLBACK_HIT_50_BYTES).unwrap();
-        let hit_300 = load_from_memory(FALLBACK_HIT_300_BYTES).unwrap();
-
-        let judgments_atlas = AtlasTexture::from_images(
-            graphics, 
-            &[hit_300, hit_100, hit_50, hit_miss]
-        );
-
-
-        let slider_tick = Texture::from_bytes(FALLBACK_SLIDER_TICK_BYTES, graphics);
-        let slider_reverse_arrow = Texture::from_bytes(FALLBACK_SLIDER_REVERSE_ARROW_BYTES, graphics);
-
-        Self {
-            cursor,
-            cursor_trail,
-            debug_texture,
-            debug_texture2,
-            hit_circle,
-            hit_circle_overlay,
-            ini: skin_ini,
-            judgments_atlas,
-            slider_reverse_arrow,
-            slider_tick,
-            sliderb0
-        }
-    }
-
     pub fn from_path(path: impl AsRef<Path>, graphics: &Graphics) -> Self {
         tracing::info!("Attempt to initialize SkinManager from path: {}", &path.as_ref().display());
         let skin_ini = {
@@ -164,10 +102,6 @@ impl SkinManager {
         let cursor = load_or_fallback_texture!(path, "cursor.png", graphics);
         let cursor_trail = load_or_fallback_texture!(path, "cursortrail.png", graphics);
 
-        // Loading judgments
-        let debug_texture = load_or_fallback_texture!(path, "debug.png", graphics);
-        let debug_texture2 = load_or_fallback_texture!(path, "debug2.png", graphics);
-
         let hit_miss = load_or_fallback_image!(path, "unexistenttexture.pnng", "hit0.png", graphics);
         let hit_300 = load_or_fallback_image!(path, "unexistenttexture.pnng", "hit300.png", graphics);
         let hit_100 = load_or_fallback_image!(path, "unexistenttexture.pnng", "hit100.png", graphics);
@@ -188,8 +122,6 @@ impl SkinManager {
             sliderb0,
             cursor,
             cursor_trail,
-            debug_texture,
-            debug_texture2,
             judgments_atlas,
             slider_tick,
             slider_reverse_arrow,        

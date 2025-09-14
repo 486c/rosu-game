@@ -9,6 +9,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self.path.startswith('/static/'):
             path = '.' + self.path
             if os.path.exists(path):
+                
+                if "skin" in self.path:
+                    print(f"PATH: {path}")
+                    self.send_response(200)
+                    self.send_header('Content-type', 'image/png')
+                    self.end_headers()
+                    with open(path, 'rb') as file:
+                        self.wfile.write(file.read())
+                    return
+
                 self.send_response(200)
                 self.send_header('Content-type', 'text/javascript')
                 self.end_headers()

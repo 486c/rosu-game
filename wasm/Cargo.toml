@@ -29,4 +29,5 @@ winit = { workspace = true }
 rosu-map = { workspace = true }
 wgpu = { workspace = true }
 url = "2.5.2"
+image = "0.24.7"
 reqwest-wasm = "0.11.16"

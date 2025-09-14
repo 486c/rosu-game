@@ -1,7 +1,8 @@
-use log::{error, info, warn};
-use rosu::config::SliderConfig;
+use image::load_from_memory;
+use log::{error, info};
 use rosu::graphics::GraphicsInitialized;
-use url::Url;
+use rosu::skin_ini::SkinIni;
+use rosu::texture::{AtlasTexture, Texture};
 use wasm_bindgen::prelude::wasm_bindgen;
 use rosu::timer::Timer;
 use wgpu::{MemoryHints, RequestAdapterOptions};
@@ -18,14 +19,12 @@ use rosu::hit_objects::Object;
 use rosu::hit_objects::hit_window::HitWindow;
 use winit::platform::web::WindowExtWebSys;
 use wasm_bindgen_futures::spawn_local;
-use web_time::{Instant, Duration};
+use web_time::{Instant};
 
 static TEST_BEATMAP_BYTES: &[u8] = include_bytes!("../1.osu");
 
 struct OsuWasmState<'ows> {
     osu_renderer: OsuRenderer<'ows>,
-    skin: Arc<RwLock<SkinManager>>,
-    osu_config: Arc<RwLock<Config>>,
 
     clock: Timer,
     objects: Vec<Object>,
@@ -127,7 +126,7 @@ struct App<'app> {
 }
 
 enum AppEvents {
-    GraphicsInitialized(Arc<Graphics<'static>>),
+    GraphicsInitialized(Arc<Graphics<'static>>, Arc<RwLock<SkinManager>>),
     Resize(PhysicalSize<u32>),
 }
 
@@ -146,7 +145,7 @@ impl<'app> App<'app> {
 async fn initialize_graphics<'a>(window: Arc<Window>) -> GraphicsInitialized<'a> {
     let size = window.inner_size();
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::PRIMARY,
+        backends: wgpu::Backends::GL,
         flags: wgpu::InstanceFlags::empty(),
         ..Default::default()
     });
@@ -167,10 +166,8 @@ async fn initialize_graphics<'a>(window: Arc<Window>) -> GraphicsInitialized<'a>
     info!("Adapter features: {:?}", adapter.features());
     info!("Adapter limits: {:?}", adapter.limits());
 
-    //let limits = wgpu::Limits::downlevel_webgl2_defaults()
-        //.using_resolution(adapter.limits());
-
-    let limits = wgpu::Limits::default();
+    let limits = wgpu::Limits::downlevel_webgl2_defaults()
+        .using_resolution(adapter.limits());
 
     let device_descriptor = wgpu::DeviceDescriptor {
         label: None,
@@ -191,6 +188,166 @@ async fn initialize_graphics<'a>(window: Arc<Window>) -> GraphicsInitialized<'a>
     }
 }
 
+async fn initialize_skin(graphics: &Graphics<'_>) -> SkinManager {
+    let client = reqwest_wasm::Client::new();
+
+    let hit_circle = Texture::from_bytes(
+        &client.get("http://127.0.0.1:8000/static/skin/hitcircle.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+        &graphics
+    );
+
+    info!("Fetched hitcircle.png");
+
+    let sliderb0 = Texture::from_bytes(
+        &client.get("http://127.0.0.1:8000/static/skin/sliderb0.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+        &graphics
+    );
+
+    info!("Fetched sliderb0.png");
+
+    let cursor = Texture::from_bytes(
+        &client.get("http://127.0.0.1:8000/static/skin/cursor.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+        &graphics
+    );
+
+    info!("Fetched cursor.png");
+
+    let cursor_trail = Texture::from_bytes(
+        &client.get("http://127.0.0.1:8000/static/skin/cursortrail.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+        &graphics
+    );
+
+    info!("Fetched cursortrail.png");
+
+    let hit_miss = load_from_memory(
+        &client.get("http://127.0.0.1:8000/static/skin/hit0.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+    ).unwrap();
+
+    info!("Fetched hit0.png");
+
+    let hit_300 = load_from_memory(
+        &client.get("http://127.0.0.1:8000/static/skin/hit300.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+    ).unwrap();
+
+    info!("Fetched hit300.png");
+
+    let hit_100 = load_from_memory(
+        &client.get("http://127.0.0.1:8000/static/skin/hit100.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap()
+    ).unwrap();
+
+    info!("Fetched hit100.png");
+
+    let hit_50 = load_from_memory(
+        &client.get("http://127.0.0.1:8000/static/skin/hit50.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+    ).unwrap();
+
+    info!("Fetched hit50.png");
+
+    let slider_tick = Texture::from_bytes(
+        &client.get("http://127.0.0.1:8000/static/skin/sliderscorepoint.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+        &graphics
+    );
+
+    info!("Fetched sliderscorepoint.png");
+
+    let reverse_arrow = Texture::from_bytes(
+        &client.get("http://127.0.0.1:8000/static/skin/reversearrow.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+        &graphics
+    );
+
+    info!("Fetched reversearrow.png");
+
+    let empty = Texture::from_bytes(
+        &client.get("http://127.0.0.1:8000/static/skin/empty.png")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+        &graphics
+    );
+
+    info!("Fetched empty.png");
+
+    let judgments_atlas = AtlasTexture::from_images(
+        graphics, 
+        &[hit_300, hit_100, hit_50, hit_miss]
+    );
+
+    SkinManager {
+        ini: SkinIni::default(),
+        hit_circle,
+        hit_circle_overlay: empty,
+        sliderb0,
+        cursor,
+        cursor_trail,
+        judgments_atlas,
+        slider_tick,
+        slider_reverse_arrow: reverse_arrow,
+    }
+}
+
 impl<'app> ApplicationHandler<AppEvents> for App<'app> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let attrs = Window::default_attributes()
@@ -199,18 +356,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         let window = Arc::new(event_loop.create_window(attrs).unwrap());
 
         self.window = Some(window.clone());
-        
-        // Appending canvas to the the page
-        /*
-        powerPreference: 'high-performance',
-        failIfMajorPerformanceCaveat: true,
-        antialias: false, // Disable AA for Firefox
-        alpha: false,     // Disable alpha for better performance
-        depth: true,
-        stencil: true,
-        preserveDrawingBuffer: false,
-        premultipliedAlpha: false,
-        */
+
         let canvas = self.window.as_ref().unwrap().canvas().unwrap();
         web_sys::window()
             .and_then(|win| {
@@ -243,8 +389,9 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                         info!("spawned shit");
                         let initialized_graphics = initialize_graphics(window.clone()).await;
                         let graphics = Arc::new(Graphics::from_initialized(initialized_graphics));
+                        let skin_manager = Arc::new(RwLock::new(initialize_skin(&graphics).await));
 
-                        if proxy.send_event(AppEvents::GraphicsInitialized(graphics)).is_err() {
+                        if proxy.send_event(AppEvents::GraphicsInitialized(graphics, skin_manager)).is_err() {
                             error!("user event is not send");
                         };
 
@@ -262,29 +409,25 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         self.last_ts = Instant::now();
         let window = self.window.as_ref().unwrap();
         window.request_redraw();
     }
 
-    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: AppEvents) {
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: AppEvents) {
         match event {
-            AppEvents::GraphicsInitialized(graphics) => {
+            AppEvents::GraphicsInitialized(graphics, skin_manager) => {
                 let osu_config = Arc::new(RwLock::new(Config {
                     store_slider_textures: false,
                     ..Default::default()
                 }));
 
-                info!("Initialized osu! Renderer");
-                let skin = Arc::new(RwLock::new(SkinManager::from_static(&graphics).into()));
 
-                let osu_renderer = OsuRenderer::new(graphics.clone(), osu_config.clone(), skin.clone());
-                info!("Initialized static osu! skin");
+                let osu_renderer = OsuRenderer::new(graphics.clone(), osu_config.clone(), skin_manager.clone());
 
                 let mut state = OsuWasmState {
                     osu_renderer,
-                    skin,
                     clock: Timer::new(),
                     objects: Vec::new(),
                     objects_render_queue: Vec::new(),
@@ -292,7 +435,6 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                     current_preempt: 0.0,
                     current_fadein: 0.0,
                     current_hit_window: HitWindow::from_od(5.0),
-                    osu_config,
                     last_frame_ts: Instant::now(),
                 };
 
@@ -367,12 +509,10 @@ async fn main() {
     let mut osu_renderer = OsuRenderer::new(graphics.clone(), &osu_config);
     info!("Initialized OsuRenderer");
 
-    let skin = SkinManager::from_static(&graphics);
     info!("Initialized skin");
     
     let download_link = Url::parse(&format!("https://osu.direct/api/osu/{}", beatmap_id)).unwrap();
 
-    let client = reqwest_wasm::Client::new();
     let downloaded_beatmap = client.get(download_link)
         .header("Access-Control-Allow-Origin", "*")
         .header("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
