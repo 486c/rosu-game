@@ -15,7 +15,7 @@ path = "src/bin.rs"
 
 [workspace]
 members = [
-	"replay-viewer",
+	#"replay-viewer",
 	"wasm"
 ]
 
@@ -23,10 +23,7 @@ members = [
 winit = "0.30.7"
 wgpu = { version = "24.0.3", features = ["webgl"] }
 rosu-map = { git = "https://github.com/MaxOhn/rosu-map.git" }
-egui = "0.31.1"
-egui-winit = { version = "0.31.1", default-features = false }
-egui-wgpu = "0.31.1"
-egui_extras = "0.31.1"
+
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 
@@ -34,10 +31,6 @@ tracing-subscriber = "0.3.18"
 winit = { workspace = true }
 rosu-map = { workspace = true }
 wgpu = { workspace = true }
-egui = { workspace = true }
-egui-winit = { workspace = true }
-egui-wgpu = { workspace = true }
-egui_extras = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true } 
 
@@ -47,7 +40,6 @@ cgmath = { git = "https://github.com/rustgd/cgmath.git", features = ["bytemuck"]
 image = "0.24.7"
 rosu-pp = "0.10.0"
 tracy-client = { version = "0.16.5", default-features = false }
-ultraviolet = { version = "0.9.2", features = ["bytemuck"] }
 smallvec = "1.13.2"
 rodio = "0.19.0"
 raw-window-handle = "0.6.2"
@@ -56,38 +48,31 @@ thiserror = "1.0.63"
 rand = "0.8.5"
 oneshot = { version = "0.1.8", default-features = false, features = ["std"] }
 
-
-#egui = { git = "https://github.com/486c/egui", branch = "0.29.1"}
-#egui-winit = { git = "https://github.com/486c/egui", branch = "0.29.1", default-features = false}
-#egui-wgpu = { git = "https://github.com/486c/egui", branch = "0.29.1"}
-#egui_extras = { git = "https://github.com/486c/egui", branch = "0.29.1"}
-#egui_file = "0.19.0"
-
-#egui-winit = { git = "https://github.com/486c/egui", branch = "0.29.1", default-features = false}
-#egui-wgpu = { git = "https://github.com/486c/egui", branch = "0.29.1"}
-#egui_extras = { git = "https://github.com/486c/egui", branch = "0.29.1"}
-#egui_file = "0.19.0"
-
-
-
 cfg-if = "1.0.0"
 getrandom = { version = "0.2.15", features = ["js"] }
 pollster = "0.3.0"
-#osu-replay-parser = { git = "https://github.com/486c/osr-parser"}
-osu-replay-parser = { path = "/home/lopij/wq/osr-parser" }
+osu-replay-parser = { git = "https://github.com/486c/osr-parser", branch = "wasm"}
 md5 = "0.7.0"
 rfd = "0.15.4"
 
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+egui = "0.31.1"
+egui-winit = { version = "0.31.1", default-features = false }
+egui-wgpu = "0.31.1"
+egui_extras = "0.31.1"
+
+# WASM only deps
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-time = "1.1.0"
-#rusqlite = { version = "0.32.1", features = ["wasm32-wasi-vfs", "bundled"] }
 
+# Windows only deps
 [target.'cfg(target_os = "windows")'.dependencies]
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 r2d2_sqlite = "0.25.0"
 r2d2 = "0.8.10"
 
+# Linux only deps
 [target.'cfg(target_os = "linux")'.dependencies]
 rusqlite = "0.32.1"
 r2d2_sqlite = "0.25.0"

@@ -60,7 +60,8 @@ impl Rgb {
             (self.b() as f32 / 255.0) as f32,
         ]
     }
-
+    
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn to_egui_color(&self) -> egui::Color32 {
         egui::Color32::from_rgb(self.r(), self.g(), self.b())
     }
