@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::{BufReader, Read}, path::{self, Path, PathBuf}};
+use std::{fs::{self, File}, io::{BufReader, Read}, path::{self, Path, PathBuf}, sync::{Arc, Mutex}};
 
 use r2d2_sqlite::SqliteConnectionManager;
 use r2d2::Pool;
@@ -7,8 +7,8 @@ use rusqlite::{params, Connection};
 
 pub const DEFAULT_DB_PATH: &str = "./rosu.db";
 
-#[derive(Debug, Clone)]
-pub struct BeatmapEntry {
+#[derive(Debug)]
+pub struct DbBeatmapEntry {
     pub id: u64,
     pub beatmap_id: i64,
     pub beatmapset_id: i64,
@@ -20,7 +20,7 @@ pub struct BeatmapEntry {
     pub hash: String,
 }
 
-impl TryFrom<&rusqlite::Row<'_>> for BeatmapEntry {
+impl TryFrom<&rusqlite::Row<'_>> for DbBeatmapEntry {
     type Error = rusqlite::Error;
 
     fn try_from(row: &rusqlite::Row) -> Result<Self, rusqlite::Error> {
@@ -43,7 +43,7 @@ pub struct OsuDatabase {
     conn: Pool<SqliteConnectionManager>,
 
     // A in-memory cache for faster loading times
-    pub cache: Vec<BeatmapEntry>,
+    pub cache: Mutex<Vec<Arc<DbBeatmapEntry>>>,
 }
 
 impl OsuDatabase {
@@ -95,7 +95,7 @@ impl OsuDatabase {
         tracing::info!("Initialized DB connection at {:?}", path.as_ref());
 
         let db = Self {
-            cache: Vec::new(),
+            cache: Vec::new().into(),
             conn: pool,
         };
 
@@ -146,7 +146,7 @@ impl OsuDatabase {
                             }
 
                             // raw entry
-                            let entry = BeatmapEntry {
+                            let entry = DbBeatmapEntry {
                                 id: 0,
                                 beatmap_id: beatmap.beatmap_id as i64,
                                 beatmapset_id: beatmap.beatmap_set_id as i64,
@@ -170,7 +170,7 @@ impl OsuDatabase {
 
     pub fn insert_beatmap_external(
         conn: &Connection, 
-        entry: &BeatmapEntry,
+        entry: &DbBeatmapEntry,
     ) {
         const QUERY: &str = "
             INSERT INTO beatmaps 
@@ -203,11 +203,11 @@ impl OsuDatabase {
         amount
     }
 
-    pub fn get_beatmap_by_index(&mut self, index: usize) -> Option<BeatmapEntry> {
+    pub fn get_beatmap_by_index(&self, index: usize) -> Option<DbBeatmapEntry> {
         const QUERY: &str = "SELECT * FROM beatmaps ORDER BY id ASC LIMIT ?1 OFFSET ?1";
 
         let entry = self.conn.get().unwrap().query_row(QUERY, [index], |row| {
-            BeatmapEntry::try_from(row)
+            DbBeatmapEntry::try_from(row)
         });
 
         match entry {
@@ -222,11 +222,11 @@ impl OsuDatabase {
         }
     }
 
-    pub fn get_beatmap_by_hash(&self, hash: &str) -> Option<BeatmapEntry> {
+    pub fn get_beatmap_by_hash(&self, hash: &str) -> Option<DbBeatmapEntry> {
         const QUERY: &str = "SELECT * FROM beatmaps WHERE hash = ?1";
 
         let entry = self.conn.get().unwrap().query_row(QUERY, [hash], |row| {
-            BeatmapEntry::try_from(row)
+            DbBeatmapEntry::try_from(row)
         });
 
         match entry {
@@ -244,11 +244,11 @@ impl OsuDatabase {
     pub fn get_beatmap_by_hash_external(
         conn: &Connection, 
         hash: &str
-    ) -> Option<BeatmapEntry> {
+    ) -> Option<DbBeatmapEntry> {
         const QUERY: &str = "SELECT * FROM beatmaps WHERE hash = ?1";
 
         let entry = conn.query_row(QUERY, [hash], |row| {
-            BeatmapEntry::try_from(row)
+            DbBeatmapEntry::try_from(row)
         });
 
         match entry {
@@ -263,7 +263,7 @@ impl OsuDatabase {
         }
     }
 
-    pub fn load_beatmaps_range(&mut self, min: usize, max: usize) {
+    pub fn fetch_beatmaps_range(&self, min: usize, max: usize) {
         const QUERY: &str = 
             "select * from beatmaps order by id ASC LIMIT ?1 OFFSET ?2";
 
@@ -272,14 +272,21 @@ impl OsuDatabase {
         let mut stmt = conn.prepare(QUERY).unwrap();
 
         let rows = stmt.query_map(params![max - min, min], |row| {
-            BeatmapEntry::try_from(row)
+            DbBeatmapEntry::try_from(row)
         }).unwrap();
 
-        self.cache.clear();
+        let mut lock = self.cache.lock().unwrap();
+
+        lock.clear();
         for row in rows {
-            self.cache.push(row.unwrap());
+            lock.push(row.unwrap().into());
         }
+    }
 
-
+    pub fn get_from_cache(&self, current: usize) -> Option<Arc<DbBeatmapEntry>> {
+        let lock = self.cache.lock().unwrap();
+        
+        // Free to clone because Arc
+        lock.get(current).cloned()
     }
 }
