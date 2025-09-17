@@ -270,7 +270,7 @@ impl<'ss> SongSelectionState<'ss> {
 
             let audio_file = Cursor::new(audio_buffer);
         
-            // Problematic audio files randomly found:
+            // TODO: Problematic audio files randomly found:
             // - 574824
             let audio_source = UniformSourceIterator::new(Decoder::new(audio_file).unwrap(), 2, 44100)
                 .fade_in(Duration::from_millis(150));
