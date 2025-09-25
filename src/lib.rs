@@ -47,7 +47,6 @@ cfg_if::cfg_if! {
         pub mod osu_input;
         mod screen;
         pub mod osu_db;
-        mod frameless_source;
         pub mod osu_state;
     }
 }

@@ -2,13 +2,13 @@ use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel,
 
 use cgmath::Vector2;
 use egui::{RawInput, Slider};
-use rodio::{source::UniformSourceIterator, Decoder, Sink, Source};
 use rosu_map::Beatmap;
+use soloud::{audio, AudioExt, Handle, LoadExt, Soloud, Wav};
 use wgpu::TextureView;
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
 
 use crate::{
-    config::Config, egui_state::EguiState, frameless_source::FramelessSource, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, calc_hitcircle_diameter}, renderer::cursor::CursorRenderer, osu_db::DbBeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer
+    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, calc_hitcircle_diameter}, renderer::cursor::CursorRenderer, osu_db::DbBeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer
 };
 use crate::processor::OsuProcessor;
 
@@ -22,7 +22,7 @@ pub enum OsuStateEvent {
     SetCursorSize(f32),
     ChangeSkin(PathBuf),
     StartBeatmap(Arc<DbBeatmapEntry>),
-    PlaySound(i32, Box<dyn Source<Item = f32> + Send + Sync>),
+    PlaySound(i32, audio::Wav),
 }
 
 
@@ -32,19 +32,24 @@ pub struct OsuState<'s> {
     pub event_receiver: Receiver<OsuStateEvent>,
     pub event_sender: Sender<OsuStateEvent>,
 
-    pub sink: Sink,
+    pub sl: Soloud,
 
     pub current_state: OsuStates,
+    current_beatmap: Option<Beatmap>,
+    current_hit_window: HitWindow,
+    current_screen_size: Vector2<f32>,
+    current_hit_circle_diameter: f32,
+    current_audio: Option<Wav>,
+    current_playing_audio: Option<Handle>,
+
     pub song_select: SongSelectionState<'s>,
 
     skin_manager: Arc<RwLock<SkinManager>>,
 
     osu_renderer: OsuRenderer<'s>,
 
-    current_beatmap: Option<Beatmap>,
     preempt: f32,
     fadein: f32,
-    current_hit_window: HitWindow,
 
     hit_objects: Vec<Object>,
 
@@ -56,13 +61,10 @@ pub struct OsuState<'s> {
     cursor_renderer: CursorRenderer<'s>,
 
     input_processor: OsuProcessor,
-
-    current_screen_size: Vector2<f32>,
-    current_hit_circle_diameter: f32,
 }
 
 impl<'s> OsuState<'s> {
-    pub fn new(window: Arc<Window>, graphics: Graphics<'s>, sink: Sink) -> Self {
+    pub fn new(window: Arc<Window>, graphics: Graphics<'s>, sl: Soloud) -> Self {
         let egui = EguiState::new(&graphics, &window);
         let skin_manager = Arc::new(RwLock::new(
             SkinManager::from_path("skin", &graphics)
@@ -93,7 +95,7 @@ impl<'s> OsuState<'s> {
             window,
             current_beatmap: None,
             egui,
-            sink,
+            sl,
             osu_clock: Timer::new(),
             objects_render_queue: Vec::with_capacity(20),
             hit_objects: Vec::new(),
@@ -106,6 +108,8 @@ impl<'s> OsuState<'s> {
             current_screen_size: Vector2::new(1.0, 1.0),
             current_hit_circle_diameter: 1.0,
             objects_judgments_render_queue: Vec::new(),
+            current_audio: None,
+            current_playing_audio: None,
         }
     }
 
@@ -132,7 +136,9 @@ impl<'s> OsuState<'s> {
             }
         };
 
-        self.sink.clear();
+        if let Some(audio_handle) = self.current_playing_audio.take() {
+            self.sl.pause(audio_handle);
+        }
 
         let beatmap_dir = path.as_ref().parent().expect("failed to get beatmap dir");
         let audio_file = beatmap_dir.join(&map.audio_file);
@@ -140,10 +146,9 @@ impl<'s> OsuState<'s> {
         // We have to acknowlage the fact that there might be beatmaps
         // without any audio files
         if audio_file.is_file() {
-            let file = BufReader::new(File::open(audio_file).unwrap());
-            let source = FramelessSource::new(Decoder::new(file).expect("Failed to load audio file source"));
-            let source = UniformSourceIterator::new(source, 2, 44100);
-            self.set_audio(source);
+            let mut wav = audio::Wav::default();
+            wav.load(audio_file).unwrap(); // TODO handle error
+            self.set_audio(wav);
             tracing::info!("Initialized a new audio file!");
         }
 
@@ -162,14 +167,14 @@ impl<'s> OsuState<'s> {
         self.current_beatmap = Some(map);
         self.apply_beatmap_transformations();
 
-        self.sink.play();
+        if let Some(audio) = &self.current_audio {
+            self.current_playing_audio = Some(self.sl.play(audio));
+        }
     }
 
-    pub fn set_audio<I>(&self, audio: I) 
-    where 
-    I: Source<Item = f32> + Send + Sync + 'static {
+    pub fn set_audio(&mut self, audio: Wav) {
         let _span = tracy_client::span!("osu_state::set_audio");
-        self.sink.append(audio);
+        self.current_audio = Some(audio);
     }
 
     pub fn apply_beatmap_transformations(&mut self) {
@@ -302,20 +307,20 @@ impl<'s> OsuState<'s> {
                     .step_by(1.0),
                 ).changed() {
                     self.osu_clock.pause();
-                    self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
+                    //self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
                     self.osu_clock.unpause();
                 };
 
                 if !self.osu_clock.is_paused() {
                     if ui.add(egui::Button::new("pause")).clicked() {
                         self.osu_clock.pause();
-                        self.sink.pause();
+                        //self.sink.pause();
                     }
                 } else {
                     if ui.add(egui::Button::new("unpause")).clicked() {
-                        self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
+                        //self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
                         self.osu_clock.unpause();
-                        self.sink.play();
+                        //self.sink.play();
                     }
                 }
             }
@@ -407,14 +412,18 @@ impl<'s> OsuState<'s> {
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {
                         let span = tracy_client::span!("osu_state::update::event::play_sound");
-                        self.sink.clear();
-                        span.emit_text("cleared sink");
-                        self.sink.append(audio_source);
-                        span.emit_text("appended audio_source");
-                        self.sink.try_seek(Duration::from_millis(start_at.try_into().unwrap_or(0))).unwrap();
-                        span.emit_text("appended try_seek");
-                        self.sink.play();
-                        span.emit_text("appended play");
+
+                        if let Some(audio_handle) = self.current_playing_audio.take() {
+                            self.sl.pause(audio_handle);
+                        };
+
+                        let handle = self.sl.play(&audio_source);
+                        self.sl.set_pause(handle, true);
+                        self.sl.seek(handle, start_at as f64 / 1000.0).unwrap(); // TODO: Handle
+                        self.sl.set_pause(handle, false);
+
+                        self.current_playing_audio = Some(handle);
+                        self.current_audio = Some(audio_source);
                     },
                 }
             },

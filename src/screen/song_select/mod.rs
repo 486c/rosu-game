@@ -128,7 +128,7 @@ pub struct CurrentBackground {
 }
 
 pub struct CurrentAudio {
-    audio_hash: md5::Digest,
+    pub audio_hash: md5::Digest,
 }
 
 pub struct SongSelectScreen<'sss> {
@@ -153,7 +153,6 @@ pub struct SongSelectScreen<'sss> {
 
     current_beatmap: Option<CurrentBeatmap>,
     current_background_image: Option<CurrentBackground>,
-    current_audio: Option<CurrentAudio>,
 }
 
 impl<'sss> SongSelectScreen<'sss> {
@@ -180,7 +179,6 @@ impl<'sss> SongSelectScreen<'sss> {
             quad_test_instance_data,
             current_beatmap: None,
             current_background_image: None,
-            current_audio: None,
         }
     }
 
@@ -197,7 +195,7 @@ impl<'sss> SongSelectScreen<'sss> {
     }
 
     pub fn decrement_beatmap(&mut self) {
-        self.set_scroll_to(self.current + 1);
+        self.set_scroll_to(self.current.saturating_sub(1));
     }
 
     pub fn set_background(&mut self, image: DynamicImage, md5: Digest) {

@@ -1,15 +1,12 @@
 use std::sync::Arc;
 
-use rodio::{OutputStream, Sink};
 use rosu::{graphics::Graphics, osu_state::OsuState};
+use soloud::Soloud;
 use winit::{application::ApplicationHandler, event_loop::{ControlFlow, EventLoop}, keyboard::KeyCode, window::Window};
 
 pub struct OsuApp<'a> {
     window: Option<Arc<Window>>,
     state: Option<OsuState<'a>>,
-    // TODO keeping it alive this way, until some kind of AudioManager is implemented
-    // if this dropped any calls to sink gonna result in whole application lock
-    audio_steam: Option<OutputStream>,
 
     is_cntrl_pressed: bool,
 }
@@ -26,17 +23,15 @@ impl<'a> ApplicationHandler for OsuApp<'a> {
             Graphics::new(window.clone()).await
         });
 
-        let (stream, stream_handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&stream_handle).unwrap();
-        sink.pause();
-        
         let window = window_orig.clone();
+
+        let sl = Soloud::default().unwrap();
+
         let state = pollster::block_on(async move {
-            OsuState::new(window, graphics, sink)
+            OsuState::new(window, graphics, sl)
         });
 
         self.state = Some(state);
-        self.audio_steam = Some(stream);
     }
 
     fn window_event(
@@ -135,7 +130,6 @@ fn main() {
     let mut app = OsuApp {
         window: None,
         state: None,
-        audio_steam: None,
         is_cntrl_pressed: false,
     };
 

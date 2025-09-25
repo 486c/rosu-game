@@ -1,36 +1,33 @@
 use std::{fs::File, io::{Cursor, Read}, path::PathBuf, sync::{mpsc::{Receiver, Sender}, Arc, RwLock}, time::Duration};
 
-use egui::{scroll_area::ScrollBarVisibility, Align, Color32, Direction, Label, Margin, RichText, Stroke};
-use egui_extras::{Size, StripBuilder};
 use image::DynamicImage;
 use md5::Digest;
 use rand::Rng;
-use rodio::{source::UniformSourceIterator, Decoder, Source};
 use rosu_map::Beatmap;
-use wgpu::{util::DeviceExt, BufferUsages, TextureView};
+use soloud::{audio, AudioExt, LoadExt};
+use wgpu::TextureView;
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
-use crate::{config::Config, graphics::Graphics, osu_db::{DbBeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, quad_instance::QuadInstance, quad_renderer::QuadRenderer, screen::{settings::SettingsScreen, song_select::{BeatmapCardInfoMetadata, CurrentBackground, CurrentBeatmap, SongSelectScreen}}, skin_manager::SkinManager, texture::Texture};
-
-
+use crate::{config::Config, graphics::Graphics, osu_db::{DbBeatmapEntry, OsuDatabase, DEFAULT_DB_PATH}, osu_state::OsuStateEvent, screen::{settings::SettingsScreen, song_select::{BeatmapCardInfoMetadata, CurrentAudio, CurrentBeatmap, SongSelectScreen}}, skin_manager::SkinManager};
 
 pub struct SongsImportJob {
     pub path: PathBuf,
     pub stop_rx: oneshot::Receiver<()>,
 }
 
-
-
 pub enum SongSelectionEvents {
+    /// Request to select beatmap from song select screen
     SelectBeatmap(Arc<DbBeatmapEntry>),
+    /// When beatmap loading thread is successfully returned a beatmap
     LoadedBeatmap{ 
         beatmap: Beatmap, 
         //beatmap_md5: Digest,
         image: DynamicImage,
         image_md5: Digest,
-        audio_source: Box<dyn Source<Item = f32> + Send + Sync>,
+        audio_source: audio::Wav,
         audio_md5: Digest
     },
+    /// Request to start the beatmap
     StartBeatmap(Arc<DbBeatmapEntry>),
     ImportSongsDirectory(SongsImportJob),
     ToggleSettings,
@@ -39,13 +36,13 @@ pub enum SongSelectionEvents {
 
 pub struct SongSelectionState<'ss> {
     db: Arc<OsuDatabase>,
-    graphics: Arc<Graphics<'ss>>,
-    config: Arc<RwLock<Config>>,
 
     // SongSelection state senders, used by
     // components inside song selection
     inner_tx: Sender<SongSelectionEvents>,
     inner_rx: Receiver<SongSelectionEvents>,
+
+    current_audio: Option<CurrentAudio>,
     
     // Events sender for "god" state
     state_tx: Sender<OsuStateEvent>,
@@ -69,11 +66,10 @@ impl<'ss> SongSelectionState<'ss> {
             db: db.clone(),
             inner_tx: inner_tx.clone(),
             inner_rx,
-            graphics: graphics.clone(),
             state_tx: state_tx.clone(),
             settings: SettingsScreen::new(config.clone(), skin_manager.clone(), state_tx.clone()),
-            config,
             song_select_screen: SongSelectScreen::new(db.clone(), graphics.clone(), inner_tx.clone()),
+            current_audio: None,
         }
     }
     
@@ -125,26 +121,19 @@ impl<'ss> SongSelectionState<'ss> {
 
             let audio_md5 = md5::compute(&audio_buffer);
 
-            let audio_file = Cursor::new(audio_buffer);
-        
-            // TODO: Problematic audio files randomly found:
-            // - 574824
-            let audio_source = UniformSourceIterator::new(Decoder::new(audio_file).unwrap(), 2, 44100)
-                .fade_in(Duration::from_millis(150));
+            let mut wav = audio::Wav::default();
+            wav.load_mem(&audio_buffer).unwrap(); // TODO: Handle error
 
             tx.send(SongSelectionEvents::LoadedBeatmap{
                 beatmap: parsed_beatmap,
                 //beatmap_md5,
                 image: img,
                 image_md5: bg_md5,
-                audio_source: Box::new(audio_source),
+                audio_source: wav,
                 audio_md5
             })
         });
     }
-
-
-
 
     pub fn on_pressed_down(
         &mut self,
@@ -171,11 +160,11 @@ impl<'ss> SongSelectionState<'ss> {
             self.song_select_screen.set_scroll_to(random_beatmap);
         }
 
-        if key_code == KeyCode::ArrowDown {
+        if key_code == KeyCode::ArrowDown || key_code == KeyCode::ArrowRight {
             self.song_select_screen.increment_beatmap();
         }
 
-        if key_code == KeyCode::ArrowUp {
+        if key_code == KeyCode::ArrowUp || key_code == KeyCode::ArrowLeft {
             self.song_select_screen.decrement_beatmap();
         }
 
@@ -189,28 +178,30 @@ impl<'ss> SongSelectionState<'ss> {
     }
     
 
-
+    
+    #[inline]
     fn load_background(&mut self, image: DynamicImage, md5: Digest) {
         let _span = tracy_client::span!("osu_song_select_state::load_background");
 
         self.song_select_screen.set_background(image, md5);
 
     }
-
+    
+    #[inline]
     fn load_audio(
         &mut self, 
-        audio_source: Box<dyn Source<Item = f32> + Send + Sync>, 
+        audio_source: audio::Wav,
         md5: md5::Digest,
         beatmap: &Beatmap,
     ) {
         let _span = tracy_client::span!("osu_song_select_state::load_audio");
 
         // If current audio is the same do nothing
-        //if let Some(current_audio) = &self.current_audio {
-            //if current_audio.audio_hash == md5 {
-                //return;
-            //}
-        //};
+        if let Some(current_audio) = &self.current_audio {
+            if current_audio.audio_hash == md5 {
+                return;
+            }
+        };
 
         self.state_tx.send(OsuStateEvent::PlaySound(
                 beatmap.preview_time,
@@ -219,9 +210,9 @@ impl<'ss> SongSelectionState<'ss> {
             "Failed to send PlaySound event to the OsuState"
         );
 
-        //self.current_audio = Some(CurrentAudio {
-            //audio_hash: md5,
-        //})
+        self.current_audio = Some(CurrentAudio {
+            audio_hash: md5,
+        });
     }
 
     pub fn update(&mut self) {
@@ -241,8 +232,6 @@ impl<'ss> SongSelectionState<'ss> {
                         let metadata = BeatmapCardInfoMetadata::from_beatmap(&mut beatmap);
 
                         let current_beatmap = CurrentBeatmap {
-                            //beatmap,
-                            //beatmap_hash: beatmap_md5,
                             metadata,
                         };
 
