@@ -9,7 +9,7 @@ Great! So currently project is in "client works but a lot if not every feature i
 * Cross-platform. Thanks to the `winit` and `wgpu` it's probably runs on every platform but performance can degrade a lot depending on platform.
 * ^ also runs on web, you can checkout it [here](https://rosu.lopij.xyz) but be prepared that it gonna eat 1GB of RAM and not run well
 * Skin support, you can load skin through options (`Cntrl + O`) in song select menu
-* Audio is not here at all, i'm not happy how `rodio` behaves so certainly gonna experiment in this field a lot
+* ~~Audio is not here at all, i'm not happy how `rodio` behaves so certainly gonna experiment in this field a lot~~ UPD(2025-10-02): Switched to `soloud` lib and added basic audio sync mechanism, no hitsounds yet tho
 
 ## Pretty cool. I want to run it locally just to try
 Like every other Rust project clone repo and then just:
