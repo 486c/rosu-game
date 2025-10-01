@@ -1,6 +1,6 @@
 use std::{fs::File, io::{Cursor, Read}, path::PathBuf, sync::{mpsc::{Receiver, Sender}, Arc, RwLock}, time::Duration};
 
-use image::DynamicImage;
+use image::{DynamicImage, ImageReader};
 use md5::Digest;
 use rand::Rng;
 use rosu_map::Beatmap;
@@ -49,6 +49,8 @@ pub struct SongSelectionState<'ss> {
 
     settings: SettingsScreen,
     song_select_screen: SongSelectScreen<'ss>,
+
+    worker_tx: Sender<DbBeatmapEntry>,
 }
 
 impl<'ss> SongSelectionState<'ss> {
@@ -59,8 +61,13 @@ impl<'ss> SongSelectionState<'ss> {
         skin_manager: Arc<RwLock<SkinManager>>,
     ) -> Self {
         let (inner_tx, inner_rx) = std::sync::mpsc::channel();
+        let (worker_tx, worker_rx) = std::sync::mpsc::channel::<DbBeatmapEntry>();
 
-        let db: Arc<OsuDatabase> = OsuDatabase::new_from_path(DEFAULT_DB_PATH).unwrap().into(); // TODO: REMOVE UNRAP
+        let db: Arc<OsuDatabase> = OsuDatabase::new_from_path(DEFAULT_DB_PATH)
+            .unwrap()
+            .into(); // TODO: REMOVE UNRAP
+
+        spawn_beatmap_opener_worker(worker_rx, inner_tx.clone());
 
         Self {
             db: db.clone(),
@@ -70,69 +77,15 @@ impl<'ss> SongSelectionState<'ss> {
             settings: SettingsScreen::new(config.clone(), skin_manager.clone(), state_tx.clone()),
             song_select_screen: SongSelectScreen::new(db.clone(), graphics.clone(), inner_tx.clone()),
             current_audio: None,
+            worker_tx,
         }
     }
     
     // Spawns a thread to parse a beatmap
     fn open_beatmap(&self, beatmap: &DbBeatmapEntry) {
         let _span = tracy_client::span!("osu_song_select_state::open_beatmap");
-        let tx = self.inner_tx.clone();
-        let path = beatmap.path.clone();
-        
-        // 1. Parse .osu file
-        // 2. Load and decode image & apply blur
-        // 3. Load and decode audio file
-        std::thread::spawn(move || {
-            let _span = tracy_client::span!("osu_song_select_state::open_beatmap_thread");
-            // Beatmap stuff
-            let mut beatmap_file = File::open(&path).unwrap();
-            let mut beatmap_buffer = Vec::new();
-            beatmap_file.read_to_end(&mut beatmap_buffer).unwrap();
 
-            let _beatmap_md5 = md5::compute(&beatmap_buffer);
-
-            let parsed_beatmap = Beatmap::from_bytes(&beatmap_buffer).unwrap();
-
-            let bg_filename = parsed_beatmap.background_file.clone();
-            let audio_filename = parsed_beatmap.audio_file.clone();
-
-            let bg_path = path.parent()
-                .unwrap()
-                .join(&bg_filename);
-
-            let audio_path = path.parent()
-                .unwrap()
-                .join(audio_filename);
-        
-            // BG image stuff
-            let mut bg_file = File::open(bg_path).unwrap();
-            let mut bg_buffer = Vec::new();
-            bg_file.read_to_end(&mut bg_buffer).unwrap();
-
-            let bg_md5 = md5::compute(&bg_buffer);
-        
-            let img = image::load_from_memory(&bg_buffer).unwrap();
-            let img = img.blur(5.0);
-            
-            // Audio file stuff
-            let mut audio_file = File::open(audio_path).unwrap();
-            let mut audio_buffer = Vec::new();
-            audio_file.read_to_end(&mut audio_buffer).unwrap();
-
-            let audio_md5 = md5::compute(&audio_buffer);
-
-            let mut wav = audio::Wav::default();
-            wav.load_mem(&audio_buffer).unwrap(); // TODO: Handle error
-
-            tx.send(SongSelectionEvents::LoadedBeatmap{
-                beatmap: parsed_beatmap,
-                //beatmap_md5,
-                image: img,
-                image_md5: bg_md5,
-                audio_source: wav,
-                audio_md5
-            })
-        });
+        let _ = self.worker_tx.send(beatmap.clone());
     }
 
     pub fn on_pressed_down(
@@ -281,4 +234,93 @@ impl<'ss> SongSelectionState<'ss> {
 
         ctx.end_pass()
     }
+}
+
+/// Worker for opening requested beatmaps
+fn spawn_beatmap_opener_worker(
+    worker_rx: Receiver<DbBeatmapEntry>, 
+    song_select_tx: Sender<SongSelectionEvents>
+) {
+    std::thread::spawn(move || {
+        loop {
+            let res = worker_rx.try_recv();
+
+            match res {
+                Ok(job) => {
+                    let _span = tracy_client::span!("osu_song_select_state::open_beatmap_thread");
+                    let path = job.path;
+
+                    tracing::info!("Starting opening beatmap for path {}", path.display());
+
+                    // Beatmap stuff
+                    let mut beatmap_file = File::open(&path).unwrap();
+                    let mut beatmap_buffer = Vec::new();
+                    beatmap_file.read_to_end(&mut beatmap_buffer).unwrap();
+
+                    let _beatmap_md5 = md5::compute(&beatmap_buffer);
+
+                    let parsed_beatmap = Beatmap::from_bytes(&beatmap_buffer).unwrap();
+
+                    let bg_filename = parsed_beatmap.background_file.clone();
+                    let audio_filename = parsed_beatmap.audio_file.clone();
+
+                    let bg_path = path.parent()
+                        .unwrap()
+                        .join(&bg_filename);
+
+                    let audio_path = path.parent()
+                        .unwrap()
+                        .join(audio_filename);
+
+                    if bg_path.is_dir() {
+                        tracing::error!(
+                            "Trying to read dir as background: {} for map {}",
+                            bg_path.display(),
+                            path.display()
+                        );
+
+                        continue;
+                    }
+
+                    // BG image stuff
+                    let mut bg_file = File::open(bg_path).unwrap();
+                    let mut bg_buffer = Vec::new();
+                    bg_file.read_to_end(&mut bg_buffer).unwrap();
+                    let bg_md5 = md5::compute(&bg_buffer);
+
+                    let bg_buffer = Cursor::new(bg_buffer);
+
+                    let img_reader = ImageReader::new(bg_buffer)
+                        .with_guessed_format().unwrap();
+
+                    let img = img_reader.decode().unwrap();
+                    let img = img.blur(5.0);
+
+                    // Audio file stuff
+                    let mut audio_file = File::open(audio_path).unwrap();
+                    let mut audio_buffer = Vec::new();
+                    audio_file.read_to_end(&mut audio_buffer).unwrap();
+
+                    let audio_md5 = md5::compute(&audio_buffer);
+
+                    let mut wav = audio::Wav::default();
+                    wav.load_mem(&audio_buffer).unwrap(); // TODO: Handle error
+
+                    let _ = song_select_tx.send(SongSelectionEvents::LoadedBeatmap{
+                        beatmap: parsed_beatmap,
+                        image: img,
+                        image_md5: bg_md5,
+                        audio_source: wav,
+                        audio_md5
+                    });
+                },
+                Err(e) => match e {
+                    std::sync::mpsc::TryRecvError::Empty => continue,
+                    std::sync::mpsc::TryRecvError::Disconnected => {
+                        panic!("disconnected");
+                    },
+                },
+            }
+        }
+    });
 }

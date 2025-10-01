@@ -7,7 +7,7 @@ use rusqlite::{params, Connection};
 
 pub const DEFAULT_DB_PATH: &str = "./rosu.db";
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DbBeatmapEntry {
     pub id: u64,
     pub beatmap_id: i64,
