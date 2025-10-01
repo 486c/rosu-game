@@ -142,8 +142,12 @@ pub struct SongSelectScreen<'sss> {
     // Currently selected row
     current: usize,
     
-    // Just to keep state
+    // Contains a index to the beatmap that we need to scroll to
+    // Used by initial scroll like F2, arrows and etc
     need_scroll_to: Option<usize>,
+    
+    // Used when we need to center scroll a some beatmap card
+    need_scroll_center: Option<usize>,
 
     song_select_tx: Sender<SongSelectionEvents>,
 
@@ -173,6 +177,7 @@ impl<'sss> SongSelectScreen<'sss> {
             max: 0,
             current: 0,
             need_scroll_to: None,
+            need_scroll_center: None,
             song_select_tx,
             quad_renderer,
             quad_test_buffer,
@@ -369,6 +374,8 @@ impl<'sss> SongSelectScreen<'sss> {
                                     ).expect(
                                         "Failed to send SelectBeatmap event to the SongSelectState"
                                     );
+
+                                    self.need_scroll_center = Some(need_scroll_to);
                                 }
                             }
 
@@ -415,6 +422,13 @@ impl<'sss> SongSelectScreen<'sss> {
                                     });
 
                                 let sense = res.response.interact(egui::Sense::click());
+
+                                if let Some(need_scroll_center) = self.need_scroll_center {
+                                    if id == need_scroll_center {
+                                        res.response.scroll_to_me(Some(Align::Center));
+                                        let _ = self.need_scroll_center.take();
+                                    }
+                                }
 
                                 if sense.clicked() {
                                     if id == self.current {

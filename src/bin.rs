@@ -87,7 +87,7 @@ impl<'a> ApplicationHandler for OsuApp<'a> {
                             Ok(_) => break 'blk,
                             Err(wgpu::SurfaceError::Lost) => tracing::warn!("Surface Lost"),
                             Err(wgpu::SurfaceError::OutOfMemory) => tracing::error!("Render out of memory!"),
-                            Err(e) => tracing::error!("Error during render: {e}"),
+                            Err(e) => {} //tracing::error!("Error during render: {e}"),
                         }
                     }
                 }
@@ -116,13 +116,11 @@ impl<'a> ApplicationHandler for OsuApp<'a> {
 fn main() {
     let _client = tracy_client::Client::start();
     
-    /*
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_target(false)
         .with_thread_names(true)
         .init();
-    */
 
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);

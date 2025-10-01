@@ -490,7 +490,27 @@ impl<'s> OsuState<'s> {
 
                 //self.render_playing(&view);
 
-                self.osu_clock.update();
+                let time = self.osu_clock.update() / 1000.0;
+                if let Some(audio_handle) = self.current_playing_audio {
+                    let pos = self.sl.stream_position(audio_handle);
+
+                    let diff = pos - time;
+                    tracing::info!("Audio vs Time pos: {diff}");
+                    let diff_abs = diff.abs();
+                    
+                    // Applying simple time correction if 
+                    // 9ms threeshold is hit
+                    if diff_abs * 1000.0 >= 9.0 {
+                        if diff > 0.0 {
+                            self.osu_clock.last_time += diff_abs;
+                        } else if diff < 0.0 {
+                            self.osu_clock.last_time -= diff_abs;
+                        }
+                    }
+
+
+                }
+
                 self.input_processor.process_all(
                     &mut self.hit_objects,
                     &self.current_hit_window,
