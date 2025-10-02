@@ -283,7 +283,11 @@ fn spawn_beatmap_opener_worker(
                     }
 
                     // BG image stuff
-                    let mut bg_file = File::open(bg_path).unwrap();
+                    let Ok(mut bg_file) = File::open(&bg_path) else {
+                        tracing::error!("Failed to open bg: {}", bg_path.display());
+                        continue
+                    };
+
                     let mut bg_buffer = Vec::new();
                     bg_file.read_to_end(&mut bg_buffer).unwrap();
                     let bg_md5 = md5::compute(&bg_buffer);
@@ -297,7 +301,11 @@ fn spawn_beatmap_opener_worker(
                     let img = img.blur(5.0);
 
                     // Audio file stuff
-                    let mut audio_file = File::open(audio_path).unwrap();
+                    let Ok(mut audio_file) = File::open(&audio_path) else {
+                        tracing::error!("Failed to open audio: {}", audio_path.display());
+                        continue;
+                    };
+
                     let mut audio_buffer = Vec::new();
                     audio_file.read_to_end(&mut audio_buffer).unwrap();
 
@@ -310,8 +318,8 @@ fn spawn_beatmap_opener_worker(
                         beatmap: parsed_beatmap,
                         image: img,
                         image_md5: bg_md5,
+                        audio_md5,
                         audio_source: wav,
-                        audio_md5
                     });
                 },
                 Err(e) => match e {

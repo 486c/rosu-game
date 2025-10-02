@@ -411,15 +411,14 @@ impl<'s> OsuState<'s> {
                         self.current_state = OsuStates::SongSelection;
                     },
                     OsuStateEvent::PlaySound(start_at, audio_source) => {
-                        let span = tracy_client::span!("osu_state::update::event::play_sound");
-
                         if let Some(audio_handle) = self.current_playing_audio.take() {
-                            self.sl.pause(audio_handle);
+                            self.sl.stop(audio_handle);
                         };
 
                         let handle = self.sl.play(&audio_source);
                         self.sl.set_pause(handle, true);
-                        self.sl.seek(handle, start_at as f64 / 1000.0).unwrap(); // TODO: Handle
+                        let seek_to = (start_at as f64 / 1000.0).max(0.0);
+                        self.sl.seek(handle, seek_to).unwrap(); // TODO: Handle
                         self.sl.set_pause(handle, false);
 
                         self.current_playing_audio = Some(handle);
@@ -495,7 +494,7 @@ impl<'s> OsuState<'s> {
                     let pos = self.sl.stream_position(audio_handle);
 
                     let diff = pos - time;
-                    tracing::info!("Audio vs Time pos: {diff}");
+                    //tracing::info!("Audio vs Time pos: {diff}");
                     let diff_abs = diff.abs();
                     
                     // Applying simple time correction if 
