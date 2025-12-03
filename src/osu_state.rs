@@ -1,16 +1,37 @@
-use std::{fs::File, io::BufReader, path::{Path, PathBuf}, sync::{mpsc::{channel, Receiver, Sender, TryRecvError}, Arc, RwLock}, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::{
+        mpsc::{channel, Receiver, Sender, TryRecvError},
+        Arc, RwLock,
+    },
+};
 
 use cgmath::Vector2;
 use egui::{RawInput, Slider};
 use rosu_map::Beatmap;
 use soloud::{audio, AudioExt, Handle, LoadExt, Soloud, Wav};
 use wgpu::TextureView;
-use winit::{dpi::{PhysicalPosition, PhysicalSize}, keyboard::KeyCode, window::Window};
-
-use crate::{
-    config::Config, egui_state::EguiState, graphics::Graphics, hit_objects::{hit_window::HitWindow, Object, ObjectKind}, math::{calc_playfield, calculate_preempt_fadein, calc_hitcircle_diameter}, renderer::cursor::CursorRenderer, osu_db::DbBeatmapEntry, osu_input::KeyboardState, osu_renderer::OsuRenderer, skin_manager::SkinManager, song_select_state::SongSelectionState, timer::Timer
+use winit::{
+    dpi::{PhysicalPosition, PhysicalSize},
+    keyboard::KeyCode,
+    window::Window,
 };
+
 use crate::processor::OsuProcessor;
+use crate::{
+    config::Config,
+    egui_state::EguiState,
+    graphics::Graphics,
+    hit_objects::{hit_window::HitWindow, Object, ObjectKind},
+    math::{calc_hitcircle_diameter, calc_playfield, calculate_preempt_fadein},
+    osu_db::DbBeatmapEntry,
+    osu_input::KeyboardState,
+    osu_renderer::OsuRenderer,
+    renderer::cursor::CursorRenderer,
+    skin_manager::SkinManager,
+    song_select_state::SongSelectionState,
+    timer::Timer,
+};
 
 pub enum OsuStates {
     Playing,
@@ -24,7 +45,6 @@ pub enum OsuStateEvent {
     StartBeatmap(Arc<DbBeatmapEntry>),
     PlaySound(i32, audio::Wav),
 }
-
 
 pub struct OsuState<'s> {
     pub window: Arc<Window>,
@@ -57,7 +77,7 @@ pub struct OsuState<'s> {
     objects_judgments_render_queue: Vec<usize>,
 
     osu_clock: Timer,
-    
+
     cursor_renderer: CursorRenderer<'s>,
 
     input_processor: OsuProcessor,
@@ -66,9 +86,7 @@ pub struct OsuState<'s> {
 impl<'s> OsuState<'s> {
     pub fn new(window: Arc<Window>, graphics: Graphics<'s>, sl: Soloud) -> Self {
         let egui = EguiState::new(&graphics, &window);
-        let skin_manager = Arc::new(RwLock::new(
-            SkinManager::from_path("skin", &graphics)
-        ));
+        let skin_manager = Arc::new(RwLock::new(SkinManager::from_path("skin", &graphics)));
 
         let config = Arc::new(RwLock::new(Config::default()));
         let graphics = Arc::new(graphics);
@@ -78,10 +96,10 @@ impl<'s> OsuState<'s> {
         let (event_sender, event_receiver) = channel::<OsuStateEvent>();
 
         let song_select = SongSelectionState::new(
-            graphics.clone(), 
+            graphics.clone(),
             event_sender.clone(),
             config.clone(),
-            skin_manager.clone()
+            skin_manager.clone(),
         );
 
         window.set_cursor_visible(false);
@@ -142,7 +160,7 @@ impl<'s> OsuState<'s> {
 
         let beatmap_dir = path.as_ref().parent().expect("failed to get beatmap dir");
         let audio_file = beatmap_dir.join(&map.audio_file);
-        
+
         // We have to acknowlage the fact that there might be beatmaps
         // without any audio files
         if audio_file.is_file() {
@@ -198,19 +216,16 @@ impl<'s> OsuState<'s> {
         self.song_select.on_resize(new_size);
     }
 
-    pub fn on_pressed_down(
-        &mut self, 
-        key_code: KeyCode, 
-        is_cntrl_pressed: bool
-    ) {
+    pub fn on_pressed_down(&mut self, key_code: KeyCode, is_cntrl_pressed: bool) {
         let _span = tracy_client::span!("osu_state::on_pressed_down");
         match self.current_state {
             OsuStates::Playing => {
                 if key_code == KeyCode::Escape {
-                    self.event_sender.send(OsuStateEvent::ToSongSelection)
+                    self.event_sender
+                        .send(OsuStateEvent::ToSongSelection)
                         .expect("Failed to send ToSongSelection event to the OsuState");
                 }
-                
+
                 let ts = self.osu_clock.since_start();
 
                 if key_code == KeyCode::KeyZ {
@@ -230,10 +245,10 @@ impl<'s> OsuState<'s> {
 
                     self.input_processor.store_keyboard_pressed(ts, state);
                 }
-            },
+            }
             OsuStates::SongSelection => {
                 self.song_select.on_pressed_down(key_code, is_cntrl_pressed);
-            },
+            }
         }
     }
 
@@ -241,7 +256,6 @@ impl<'s> OsuState<'s> {
         let _span = tracy_client::span!("osu_state::on_pressed_release");
         match self.current_state {
             OsuStates::Playing => {
-
                 let ts = self.osu_clock.since_start();
                 if key_code == KeyCode::KeyZ {
                     let state = KeyboardState {
@@ -274,16 +288,17 @@ impl<'s> OsuState<'s> {
                 let ts = self.osu_clock.since_start();
 
                 let mut recv_pos = Vector2::new(position.x as f32, position.y as f32);
-                let (scale, offsets) = calc_playfield(self.current_screen_size.x, self.current_screen_size.y);
+                let (scale, offsets) =
+                    calc_playfield(self.current_screen_size.x, self.current_screen_size.y);
 
                 recv_pos -= offsets;
                 recv_pos /= scale;
-                
+
                 let pos = Vector2::new(recv_pos.x as f64, recv_pos.y as f64);
 
                 self.input_processor.store_cursor_moved(ts, pos);
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -295,43 +310,44 @@ impl<'s> OsuState<'s> {
         egui::Window::new("Debug Gameplay Window")
             .resizable(false)
             .show(&self.egui.state.egui_ctx(), |ui| {
+                if let Some(beatmap) = &self.current_beatmap {
+                    ui.add(egui::Label::new(format!("{}", self.osu_clock.get_time())));
 
-            if let Some(beatmap) = &self.current_beatmap {
-                ui.add(egui::Label::new(format!("{}", self.osu_clock.get_time())));
-
-                if ui.add(
-                    Slider::new(
-                        &mut self.osu_clock.last_time,
-                        1.0..=(beatmap.hit_objects.last().unwrap().start_time),
-                    )
-                    .step_by(1.0),
-                ).changed() {
-                    self.osu_clock.pause();
-                    //self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
-                    self.osu_clock.unpause();
-                };
-
-                if !self.osu_clock.is_paused() {
-                    if ui.add(egui::Button::new("pause")).clicked() {
+                    if ui
+                        .add(
+                            Slider::new(
+                                &mut self.osu_clock.last_time,
+                                1.0..=(beatmap.hit_objects.last().unwrap().start_time),
+                            )
+                            .step_by(1.0),
+                        )
+                        .changed()
+                    {
                         self.osu_clock.pause();
-                        //self.sink.pause();
-                    }
-                } else {
-                    if ui.add(egui::Button::new("unpause")).clicked() {
                         //self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
                         self.osu_clock.unpause();
-                        //self.sink.play();
+                    };
+
+                    if !self.osu_clock.is_paused() {
+                        if ui.add(egui::Button::new("pause")).clicked() {
+                            self.osu_clock.pause();
+                            //self.sink.pause();
+                        }
+                    } else {
+                        if ui.add(egui::Button::new("unpause")).clicked() {
+                            //self.sink.try_seek(Duration::from_millis(self.osu_clock.get_time().round() as u64)).unwrap();
+                            self.osu_clock.unpause();
+                            //self.sink.play();
+                        }
                     }
                 }
-            }
-        });
+            });
 
         let output = self.egui.state.egui_ctx().end_pass();
 
-        self.egui.state.handle_platform_output(
-            &self.window,
-            output.platform_output.to_owned(),
-        );
+        self.egui
+            .state
+            .handle_platform_output(&self.window, output.platform_output.to_owned());
 
         self.egui.output = Some(output);
     }
@@ -356,23 +372,25 @@ impl<'s> OsuState<'s> {
                 ObjectKind::Slider(slider) => {
                     self.osu_renderer.prepare_and_render_slider_texture(slider);
                 }
-                _ => {},
+                _ => {}
             }
 
             self.objects_render_queue.push(i);
         }
-        
+
         self.osu_renderer.prepare_judgements(
-            time, 
-            &self.objects_judgments_render_queue, 
+            time,
+            &self.objects_judgments_render_queue,
             &self.hit_objects,
         );
 
         self.osu_renderer.prepare_objects(
-            time, self.preempt, self.fadein,
-            &self.objects_render_queue, 
+            time,
+            self.preempt,
+            self.fadein,
+            &self.objects_render_queue,
             &self.hit_objects,
-            &self.current_hit_window
+            &self.current_hit_window,
         );
 
         // Syncing osu state settings with the osu renderer
@@ -382,7 +400,7 @@ impl<'s> OsuState<'s> {
         // we should not forget to upload all that to gpu
         self.osu_renderer.write_buffers();
     }
-    
+
     pub fn update(&mut self) {
         let _span = tracy_client::span!("osu_state::update");
         self.cursor_renderer.update();
@@ -395,21 +413,22 @@ impl<'s> OsuState<'s> {
                 match event {
                     OsuStateEvent::SetCursorSize(new_size) => {
                         self.cursor_renderer.set_size(new_size);
-                    },
+                    }
                     OsuStateEvent::ChangeSkin(path) => {
                         let _span = tracy_client::span!("osu_state::update::event::change_skin");
                         self.open_skin(path)
-                    },
+                    }
                     OsuStateEvent::StartBeatmap(entry) => {
                         let _span = tracy_client::span!("osu_state::update::event::start_beatmap");
                         self.open_beatmap(&entry.path);
                         self.current_state = OsuStates::Playing;
-                    },
+                    }
                     OsuStateEvent::ToSongSelection => {
-                        let _span = tracy_client::span!("osu_state::update::event::to_song_selection");
+                        let _span =
+                            tracy_client::span!("osu_state::update::event::to_song_selection");
                         self.osu_clock.reset_time();
                         self.current_state = OsuStates::SongSelection;
-                    },
+                    }
                     OsuStateEvent::PlaySound(start_at, audio_source) => {
                         if let Some(audio_handle) = self.current_playing_audio.take() {
                             self.sl.stop(audio_handle);
@@ -423,10 +442,10 @@ impl<'s> OsuState<'s> {
 
                         self.current_playing_audio = Some(handle);
                         self.current_audio = Some(audio_source);
-                    },
+                    }
                 }
-            },
-            Err(TryRecvError::Empty) => {},
+            }
+            Err(TryRecvError::Empty) => {}
             _ => panic!("sender disconnected"),
         }
 
@@ -434,12 +453,11 @@ impl<'s> OsuState<'s> {
         //let input = self.egui.state.take_egui_input(&self.window);
 
         match self.current_state {
-            OsuStates::Playing => {},
+            OsuStates::Playing => {}
             OsuStates::SongSelection => {
                 self.song_select.update();
-            },
+            }
         }
-
     }
 
     pub fn render_egui(&mut self, view: &TextureView) -> Result<(), wgpu::SurfaceError> {
@@ -448,7 +466,6 @@ impl<'s> OsuState<'s> {
         let graphics = self.osu_renderer.get_graphics();
 
         self.egui.render(&graphics, &view)?;
-
 
         Ok(())
     }
@@ -469,7 +486,6 @@ impl<'s> OsuState<'s> {
 
         match self.current_state {
             OsuStates::Playing => {
-
                 self.prepare_objects_for_renderer(self.osu_clock.get_time());
 
                 // TODO THIS SHOULN'T BE HERE, fix when dicided what to
@@ -478,8 +494,8 @@ impl<'s> OsuState<'s> {
 
                 self.osu_renderer.render_objects(
                     &view,
-                    &self.objects_render_queue, 
-                    &self.hit_objects
+                    &self.objects_render_queue,
+                    &self.hit_objects,
                 )?;
 
                 // Clearing objects queue only after they successfully rendered
@@ -496,8 +512,8 @@ impl<'s> OsuState<'s> {
                     let diff = pos - time;
                     //tracing::info!("Audio vs Time pos: {diff}");
                     let diff_abs = diff.abs();
-                    
-                    // Applying simple time correction if 
+
+                    // Applying simple time correction if
                     // 9ms threeshold is hit
                     if diff_abs * 1000.0 >= 9.0 {
                         if diff > 0.0 {
@@ -506,30 +522,24 @@ impl<'s> OsuState<'s> {
                             self.osu_clock.last_time -= diff_abs;
                         }
                     }
-
-
                 }
 
                 self.input_processor.process_all(
                     &mut self.hit_objects,
                     &self.current_hit_window,
-                    self.current_hit_circle_diameter
+                    self.current_hit_circle_diameter,
                 );
-            },
+            }
             OsuStates::SongSelection => {
-                let egui_output = self.song_select.render(
-                    egui_input, 
-                    self.egui.state.egui_ctx(),
-                    &view,
-                );
+                let egui_output =
+                    self.song_select
+                        .render(egui_input, self.egui.state.egui_ctx(), &view);
                 self.render_egui(&view)?;
                 self.egui.output = Some(egui_output)
-            },
+            }
         }
 
-        self.cursor_renderer.render_on_view(
-            &view
-        );
+        self.cursor_renderer.render_on_view(&view);
 
         output.present();
 

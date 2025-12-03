@@ -2,7 +2,7 @@ cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         use web_time::{Instant, Duration};
     } else {
-        use std::time::{Duration, Instant};
+        use std::time::Instant;
     }
 }
 
@@ -10,7 +10,7 @@ pub struct Timer {
     now: Instant,
     started_at: Instant,
 
-    /// Milliseconds 
+    /// Milliseconds
     pub last_time: f64,
 
     paused: bool,
@@ -25,7 +25,7 @@ impl Timer {
             started_at: Instant::now(),
         }
     }
-    
+
     #[inline]
     pub fn is_paused(&self) -> bool {
         self.paused == true
@@ -42,7 +42,7 @@ impl Timer {
 
         self.now = Instant::now();
     }
-    
+
     #[inline]
     pub fn get_time(&self) -> f64 {
         self.last_time
@@ -62,7 +62,7 @@ impl Timer {
     pub fn update(&mut self) -> f64 {
         // TODO refactor
         if self.paused {
-            return self.last_time
+            return self.last_time;
         };
 
         let now = Instant::now();
@@ -82,23 +82,29 @@ impl Timer {
     }
 }
 
-#[test]
-fn test_timer_logic() {
-    let mut clock = Timer::new();
+mod test {
 
-    std::thread::sleep(Duration::from_millis(15));
+    use crate::timer::Timer;
+    use std::time::Duration;
 
-    assert!(clock.update() == 0.0);
+    #[test]
+    fn test_timer_logic() {
+        let mut clock = Timer::new();
 
-    clock.unpause();
+        std::thread::sleep(Duration::from_millis(15));
 
-    std::thread::sleep(Duration::from_millis(15));
+        assert!(clock.update() == 0.0);
 
-    let expected = clock.update();
+        clock.unpause();
 
-    assert!(expected > 13.0 && expected < 17.0);
+        std::thread::sleep(Duration::from_millis(15));
 
-    clock.pause();
+        let expected = clock.update();
 
-    assert!(clock.update() == expected)
+        assert!(expected > 13.0 && expected < 17.0);
+
+        clock.pause();
+
+        assert!(clock.update() == expected)
+    }
 }
