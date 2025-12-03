@@ -4,7 +4,7 @@
 // 2. Handling replay opening
 // etc
 
-use std::{path::{Path, PathBuf}, sync::{mpsc::{Receiver, Sender}, Arc}};
+use std::{path::{Path, PathBuf}, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}};
 
 use cgmath::Vector2;
 use egui::Modal;
@@ -47,8 +47,8 @@ pub struct ReplayViewerState<'rvs> {
     time: Timer,
 
     settings: ReplayViewerSettings,
-    gameplay_config: Config,
-    skin_manager: SkinManager,
+    gameplay_config: Arc<RwLock<Config>>,
+    skin_manager: Arc<RwLock<SkinManager>>,
 
     osu_renderer: OsuRenderer<'rvs>,
 
@@ -93,8 +93,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
             &graphics,
             graphics_width as f32, graphics_height as f32, 1.0
         );
-        let config = Config::default();
-        let skin_manager = SkinManager::from_path("./assets", &graphics);
+        let config = Arc::new(RwLock::new(Config::default()));
+        let skin_manager = Arc::new(RwLock::new(SkinManager::from_path("./assets", &graphics)));
 
         let quad_verticies = Vertex::quad_centered(5.0, 5.0);
 
@@ -160,7 +160,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             replay: None,
             camera,
             cursor_renderer: AnalyzeCursorRenderer::new(graphics.clone()),
-            osu_renderer: OsuRenderer::new(graphics.clone(), &Config::default()),
+            osu_renderer: OsuRenderer::new(graphics.clone(), config.clone(), skin_manager.clone()),
             graphics,
             camera_bind_group,
             camera_buffer,
@@ -507,9 +507,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             match &mut obj.kind {
                 ObjectKind::Slider(slider) => {
                     self.osu_renderer.prepare_and_render_slider_texture(
-                        slider, 
-                        &self.skin_manager, 
-                        &self.gameplay_config
+                        slider
                     );
                 }
                 _ => {},
@@ -519,23 +517,23 @@ impl<'rvs> ReplayViewerState<'rvs> {
         }
 
         self.osu_renderer.prepare_objects(
-            self.time.get_time(), self.preempt, self.fadein,
-            &self.objects_render_queue, &objects,
-            &self.skin_manager,
-            &self.gameplay_config
+            self.time.get_time(), 
+            self.preempt, 
+            self.fadein,
+            &self.objects_render_queue, 
+            &objects,
+            &self.hit_window
         );
 
-        self.osu_renderer.prepare(
-            &self.gameplay_config
-        );
+        self.osu_renderer.prepare();
 
         self.osu_renderer.write_buffers();
 
         // 2. Rendering
         self.osu_renderer.render_objects(
             &view,
-            &self.objects_render_queue, &objects,
-            &self.skin_manager,
+            &self.objects_render_queue, 
+            &objects
         ).unwrap();
 
         self.objects_render_queue.clear();
@@ -684,65 +682,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 };
             });
 
-            ui.collapsing("Gameplay Visuals", |ui| {
-                if ui.add(
-                    egui::Slider::new(
-                        &mut self.gameplay_config.slider.border_feather, 
-                        0.01..=2.0
-                    ).step_by(0.01).text("Border feather")
-                ).changed() {
-                    if let Some(objects) = &mut self.objects {
-                        self.osu_renderer.clear_cached_slider_textures(
-                            objects
-                        );
-                    }
-                };
-
-                if ui.add(
-                    egui::Slider::new(
-                        &mut self.gameplay_config.slider.border_size_multiplier, 
-                        0.01..=2.0
-                    ).step_by(0.01).text("Border size multiplier")
-                ).changed() {
-                    if let Some(objects) = &mut self.objects {
-                        self.osu_renderer.clear_cached_slider_textures(
-                            objects
-                        );
-                    }
-                };
-
-                if ui.add(
-                    egui::Slider::new(
-                        &mut self.gameplay_config.slider.body_color_saturation, 
-                        0.01..=2.0
-                    ).step_by(0.01).text("Body color saturation")
-                ).changed() {
-                    if let Some(objects) = &mut self.objects {
-                        self.osu_renderer.clear_cached_slider_textures(
-                            objects
-                        );
-                    }
-                };
-
-                if ui.add(
-                    egui::Slider::new(
-                        &mut self.gameplay_config.slider.body_alpha_multiplier, 
-                        0.01..=2.0
-                    ).step_by(0.01).text("Body alpha multiplier")
-                ).changed() {
-                    if let Some(objects) = &mut self.objects {
-                        self.osu_renderer.clear_cached_slider_textures(
-                            objects
-                        );
-                    }
-                };
-
-                ui.checkbox(
-                    &mut self.gameplay_config.debug_use_judgements_as_colors, 
-                    "Judgements as colors"
-                );
-            });
-
             ui.collapsing("Current Frame Info", |ui| {
                 if let Some(replay) = &self.replay {
                     let frame = &replay.frames[self.replay_frame_end_idx];
@@ -871,7 +810,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     self.update_replay_position_by_time();
                 },
             },
-            Err(e) => {
+            Err(_) => {
                 // TODO
                 //println!("e")
             },

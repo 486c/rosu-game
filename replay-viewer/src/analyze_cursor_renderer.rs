@@ -2,11 +2,44 @@ use std::{num::NonZero, sync::Arc};
 
 use bytemuck::NoUninit;
 use cgmath::Vector3;
-use rosu::{buffer_write_or_init, graphics::Graphics, rgb::Rgb, vertex::Vertex};
+use rosu::{graphics::Graphics, rgb::Rgb, vertex::Vertex};
 use wgpu::{util::DeviceExt, Buffer, BufferUsages, Device, Queue, RenderPipeline};
 
 use crate::lines_vertex::LinesVertex;
 
+// TODO: Move it outta here
+macro_rules! buffer_write_or_init {
+    ($queue:expr, $device:expr, $buffer:expr, $data:expr, $t: ty) => {{
+        let data_len = $data.len() as u64;
+        let buffer_bytes_size = $buffer.size();
+
+        let buffer_len = buffer_bytes_size / size_of::<$t>() as u64;
+
+        if data_len <= buffer_len {
+            /*
+            let mut view = $queue.write_buffer_with(
+                &$buffer,
+                0,
+                NonZero::new(buffer_bytes_size).unwrap()
+            ).unwrap();
+
+            view.copy_from_slice(bytemuck::cast_slice($data))
+            */
+            $queue.write_buffer(&$buffer, 0, bytemuck::cast_slice($data))
+        } else {
+            let buffer = $device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice($data),
+                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            });
+
+            $buffer.destroy();
+
+            $buffer = buffer;
+        }
+    }};
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
