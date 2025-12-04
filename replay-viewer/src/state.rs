@@ -39,7 +39,7 @@ pub struct ReplayViewerState<'rvs> {
 
     graphics: Arc<Graphics<'rvs>>,
     replay: Option<ReplayLog>,
-    judgements_list: Option<Vec<JudgementPoint>>,
+    //judgements_list: Option<Vec<JudgementPoint>>,
     cursor_renderer: AnalyzeCursorRenderer<'rvs>,
     
     playing: bool,
@@ -194,7 +194,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
             tx,
             rx,
             circle_diameter: 4.0,
-            judgements_list: None,
         }
     }
 
@@ -230,7 +229,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             return;
         };
 
-        let mut processor: OsuProcessor = Replay::open(&replay_path.as_ref()).unwrap().into();
+        //let mut processor: OsuProcessor = Replay::open(&replay_path.as_ref()).unwrap().into();
 
         let Some(beatmap_entry) = self.db.get_beatmap_by_hash(&replay.map_hash) else {
             self.modal_text = Some("Can't find a beatmap for that replay".to_owned());
@@ -247,6 +246,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.update_replay_position_by_time();
         self.playing = false;
 
+            /*
         if let Some(objects) = &mut self.objects {
             processor.process_all(
                 objects,
@@ -275,6 +275,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
             self.judgements_list = Some(judgements_list);
         }
+            */
 
     }
 
@@ -542,6 +543,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
     pub fn render_ui(&mut self, ctx: &egui::Context) {
         let _span = tracy_client::span!("state::render_ui");
 
+        /*
         if let Some(judgements_list) = &self.judgements_list {
             egui::Window::new("Hit Results").show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -564,6 +566,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 });
             });
         };
+        */
 
         if let Some(modal_text) = &self.modal_text {
             Modal::new(egui::Id::new("Modal")).show(ctx, |ui| {
