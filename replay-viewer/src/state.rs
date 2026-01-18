@@ -14,7 +14,7 @@ use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
 use winit::{dpi::{PhysicalPosition, PhysicalSize}, event::MouseButton, keyboard::KeyCode};
 
-use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, judgements_list::JudgementPoint, replay_log::ReplayLog};
+use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, judgements_list::JudgementPoint, playfield::PlayfieldRenderer, replay_log::ReplayLog};
 
 enum ReplayViewerEvents {
     OpenReplay(PathBuf),
@@ -41,6 +41,7 @@ pub struct ReplayViewerState<'rvs> {
     replay: Option<ReplayLog>,
     //judgements_list: Option<Vec<JudgementPoint>>,
     cursor_renderer: AnalyzeCursorRenderer<'rvs>,
+    playfield_renderer: PlayfieldRenderer<'rvs>,
     
     playing: bool,
     slider_time: f64,
@@ -160,6 +161,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             replay: None,
             camera,
             cursor_renderer: AnalyzeCursorRenderer::new(graphics.clone()),
+            playfield_renderer: PlayfieldRenderer::new(graphics.clone()),
             osu_renderer: OsuRenderer::new(graphics.clone(), config.clone(), skin_manager.clone()),
             graphics,
             camera_bind_group,
@@ -380,6 +382,29 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+
+            // Playfield
+            render_pass.set_pipeline(&self.playfield_renderer.pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_vertex_buffer(
+                0,
+                self.playfield_renderer.vertex_buffer.slice(..)
+            );
+            render_pass.set_vertex_buffer(
+                1,
+                self.playfield_renderer.instance_buffer.slice(..)
+            );
+
+            render_pass.set_index_buffer(
+                self.quad_index_buffer.slice(..),
+                wgpu::IndexFormat::Uint16,
+            );
+
+            render_pass.draw_indexed(
+                0..QUAD_INDECIES.len() as u32,
+                0,
+                0..1,
+            );
 
             // Lines
             render_pass.set_pipeline(&self.cursor_renderer.lines_pipeline);
@@ -740,6 +765,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
     pub fn on_mouse_pressed(&mut self, button: MouseButton) {
         let _span = tracy_client::span!("state::on_mouse_pressed");
+
         if button == MouseButton::Left {
             self.left_mouse_holding = true;
         }
@@ -748,7 +774,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
     pub fn on_mouse_released(&mut self, button: MouseButton) {
         let _span = tracy_client::span!("state::on_mouse_released");
         if button == MouseButton::Left {
-            self.left_mouse_holding = false;
+            if self.left_mouse_holding {
+                self.left_mouse_holding = false;
+
+                self.on_click();
+            };
         }
     }
 
@@ -767,6 +797,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
         }
 
         self.mouse_pos = Vector2::new(position.x as f32, position.y as f32)
+    }
+
+    // Quick click
+    pub fn on_click(&mut self) {
+        tracing::info!("On click: ({}, {})", self.mouse_pos.x, self.mouse_pos.y);
     }
 
     pub fn zoom_in(&mut self) {

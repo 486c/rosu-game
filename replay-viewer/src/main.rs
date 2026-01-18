@@ -4,6 +4,7 @@ mod analyze_cursor_renderer;
 mod replay_log;
 mod lines_vertex;
 mod judgements_list;
+mod playfield;
 
 use app::{App, AppEvents};
 use winit::event_loop::{ControlFlow, EventLoop};

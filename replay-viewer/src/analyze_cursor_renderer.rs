@@ -100,7 +100,6 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
     pub fn new(graphics: Arc<Graphics<'acr>>) -> Self {
         let surface_config = graphics.get_surface_config();
         
-
         let vertex_line = vec![Vertex {
             pos: Vector3::new(1.0, 1.0, 0.0),
             uv: [0.0, 0.0],
@@ -117,11 +116,11 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
         
         let point_shader = graphics
             .device
-            .create_shader_module(wgpu::include_wgsl!("point.wgsl"));
+            .create_shader_module(wgpu::include_wgsl!("shaders/point.wgsl"));
 
         let lines_shader = graphics
             .device
-            .create_shader_module(wgpu::include_wgsl!("line.wgsl"));
+            .create_shader_module(wgpu::include_wgsl!("shaders/line.wgsl"));
 
         let points_instance_data = Vec::new();
 
