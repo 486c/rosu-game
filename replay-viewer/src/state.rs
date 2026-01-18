@@ -61,6 +61,7 @@ pub struct ReplayViewerState<'rvs> {
     quad_vertex_buffer: wgpu::Buffer,
     quad_index_buffer: wgpu::Buffer,
 
+    selected_frame: Option<usize>,
     replay_frame_end_idx: usize,
     replay_frame_start_idx: usize,
 
@@ -196,6 +197,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             tx,
             rx,
             circle_diameter: 4.0,
+            selected_frame: None,
         }
     }
 
@@ -607,6 +609,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             .resizable(false)
             .show(ctx, |ui| {
                 let slider_width = ui.available_width();
+
                 ui.vertical_centered(|ui| {
                     ui.horizontal(|ui| {
                         ui.label("Time:");
@@ -709,9 +712,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     self.sync_cursor()
                 };
             });
-
-            ui.collapsing("Current Frame Info", |ui| {
-                if let Some(replay) = &self.replay {
+            
+            if let Some(replay) = &self.replay {
+                ui.collapsing("Current Frame Info", |ui| {
                     let frame = &replay.frames[self.replay_frame_end_idx];
 
                     ui.label(format!("Index: {}", self.replay_frame_end_idx));
@@ -721,8 +724,24 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     ui.label(format!("Is K2 Pressed: {}", frame.keys.k2));
                     ui.label(format!("Is M1 Pressed: {}", frame.keys.m1));
                     ui.label(format!("Is M2 Pressed: {}", frame.keys.m2));
+                });
+                
+                if let Some(selected_frame) = self.selected_frame {
+                    ui.collapsing("Currently Selected Frame Info", |ui| {
+                        let frame = &replay.frames[selected_frame];
+
+                        ui.label(format!("Index: {}", self.replay_frame_end_idx));
+                        ui.label(format!("Frame Time: {}", frame.ts));
+                        ui.label(format!("Position: ({:.2}, {:.2})", frame.pos.0, frame.pos.1));
+                        ui.label(format!("Is K1 Pressed: {}", frame.keys.k1));
+                        ui.label(format!("Is K2 Pressed: {}", frame.keys.k2));
+                        ui.label(format!("Is M1 Pressed: {}", frame.keys.m1));
+                        ui.label(format!("Is M2 Pressed: {}", frame.keys.m2));
+
+                    });
                 }
-            });
+
+            }
         });
     }
 
@@ -802,6 +821,33 @@ impl<'rvs> ReplayViewerState<'rvs> {
     // Quick click
     pub fn on_click(&mut self) {
         tracing::info!("On click: ({}, {})", self.mouse_pos.x, self.mouse_pos.y);
+        let s = self.camera.screen_to_world(self.mouse_pos);
+        tracing::info!("On click2: ({}, {})", s.x, s.y);
+
+        if let Some(replay) = &self.replay {
+            let slice = replay.frames.get(self.replay_frame_start_idx..=self.replay_frame_end_idx);
+
+            if let Some(slice) = slice {
+                for (i, frame) in slice.iter().enumerate() {
+                    let (px, py) = (s.x as f64, s.y as f64);
+                    let (cx, cy) = (frame.pos.0, frame.pos.1);
+
+                    let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
+
+                    if !(distance <= (2.0 / 2.0) as f64) {
+                        continue;
+                    };
+                    
+                    let selected_index = i + self.replay_frame_start_idx;
+                    self.cursor_renderer.points_data_mut()[selected_index].color = [1.0, 0.2, 0.2];
+                    self.cursor_renderer.write_buffers();
+
+                    self.selected_frame = Some(selected_index);
+
+                    break;
+                }
+            }
+        }
     }
 
     pub fn zoom_in(&mut self) {
