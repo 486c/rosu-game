@@ -103,6 +103,7 @@ pub struct ReplayViewerState<'rvs> {
 
     mouse_pos: Vector2<f32>,
     left_mouse_holding: bool,
+    right_mouse_holding: bool,
 
     // Stupid egui handling lmao
     modal_text: Option<String>,
@@ -219,6 +220,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             offsets: Vector2::new(1.0, 1.0),
             mouse_pos: Vector2::new(0.0, 0.0),
             left_mouse_holding: false,
+            right_mouse_holding: false,
             db: OsuDatabase::new_from_path(DEFAULT_DB_PATH).unwrap(),
             modal_text: None,
             tx,
@@ -484,7 +486,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
         let time = replay.frames[self.replay_frame_end_idx].ts;
 
-        self.time.set_time(time);
+        self.set_time(time);
+        self.update_replay_position_by_time();
         self.update_analyze_cursor_buffers();
     }
 
@@ -606,7 +609,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                         let response = ui.add(egui::DragValue::new(&mut self.slider_time));
 
                         if response.changed() {
-                            self.time.set_time(self.slider_time);
+                            self.set_time(self.slider_time);
                             self.update_replay_position_by_time()
                         }
 
@@ -635,7 +638,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                         .add(egui::Slider::new(&mut self.slider_time, min..=max).show_value(false));
 
                     if response.changed() {
-                        self.time.set_time(self.slider_time);
+                        self.set_time(self.slider_time);
                         self.update_replay_position_by_time()
                     }
                 });
@@ -771,6 +774,26 @@ impl<'rvs> ReplayViewerState<'rvs> {
             };
         }
 
+        if key_code == KeyCode::KeyZ && self.selected_frame.is_none() {
+            if let Some(replay) = &self.replay {
+                self.time.pause();
+                self.playing = false;
+                let frame = replay.frames.first().unwrap();
+                self.set_time(frame.ts);
+                self.update_replay_position_by_time();
+            }
+        };
+
+        if key_code == KeyCode::KeyV && self.selected_frame.is_none() {
+            if let Some(replay) = &self.replay {
+                self.time.pause();
+                self.playing = false;
+                let frame = replay.frames.last().unwrap();
+                self.set_time(frame.ts);
+                self.update_replay_position_by_time();
+            }
+        }
+
         if key_code == KeyCode::Space {
             if self.playing {
                 self.time.pause();
@@ -786,21 +809,27 @@ impl<'rvs> ReplayViewerState<'rvs> {
         match result {
             ClickResult::None => {}
             ClickResult::Click => {
-                self.on_click();
+                if button == MouseButton::Left {
+                    self.on_click();
+                }
             }
-            ClickResult::HoldStart => {
-                self.left_mouse_holding = true;
-            }
-            ClickResult::HoldEnd => {
-                self.left_mouse_holding = false;
-            }
+            ClickResult::HoldStart => match button {
+                MouseButton::Left => self.left_mouse_holding = true,
+                MouseButton::Right => self.right_mouse_holding = true,
+                _ => {}
+            },
+            ClickResult::HoldEnd => match button {
+                MouseButton::Left => self.left_mouse_holding = false,
+                MouseButton::Right => self.right_mouse_holding = false,
+                _ => {}
+            },
         }
     }
 
     pub fn on_mouse_moved(&mut self, position: &PhysicalPosition<f64>) {
         let _span = tracy_client::span!("state::on_mouse_moved");
 
-        if self.left_mouse_holding && self.selected_frame.is_none() {
+        if self.right_mouse_holding {
             let delta = self.mouse_pos - Vector2::new(position.x as f32, position.y as f32);
             self.camera.move_camera(delta);
             self.osu_renderer.move_camera(delta);
@@ -926,7 +955,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     self.db.scan_beatmaps(path_buf, rx);
                 }
                 ReplayViewerEvents::UpdateReplayPositionByTime(ts) => {
-                    self.time.set_time(ts);
+                    self.set_time(ts);
                     self.update_replay_position_by_time();
                 }
             },
@@ -1000,5 +1029,10 @@ impl<'rvs> ReplayViewerState<'rvs> {
             alpha: 1.0,
             scale: 1.0,
         }
+    }
+
+    fn set_time(&mut self, time: f64) {
+        self.time.set_time(time);
+        self.slider_time = time;
     }
 }

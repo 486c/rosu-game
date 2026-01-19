@@ -2,8 +2,6 @@ use std::time::Instant;
 
 use winit::event::MouseButton;
 
-const HOLD_THREESHOLD_MS: f32 = 120.0;
-
 #[derive(Debug, Clone, Copy)]
 pub enum ClickState {
     Idle,
@@ -21,14 +19,16 @@ pub enum ClickResult {
 
 pub struct ClickDetector {
     button: MouseButton,
+    hold_threeshold: f32,
     state: ClickState,
 }
 
 impl ClickDetector {
-    pub fn new(button: MouseButton) -> Self {
+    pub fn new(button: MouseButton, hold_threeshold: f32) -> Self {
         Self {
             button,
             state: ClickState::Idle,
+            hold_threeshold,
         }
     }
 
@@ -36,7 +36,7 @@ impl ClickDetector {
         match self.state {
             ClickState::Idle => ClickResult::None,
             ClickState::Pressed { start } => {
-                if start.elapsed().as_secs_f32() * 1000.0 >= HOLD_THREESHOLD_MS {
+                if start.elapsed().as_secs_f32() * 1000.0 >= self.hold_threeshold {
                     self.state = ClickState::Holding;
                     ClickResult::HoldStart
                 } else {
@@ -58,7 +58,7 @@ impl ClickDetector {
             ClickState::Pressed { start } => {
                 self.state = ClickState::Idle;
 
-                if start.elapsed().as_secs_f32() * 1000.0 >= HOLD_THREESHOLD_MS {
+                if start.elapsed().as_secs_f32() * 1000.0 >= self.hold_threeshold {
                     ClickResult::HoldEnd
                 } else {
                     ClickResult::Click

@@ -29,6 +29,7 @@ pub struct App<'app> {
 
     // Mouse buttons state,
     left_mouse: ClickDetector,
+    right_mouse: ClickDetector,
 }
 
 impl<'app> App<'app> {
@@ -39,7 +40,8 @@ impl<'app> App<'app> {
             graphics: None,
             egui_state: None,
             replay_state: None,
-            left_mouse: ClickDetector::new(MouseButton::Left),
+            left_mouse: ClickDetector::new(MouseButton::Left, 120.0),
+            right_mouse: ClickDetector::new(MouseButton::Right, 60.0),
         }
     }
 }
@@ -234,6 +236,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                         winit::event::ElementState::Pressed => {
                             match button {
                                 MouseButton::Left => self.left_mouse.update_pressed(),
+                                MouseButton::Right => self.right_mouse.update_pressed(),
                                 _ => {}
                             }
 
@@ -242,6 +245,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                         winit::event::ElementState::Released => {
                             let res = match button {
                                 MouseButton::Left => self.left_mouse.update_released(),
+                                MouseButton::Right => self.right_mouse.update_released(),
                                 _ => ClickResult::None,
                             };
 
@@ -260,9 +264,15 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         // Update mouse stuff
         // left mouse button for now :)
         if let Some(replay_state) = &mut self.replay_state {
-            let res = self.left_mouse.update();
-            if res != ClickResult::None {
-                replay_state.on_mouse_state(MouseButton::Left, res);
+            let res_left = self.left_mouse.update();
+            let res_right = self.right_mouse.update();
+
+            if res_left != ClickResult::None {
+                replay_state.on_mouse_state(MouseButton::Left, res_left);
+            }
+
+            if res_right != ClickResult::None {
+                replay_state.on_mouse_state(MouseButton::Right, res_right);
             }
         }
     }
