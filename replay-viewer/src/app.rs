@@ -1,12 +1,19 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
-use egui_wgpu::wgpu::RequestAdapterOptionsBase;
-use rosu::{egui_state::EguiState, graphics::{Graphics, GraphicsInitialized}};
-use wgpu::{InstanceDescriptor, PowerPreference, Surface};
-use winit::{application::ApplicationHandler, dpi::PhysicalSize, event_loop::EventLoopProxy, window::{Theme, Window}};
+use osu_replay_parser::replay;
+use rosu::{
+    egui_state::EguiState,
+    graphics::{Graphics, GraphicsInitialized},
+};
+use wgpu::{InstanceDescriptor, PowerPreference};
+use winit::{
+    application::ApplicationHandler, event::MouseButton, event_loop::EventLoopProxy, window::Window,
+};
 
-use crate::state::ReplayViewerState;
-
+use crate::{
+    click_detector::{ClickDetector, ClickResult},
+    state::ReplayViewerState,
+};
 
 pub enum AppEvents {
     GraphicsInitialized(Arc<Graphics<'static>>),
@@ -19,6 +26,9 @@ pub struct App<'app> {
     graphics: Option<Arc<Graphics<'app>>>,
     replay_state: Option<ReplayViewerState<'app>>,
     egui_state: Option<EguiState>,
+
+    // Mouse buttons state,
+    left_mouse: ClickDetector,
 }
 
 impl<'app> App<'app> {
@@ -29,6 +39,7 @@ impl<'app> App<'app> {
             graphics: None,
             egui_state: None,
             replay_state: None,
+            left_mouse: ClickDetector::new(MouseButton::Left),
         }
     }
 }
@@ -81,33 +92,32 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                         let size = window.inner_size();
                         let surface = instance.create_surface(window).unwrap();
 
-                        let mut request_adapter_options = 
-                            wgpu::RequestAdapterOptions {
-                                power_preference: PowerPreference::HighPerformance,
-                                force_fallback_adapter: false,
-                                compatible_surface: None,
-                            };
+                        let mut request_adapter_options = wgpu::RequestAdapterOptions {
+                            power_preference: PowerPreference::HighPerformance,
+                            force_fallback_adapter: false,
+                            compatible_surface: None,
+                        };
 
                         request_adapter_options.compatible_surface = Some(&surface);
 
-                        let adapter = 
-                            instance.request_adapter(&request_adapter_options)
+                        let adapter = instance
+                            .request_adapter(&request_adapter_options)
                             .await
                             .expect("Failed to request adapter");
 
-
-                        let (device, queue) = adapter.request_device(
-                            &wgpu::DeviceDescriptor {
-                                label: Some("WGPU Device"),
-                                memory_hints: wgpu::MemoryHints::default(),
-                                required_features: wgpu::Features::default(),
-                                required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
-                            },
-                            None,
-)
-                        .await
-                        .expect("Failed to request a device!");
-
+                        let (device, queue) = adapter
+                            .request_device(
+                                &wgpu::DeviceDescriptor {
+                                    label: Some("WGPU Device"),
+                                    memory_hints: wgpu::MemoryHints::default(),
+                                    required_features: wgpu::Features::default(),
+                                    required_limits: wgpu::Limits::default()
+                                        .using_resolution(adapter.limits()),
+                                },
+                                None,
+                            )
+                            .await
+                            .expect("Failed to request a device!");
 
                         let graphics_initialized = GraphicsInitialized {
                             surface,
@@ -119,7 +129,10 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
 
                         let graphics = Arc::new(Graphics::from_initialized(graphics_initialized));
 
-                        if proxy.send_event(AppEvents::GraphicsInitialized(graphics)).is_err() {
+                        if proxy
+                            .send_event(AppEvents::GraphicsInitialized(graphics))
+                            .is_err()
+                        {
                             tracing::error!("User event is not send");
                         };
                     });
@@ -132,7 +145,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 if let Some(replay_state) = &mut self.replay_state {
                     replay_state.on_resize(&physical_size)
                 }
-            },
+            }
             winit::event::WindowEvent::RedrawRequested => {
                 let (Some(graphics), Some(egui_state), Some(replay_state)) = (
                     self.graphics.as_ref(),
@@ -148,9 +161,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 // 1. Non egui-stuff
                 let output = match graphics.get_current_texture() {
                     Ok(texture) => texture,
-                    Err(_) => {
-                        return
-                    },
+                    Err(_) => return,
                 };
 
                 let view = output
@@ -158,7 +169,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 replay_state.render(&view);
-                
+
                 // 2. Egui stuff
                 let gui_input = egui_state.state.take_egui_input(window);
                 let ctx = egui_state.state.egui_ctx();
@@ -171,12 +182,12 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 egui_state.render(graphics, &view).unwrap();
 
                 output.present();
-            },
+            }
             winit::event::WindowEvent::DroppedFile(path) => {
                 if let Some(state) = &mut self.replay_state {
                     state.open_replay(path)
                 }
-            },
+            }
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
                 let _span = tracy_client::span!("app::keyboard_input");
                 if let Some(state) = &mut self.replay_state {
@@ -185,17 +196,16 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                             match event.state {
                                 winit::event::ElementState::Pressed => {
                                     state.on_pressed_down(key_code);
-                                },
+                                }
                                 winit::event::ElementState::Released => {
                                     //state.on_pressed_release(key_code);
-                                },
+                                }
                             }
-                        },
-                        winit::keyboard::PhysicalKey::Unidentified(_) => {}
-                            //tracing::warn!("Got undefined keyboard input"),
+                        }
+                        winit::keyboard::PhysicalKey::Unidentified(_) => {} //tracing::warn!("Got undefined keyboard input"),
                     }
                 }
-            },
+            }
             winit::event::WindowEvent::MouseWheel { delta, .. } => {
                 let _span = tracy_client::span!("app::mouse_wheel");
                 if let Some(state) = &mut self.replay_state {
@@ -206,32 +216,54 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                             } else {
                                 state.zoom_out();
                             }
-                        },
-                        winit::event::MouseScrollDelta::PixelDelta(_physical_position) => {},
+                        }
+                        winit::event::MouseScrollDelta::PixelDelta(_physical_position) => {}
                     }
                 }
-            },
+            }
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 let _span = tracy_client::span!("app::cursor_moved");
                 if let Some(state) = &mut self.replay_state {
                     state.on_mouse_moved(&position);
                 }
-            },
+            }
             winit::event::WindowEvent::MouseInput { state, button, .. } => {
                 let _span = tracy_client::span!("app::mouse_input");
                 if let Some(replay_state) = &mut self.replay_state {
                     match state {
                         winit::event::ElementState::Pressed => {
-                            replay_state.on_mouse_pressed(button)
-                        },
+                            match button {
+                                MouseButton::Left => self.left_mouse.update_pressed(),
+                                _ => {}
+                            }
+
+                            //replay_state.on_mouse_pressed(button)
+                        }
                         winit::event::ElementState::Released => {
-                            replay_state.on_mouse_released(button)
-                        },
+                            let res = match button {
+                                MouseButton::Left => self.left_mouse.update_released(),
+                                _ => ClickResult::None,
+                            };
+
+                            if res != ClickResult::None {
+                                replay_state.on_mouse_state(button, res);
+                            }
+
+                            //replay_state.on_mouse_released(button)
+                        }
                     }
                 }
-
-            },
+            }
             _ => {}
+        };
+
+        // Update mouse stuff
+        // left mouse button for now :)
+        if let Some(replay_state) = &mut self.replay_state {
+            let res = self.left_mouse.update();
+            if res != ClickResult::None {
+                replay_state.on_mouse_state(MouseButton::Left, res);
+            }
         }
     }
 
@@ -247,7 +279,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 self.egui_state = Some(EguiState::new(&graphics, self.window.as_ref().unwrap()));
                 self.replay_state = Some(ReplayViewerState::new(graphics.clone()));
                 self.graphics = Some(graphics);
-            },
+            }
         }
     }
 }

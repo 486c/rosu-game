@@ -1,20 +1,45 @@
-// Inner state of the replay viewer
-// Responsible for
-// 1. Rendering everything
-// 2. Handling replay opening
-// etc
-
-use std::{path::{Path, PathBuf}, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}};
+use std::{
+    path::{Path, PathBuf},
+    sync::{
+        mpsc::{Receiver, Sender},
+        Arc, RwLock,
+    },
+};
 
 use cgmath::Vector2;
 use egui::Modal;
 use osu_replay_parser::replay::Replay;
-use rosu::{camera::Camera, config::Config, graphics::Graphics, hit_objects::{hit_window::HitWindow, Hit, Object, ObjectKind}, math::{calc_hitcircle_diameter, calc_playfield, calculate_preempt_fadein}, osu_db::{OsuDatabase, DEFAULT_DB_PATH}, osu_renderer::{OsuRenderer, QUAD_INDECIES}, processor::OsuProcessor, rgb::{mix_colors_linear, Rgb}, skin_manager::SkinManager, timer::Timer, vertex::Vertex};
+use rosu::{
+    camera::Camera,
+    config::Config,
+    graphics::Graphics,
+    hit_objects::{hit_window::HitWindow, Hit, Object, ObjectKind},
+    math::{calc_hitcircle_diameter, calc_playfield, calculate_preempt_fadein},
+    osu_db::{OsuDatabase, DEFAULT_DB_PATH},
+    osu_renderer::{OsuRenderer, QUAD_INDECIES},
+    processor::OsuProcessor,
+    rgb::{mix_colors_linear, Rgb},
+    skin_manager::SkinManager,
+    timer::Timer,
+    vertex::Vertex,
+};
 use rosu_map::Beatmap;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
-use winit::{dpi::{PhysicalPosition, PhysicalSize}, event::MouseButton, keyboard::KeyCode};
+use winit::{
+    dpi::{PhysicalPosition, PhysicalSize},
+    event::MouseButton,
+    keyboard::KeyCode,
+};
 
-use crate::{analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, judgements_list::JudgementPoint, playfield::PlayfieldRenderer, replay_log::ReplayLog};
+const CLICKABLE_SELECTION_RADIUS: f64 = 4.0;
+
+use crate::{
+    analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance},
+    click_detector::ClickResult,
+    judgements_list::JudgementPoint,
+    playfield::PlayfieldRenderer,
+    replay_log::{ReplayFrame, ReplayLog},
+};
 
 enum ReplayViewerEvents {
     OpenReplay(PathBuf),
@@ -41,8 +66,8 @@ pub struct ReplayViewerState<'rvs> {
     replay: Option<ReplayLog>,
     //judgements_list: Option<Vec<JudgementPoint>>,
     cursor_renderer: AnalyzeCursorRenderer<'rvs>,
-    playfield_renderer: PlayfieldRenderer<'rvs>,
-    
+    playfield_renderer: PlayfieldRenderer,
+
     playing: bool,
     slider_time: f64,
     time: Timer,
@@ -62,6 +87,7 @@ pub struct ReplayViewerState<'rvs> {
     quad_index_buffer: wgpu::Buffer,
 
     selected_frame: Option<usize>,
+    prev_selected_frame: Option<usize>,
     replay_frame_end_idx: usize,
     replay_frame_start_idx: usize,
 
@@ -93,7 +119,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
         let (graphics_width, graphics_height) = graphics.get_surface_size();
         let camera = Camera::new(
             &graphics,
-            graphics_width as f32, graphics_height as f32, 1.0
+            graphics_width as f32,
+            graphics_height as f32,
+            1.0,
         );
         let config = Arc::new(RwLock::new(Config::default()));
         let skin_manager = Arc::new(RwLock::new(SkinManager::from_path("./assets", &graphics)));
@@ -134,7 +162,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     }],
                     label: Some("camera_bind_group_layout"),
                 });
-        
+
         let camera_buffer = graphics
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -154,7 +182,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 label: Some("camera_bind_group"),
             });
 
-
         let (tx, rx) = std::sync::mpsc::channel();
 
         Self {
@@ -170,7 +197,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             quad_vertex_buffer,
             quad_index_buffer,
             settings: ReplayViewerSettings {
-                frames_to_show: 100,
+                frames_to_show: 20,
                 frame_point_size: 10,
                 k1_color: [12, 12, 255],
                 k2_color: [252, 12, 12],
@@ -198,6 +225,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             rx,
             circle_diameter: 4.0,
             selected_frame: None,
+            prev_selected_frame: None,
         }
     }
 
@@ -250,7 +278,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.update_replay_position_by_time();
         self.playing = false;
 
-            /*
+        /*
         if let Some(objects) = &mut self.objects {
             processor.process_all(
                 objects,
@@ -280,7 +308,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
             self.judgements_list = Some(judgements_list);
         }
             */
-
     }
 
     pub fn sync_cursor(&mut self) {
@@ -289,47 +316,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
             return;
         };
 
-        let iter = replay.frames.iter()
-            .map(|f| {
+        let iter = replay
+            .frames
+            .iter()
+            .map(|f| Self::choose_frame_colors(&f, &self.settings));
 
-                let mut initial_color = None;
-
-                if f.keys.k1 {
-                    initial_color = match initial_color {
-                        Some(c) => Some(mix_colors_linear(&c, &Rgb::from(self.settings.k1_color), 0.5)),
-                        None => Some(Rgb::from(self.settings.k1_color)),
-                    };
-                }
-
-                if f.keys.k2 {
-                    initial_color = match initial_color {
-                        Some(c) => Some(mix_colors_linear(&c, &Rgb::from(self.settings.k2_color), 0.5)),
-                        None => Some(Rgb::from(self.settings.k1_color)),
-                    };
-                }
-
-                if f.keys.m1 {
-                    initial_color = match initial_color {
-                        Some(c) => Some(mix_colors_linear(&c, &Rgb::from(self.settings.m1_color), 0.5)),
-                        None => Some(Rgb::from(self.settings.k1_color)),
-                    };
-                }
-
-                if f.keys.m2 {
-                    initial_color = match initial_color {
-                        Some(c) => Some(mix_colors_linear(&c, &Rgb::from(self.settings.m2_color), 0.5)),
-                        None => Some(Rgb::from(self.settings.k1_color)),
-                    };
-                }
-
-                PointsInstance {
-                    pos: [f.pos.0 as f32, f.pos.1 as f32, 0.0],
-                    color: initial_color.unwrap_or(Rgb::new(91, 92, 97)).to_gpu_values(),
-                    alpha: 1.0,
-                    scale: 1.0,
-                }
-            });
-        
         self.cursor_renderer.clear_cursor_data();
         self.cursor_renderer.append_cursor_from_slice(iter);
     }
@@ -345,9 +336,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
         self.osu_renderer.on_resize(&new_size);
 
-        self.graphics
-            .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
+        self.graphics.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::bytes_of(&self.camera.gpu),
+        ); // TODO
     }
 
     pub fn render(&mut self, view: &TextureView) {
@@ -356,17 +349,15 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.handle_events();
 
         if self.objects.is_none() || self.replay.is_none() {
-            return
+            return;
         }
 
         self.render_gameplay_objects(view);
 
-        let mut encoder =
-            self.graphics
+        let mut encoder = self
+            .graphics
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: None,
-            });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
             let _span = tracy_client::span!("state::render::record_render_pass");
@@ -388,25 +379,13 @@ impl<'rvs> ReplayViewerState<'rvs> {
             // Playfield
             render_pass.set_pipeline(&self.playfield_renderer.pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(
-                0,
-                self.playfield_renderer.vertex_buffer.slice(..)
-            );
-            render_pass.set_vertex_buffer(
-                1,
-                self.playfield_renderer.instance_buffer.slice(..)
-            );
+            render_pass.set_vertex_buffer(0, self.playfield_renderer.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.playfield_renderer.instance_buffer.slice(..));
 
-            render_pass.set_index_buffer(
-                self.quad_index_buffer.slice(..),
-                wgpu::IndexFormat::Uint16,
-            );
+            render_pass
+                .set_index_buffer(self.quad_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            render_pass.draw_indexed(
-                0..QUAD_INDECIES.len() as u32,
-                0,
-                0..1,
-            );
+            render_pass.draw_indexed(0..QUAD_INDECIES.len() as u32, 0, 0..1);
 
             // Lines
             render_pass.set_pipeline(&self.cursor_renderer.lines_pipeline);
@@ -415,9 +394,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
             render_pass.draw(
                 self.replay_frame_start_idx as u32..self.replay_frame_end_idx as u32,
-                0..1
+                0..1,
             );
-            
+
             // Points
             render_pass.set_pipeline(&self.cursor_renderer.points_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
@@ -425,10 +404,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
             render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.cursor_renderer.points_instance_buffer.slice(..));
 
-            render_pass.set_index_buffer(
-                self.quad_index_buffer.slice(..),
-                wgpu::IndexFormat::Uint16,
-            );
+            render_pass
+                .set_index_buffer(self.quad_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
             render_pass.draw_indexed(
                 0..QUAD_INDECIES.len() as u32,
@@ -440,7 +417,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         let span = tracy_client::span!("state::render::queue_submit");
         self.graphics.queue.submit([encoder.finish()]);
         drop(span);
-        
+
         if !self.time.is_paused() {
             self.slider_time = self.time.update();
             self.update_replay_position_by_time();
@@ -450,29 +427,44 @@ impl<'rvs> ReplayViewerState<'rvs> {
     fn update_frame_point_size(&mut self) {
         let _span = tracy_client::span!("state::update_frame_point_size");
         let quad_verticies = Vertex::quad_centered(
-            self.settings.frame_point_size as f32, 
-            self.settings.frame_point_size as f32, 
+            self.settings.frame_point_size as f32,
+            self.settings.frame_point_size as f32,
         );
 
         self.quad_vertex_buffer =
             self.graphics
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("hit_circle_buffer"),
-                contents: bytemuck::cast_slice(&quad_verticies),
-                usage: BufferUsages::VERTEX,
-            });
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("hit_circle_buffer"),
+                    contents: bytemuck::cast_slice(&quad_verticies),
+                    usage: BufferUsages::VERTEX,
+                });
     }
 
     fn update_analyze_cursor_buffers(&mut self) {
-        let total = self.replay_frame_end_idx.saturating_sub(self.replay_frame_start_idx);
+        let Some(replay) = &self.replay else {
+            return;
+        };
+
+        let total = self
+            .replay_frame_end_idx
+            .saturating_sub(self.replay_frame_start_idx);
 
         if total == 0 {
-            return
+            return;
         };
 
         let mut alpha = 0.0;
         let step = 1.0 / total as f32;
+
+        if let Some(idx) = self.prev_selected_frame {
+            let new_instance = Self::choose_frame_colors(&replay.frames[idx], &self.settings);
+            self.cursor_renderer.points_data_mut()[idx].color = new_instance.color;
+        }
+
+        if let Some(idx) = self.selected_frame {
+            self.cursor_renderer.points_data_mut()[idx].color = [1.0, 0.0, 0.0];
+        }
 
         for i in self.replay_frame_start_idx..=self.replay_frame_end_idx {
             self.cursor_renderer.points_data_mut()[i].alpha = alpha;
@@ -495,7 +487,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.time.set_time(time);
         self.update_analyze_cursor_buffers();
     }
-    
+
     /// Calculates and updates data and gpu buffers based
     /// on current time
     fn update_replay_position_by_time(&mut self) {
@@ -503,23 +495,25 @@ impl<'rvs> ReplayViewerState<'rvs> {
         let Some(replay) = &self.replay else {
             return;
         };
-        
+
         // Two values below used only for rendering
-        self.replay_frame_end_idx = replay.frames
+        self.replay_frame_end_idx = replay
+            .frames
             .iter()
             .enumerate()
             .rev()
-            .find(|(_i, frame)| frame.ts <= self.time.get_time() )
+            .find(|(_i, frame)| frame.ts <= self.time.get_time())
             .map(|(i, _frame)| i)
             .unwrap_or(0);
 
-        self.replay_frame_start_idx = 
-            self.replay_frame_end_idx.saturating_sub(self.settings.frames_to_show);
+        self.replay_frame_start_idx = self
+            .replay_frame_end_idx
+            .saturating_sub(self.settings.frames_to_show);
 
         self.update_analyze_cursor_buffers();
     }
-    
-    fn render_gameplay_objects(&mut self,  view: &TextureView) {
+
+    fn render_gameplay_objects(&mut self, view: &TextureView) {
         let _span = tracy_client::span!("state::render_gameplay_objects");
 
         // 1. Prepare all objects
@@ -534,23 +528,21 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
             match &mut obj.kind {
                 ObjectKind::Slider(slider) => {
-                    self.osu_renderer.prepare_and_render_slider_texture(
-                        slider
-                    );
+                    self.osu_renderer.prepare_and_render_slider_texture(slider);
                 }
-                _ => {},
+                _ => {}
             }
 
             self.objects_render_queue.push(i);
         }
 
         self.osu_renderer.prepare_objects(
-            self.time.get_time(), 
-            self.preempt, 
+            self.time.get_time(),
+            self.preempt,
             self.fadein,
-            &self.objects_render_queue, 
+            &self.objects_render_queue,
             &objects,
-            &self.hit_window
+            &self.hit_window,
         );
 
         self.osu_renderer.prepare();
@@ -558,11 +550,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.osu_renderer.write_buffers();
 
         // 2. Rendering
-        self.osu_renderer.render_objects(
-            &view,
-            &self.objects_render_queue, 
-            &objects
-        ).unwrap();
+        self.osu_renderer
+            .render_objects(&view, &self.objects_render_queue, &objects)
+            .unwrap();
 
         self.objects_render_queue.clear();
     }
@@ -641,12 +631,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
                         (min, max)
                     };
 
-                    let response = ui.add(
-                        egui::Slider::new(
-                            &mut self.slider_time, min..=max
-                        )
-                        .show_value(false)
-                    );
+                    let response = ui
+                        .add(egui::Slider::new(&mut self.slider_time, min..=max).show_value(false));
 
                     if response.changed() {
                         self.time.set_time(self.slider_time);
@@ -666,9 +652,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
             ui.heading("Settings");
             let resp = ui.add(
-                egui::Slider::new(
-                    &mut self.settings.frames_to_show, 0..=1000
-                ).step_by(1.0).text("Show frames")
+                egui::Slider::new(&mut self.settings.frames_to_show, 0..=100)
+                    .step_by(1.0)
+                    .text("Show frames"),
             );
 
             if resp.changed() {
@@ -676,9 +662,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
             }
 
             let resp = ui.add(
-                egui::Slider::new(
-                    &mut self.settings.frame_point_size, 1..=50
-                ).step_by(1.0).text("Frame point size")
+                egui::Slider::new(&mut self.settings.frame_point_size, 1..=50)
+                    .step_by(1.0)
+                    .text("Frame point size"),
             );
 
             if resp.changed() {
@@ -687,85 +673,99 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
             ui.horizontal(|ui| {
                 ui.label("K1 Color");
-                if ui.color_edit_button_srgb(&mut self.settings.k1_color).changed() {
+                if ui
+                    .color_edit_button_srgb(&mut self.settings.k1_color)
+                    .changed()
+                {
                     self.sync_cursor()
                 };
             });
 
             ui.horizontal(|ui| {
                 ui.label("K2 Color");
-                if ui.color_edit_button_srgb(&mut self.settings.k2_color).changed() {
+                if ui
+                    .color_edit_button_srgb(&mut self.settings.k2_color)
+                    .changed()
+                {
                     self.sync_cursor()
                 };
             });
 
             ui.horizontal(|ui| {
                 ui.label("M1 Color");
-                if ui.color_edit_button_srgb(&mut self.settings.m1_color).changed() {
+                if ui
+                    .color_edit_button_srgb(&mut self.settings.m1_color)
+                    .changed()
+                {
                     self.sync_cursor()
                 };
             });
 
             ui.horizontal(|ui| {
                 ui.label("M2 Color");
-                if ui.color_edit_button_srgb(&mut self.settings.m2_color).changed() {
+                if ui
+                    .color_edit_button_srgb(&mut self.settings.m2_color)
+                    .changed()
+                {
                     self.sync_cursor()
                 };
             });
-            
+
             if let Some(replay) = &self.replay {
                 ui.collapsing("Current Frame Info", |ui| {
                     let frame = &replay.frames[self.replay_frame_end_idx];
 
                     ui.label(format!("Index: {}", self.replay_frame_end_idx));
                     ui.label(format!("Frame Time: {}", frame.ts));
-                    ui.label(format!("Position: ({:.2}, {:.2})", frame.pos.0, frame.pos.1));
+                    ui.label(format!(
+                        "Position: ({:.2}, {:.2})",
+                        frame.pos.0, frame.pos.1
+                    ));
                     ui.label(format!("Is K1 Pressed: {}", frame.keys.k1));
                     ui.label(format!("Is K2 Pressed: {}", frame.keys.k2));
                     ui.label(format!("Is M1 Pressed: {}", frame.keys.m1));
                     ui.label(format!("Is M2 Pressed: {}", frame.keys.m2));
                 });
-                
+
                 if let Some(selected_frame) = self.selected_frame {
                     ui.collapsing("Currently Selected Frame Info", |ui| {
                         let frame = &replay.frames[selected_frame];
 
                         ui.label(format!("Index: {}", self.replay_frame_end_idx));
                         ui.label(format!("Frame Time: {}", frame.ts));
-                        ui.label(format!("Position: ({:.2}, {:.2})", frame.pos.0, frame.pos.1));
+                        ui.label(format!(
+                            "Position: ({:.2}, {:.2})",
+                            frame.pos.0, frame.pos.1
+                        ));
                         ui.label(format!("Is K1 Pressed: {}", frame.keys.k1));
                         ui.label(format!("Is K2 Pressed: {}", frame.keys.k2));
                         ui.label(format!("Is M1 Pressed: {}", frame.keys.m1));
                         ui.label(format!("Is M2 Pressed: {}", frame.keys.m2));
-
                     });
                 }
-
             }
         });
     }
 
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
         let _span = tracy_client::span!("state::on_pressed_down");
-        if key_code == KeyCode::ArrowRight {
+        if key_code == KeyCode::ArrowRight || key_code == KeyCode::KeyD {
             if let Some(replay) = &self.replay {
-                self.replay_frame_end_idx = 
+                self.replay_frame_end_idx =
                     (self.replay_frame_end_idx + 1).min(replay.frames.len() - 1);
 
-                self.replay_frame_start_idx = 
+                self.replay_frame_start_idx =
                     (self.replay_frame_start_idx + 1).min(replay.frames.len() - 1);
 
                 self.update_replay_posititon_by_frame_idx();
             };
         }
 
-        if key_code == KeyCode::ArrowLeft {
+        if key_code == KeyCode::ArrowLeft || key_code == KeyCode::KeyA {
             if self.replay.is_some() {
-                self.replay_frame_end_idx = 
-                    self.replay_frame_end_idx.saturating_sub(1);
+                self.replay_frame_end_idx = self.replay_frame_end_idx.saturating_sub(1);
 
-                self.replay_frame_start_idx = 
-                    self.replay_frame_start_idx.saturating_sub(1);
+                self.replay_frame_start_idx = self.replay_frame_start_idx.saturating_sub(1);
 
                 self.update_replay_posititon_by_frame_idx();
             };
@@ -782,37 +782,63 @@ impl<'rvs> ReplayViewerState<'rvs> {
         }
     }
 
-    pub fn on_mouse_pressed(&mut self, button: MouseButton) {
-        let _span = tracy_client::span!("state::on_mouse_pressed");
-
-        if button == MouseButton::Left {
-            self.left_mouse_holding = true;
-        }
-    }
-
-    pub fn on_mouse_released(&mut self, button: MouseButton) {
-        let _span = tracy_client::span!("state::on_mouse_released");
-        if button == MouseButton::Left {
-            if self.left_mouse_holding {
-                self.left_mouse_holding = false;
-
+    pub fn on_mouse_state(&mut self, button: MouseButton, result: ClickResult) {
+        match result {
+            ClickResult::None => {}
+            ClickResult::Click => {
                 self.on_click();
-            };
+            }
+            ClickResult::HoldStart => {
+                self.left_mouse_holding = true;
+            }
+            ClickResult::HoldEnd => {
+                self.left_mouse_holding = false;
+            }
         }
     }
 
     pub fn on_mouse_moved(&mut self, position: &PhysicalPosition<f64>) {
         let _span = tracy_client::span!("state::on_mouse_moved");
-        if self.left_mouse_holding {
+
+        if self.left_mouse_holding && self.selected_frame.is_none() {
             let delta = self.mouse_pos - Vector2::new(position.x as f32, position.y as f32);
             self.camera.move_camera(delta);
             self.osu_renderer.move_camera(delta);
 
-            self.graphics
-                .queue
-                .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
+            self.graphics.queue.write_buffer(
+                &self.camera_buffer,
+                0,
+                bytemuck::bytes_of(&self.camera.gpu),
+            ); // TODO
 
             self.osu_renderer.write_camera_buffers();
+        }
+
+        if self.left_mouse_holding {
+            if let Some(selected_frame) = self.selected_frame {
+                if let Some(replay) = &mut self.replay {
+                    let world_pos = self
+                        .camera
+                        .screen_to_world(Vector2::new(position.x as f32, position.y as f32));
+
+                    let (px, py) = (world_pos.x as f64, world_pos.y as f64);
+                    let (cx, cy) = (
+                        replay.frames[selected_frame].pos.0,
+                        replay.frames[selected_frame].pos.1,
+                    );
+
+                    let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
+
+                    let is_in_radius = distance <= (CLICKABLE_SELECTION_RADIUS * 2.0 / 2.0) as f64;
+
+                    if is_in_radius {
+                        replay.frames[selected_frame].pos =
+                            (world_pos.x as f64, world_pos.y as f64);
+                        self.sync_cursor();
+                        self.update_analyze_cursor_buffers();
+                    }
+                }
+            }
         }
 
         self.mouse_pos = Vector2::new(position.x as f32, position.y as f32)
@@ -820,12 +846,12 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
     // Quick click
     pub fn on_click(&mut self) {
-        tracing::info!("On click: ({}, {})", self.mouse_pos.x, self.mouse_pos.y);
         let s = self.camera.screen_to_world(self.mouse_pos);
-        tracing::info!("On click2: ({}, {})", s.x, s.y);
 
         if let Some(replay) = &self.replay {
-            let slice = replay.frames.get(self.replay_frame_start_idx..=self.replay_frame_end_idx);
+            let slice = replay
+                .frames
+                .get(self.replay_frame_start_idx..=self.replay_frame_end_idx);
 
             if let Some(slice) = slice {
                 for (i, frame) in slice.iter().enumerate() {
@@ -834,19 +860,25 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
                     let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
 
-                    if !(distance <= (2.0 / 2.0) as f64) {
+                    if !(distance <= (CLICKABLE_SELECTION_RADIUS / 2.0) as f64) {
                         continue;
                     };
-                    
+
                     let selected_index = i + self.replay_frame_start_idx;
-                    self.cursor_renderer.points_data_mut()[selected_index].color = [1.0, 0.2, 0.2];
-                    self.cursor_renderer.write_buffers();
+
+                    if let Some(prev_selected) = self.selected_frame {
+                        self.prev_selected_frame = Some(prev_selected)
+                    };
 
                     self.selected_frame = Some(selected_index);
+                    self.update_analyze_cursor_buffers();
 
-                    break;
+                    return;
                 }
-            }
+
+                self.prev_selected_frame = self.selected_frame.take();
+                self.update_analyze_cursor_buffers();
+            };
         }
     }
 
@@ -859,9 +891,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.osu_renderer.zoom_camera(0.1, self.mouse_pos);
         self.osu_renderer.write_camera_buffers();
 
-        self.graphics
-            .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
+        self.graphics.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::bytes_of(&self.camera.gpu),
+        ); // TODO
     }
 
     pub fn zoom_out(&mut self) {
@@ -873,9 +907,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.osu_renderer.zoom_camera(-0.1, self.mouse_pos);
         self.osu_renderer.write_camera_buffers();
 
-        self.graphics
-            .queue
-            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&self.camera.gpu)); // TODO
+        self.graphics.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::bytes_of(&self.camera.gpu),
+        ); // TODO
     }
 
     pub fn handle_events(&mut self) {
@@ -883,21 +919,21 @@ impl<'rvs> ReplayViewerState<'rvs> {
             Ok(event) => match event {
                 ReplayViewerEvents::OpenReplay(path_buf) => {
                     self.open_replay(&path_buf);
-                },
+                }
                 ReplayViewerEvents::ResetModal => self.modal_text = None,
                 ReplayViewerEvents::ScanBeatmaps(path_buf) => {
                     let (_tx, rx) = oneshot::channel();
                     self.db.scan_beatmaps(path_buf, rx);
-                },
+                }
                 ReplayViewerEvents::UpdateReplayPositionByTime(ts) => {
                     self.time.set_time(ts);
                     self.update_replay_position_by_time();
-                },
+                }
             },
             Err(_) => {
                 // TODO
                 //println!("e")
-            },
+            }
         }
     }
 
@@ -917,12 +953,52 @@ impl<'rvs> ReplayViewerState<'rvs> {
     fn spawn_beatmaps_directory_chooser(&self) {
         let tx = self.tx.clone();
         std::thread::spawn(move || {
-            let directory = rfd::FileDialog::new()
-                .pick_folder();
+            let directory = rfd::FileDialog::new().pick_folder();
 
             if let Some(directory) = directory {
                 let _ = tx.send(ReplayViewerEvents::ScanBeatmaps(directory.into()));
             }
         });
+    }
+
+    fn choose_frame_colors(f: &ReplayFrame, settings: &ReplayViewerSettings) -> PointsInstance {
+        let mut initial_color = None;
+
+        if f.keys.k1 {
+            initial_color = match initial_color {
+                Some(c) => Some(mix_colors_linear(&c, &Rgb::from(settings.k1_color), 0.5)),
+                None => Some(Rgb::from(settings.k1_color)),
+            };
+        }
+
+        if f.keys.k2 {
+            initial_color = match initial_color {
+                Some(c) => Some(mix_colors_linear(&c, &Rgb::from(settings.k2_color), 0.5)),
+                None => Some(Rgb::from(settings.k1_color)),
+            };
+        }
+
+        if f.keys.m1 {
+            initial_color = match initial_color {
+                Some(c) => Some(mix_colors_linear(&c, &Rgb::from(settings.m1_color), 0.5)),
+                None => Some(Rgb::from(settings.k1_color)),
+            };
+        }
+
+        if f.keys.m2 {
+            initial_color = match initial_color {
+                Some(c) => Some(mix_colors_linear(&c, &Rgb::from(settings.m2_color), 0.5)),
+                None => Some(Rgb::from(settings.k1_color)),
+            };
+        }
+
+        PointsInstance {
+            pos: [f.pos.0 as f32, f.pos.1 as f32, 0.0],
+            color: initial_color
+                .unwrap_or(Rgb::new(91, 92, 97))
+                .to_gpu_values(),
+            alpha: 1.0,
+            scale: 1.0,
+        }
     }
 }

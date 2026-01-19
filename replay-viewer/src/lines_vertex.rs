@@ -1,5 +1,4 @@
 use std::mem;
-
 use cgmath::Vector3;
 
 #[repr(C)]
@@ -10,7 +9,7 @@ pub struct LinesVertex {
 }
 
 impl LinesVertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] = 
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
         wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {

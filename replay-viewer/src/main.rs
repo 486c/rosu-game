@@ -1,10 +1,11 @@
-mod app;
-mod state;
 mod analyze_cursor_renderer;
-mod replay_log;
-mod lines_vertex;
+mod app;
+mod click_detector;
 mod judgements_list;
+mod lines_vertex;
 mod playfield;
+mod replay_log;
+mod state;
 
 use app::{App, AppEvents};
 use winit::event_loop::{ControlFlow, EventLoop};
