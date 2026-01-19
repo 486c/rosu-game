@@ -563,31 +563,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
     pub fn render_ui(&mut self, ctx: &egui::Context) {
         let _span = tracy_client::span!("state::render_ui");
 
-        /*
-        if let Some(judgements_list) = &self.judgements_list {
-            egui::Window::new("Hit Results").show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for jdg in judgements_list.iter() {
-                        ui.vertical(|ui| {
-                            ui.label(format!(
-                                "{:?} {:?} at {}",
-                                jdg.kind,
-                                jdg.hit,
-                                jdg.ts
-                            ));
-
-                            if ui.button("Jump").clicked() {
-                                let _ = self.tx.send(ReplayViewerEvents::UpdateReplayPositionByTime(jdg.ts));
-                            };
-                        });
-
-                        ui.separator();
-                    }
-                });
-            });
-        };
-        */
-
         if let Some(modal_text) = &self.modal_text {
             Modal::new(egui::Id::new("Modal")).show(ctx, |ui| {
                 ui.label(modal_text);
@@ -734,7 +709,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     ui.collapsing("Currently Selected Frame Info", |ui| {
                         let frame = &replay.frames[selected_frame];
 
-                        ui.label(format!("Index: {}", self.replay_frame_end_idx));
+                        ui.label(format!("Index: {}", selected_frame));
                         ui.label(format!("Frame Time: {}", frame.ts));
                         ui.label(format!(
                             "Position: ({:.2}, {:.2})",
