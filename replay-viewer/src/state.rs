@@ -8,7 +8,6 @@ use std::{
 
 use cgmath::Vector2;
 use egui::Modal;
-use osu_replay_parser::replay::Replay;
 use rosu::{
     camera::Camera,
     config::Config,
@@ -24,6 +23,7 @@ use rosu::{
     vertex::Vertex,
 };
 use rosu_map::Beatmap;
+use rosu_replay::Replay;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -45,6 +45,7 @@ enum ReplayViewerEvents {
     OpenReplay(PathBuf),
     ScanBeatmaps(PathBuf),
     ResetModal,
+    SaveReplay(PathBuf),
     UpdateReplayPositionByTime(f64),
 }
 
@@ -258,14 +259,14 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn open_replay(&mut self, replay_path: impl AsRef<Path>) {
-        let Ok(replay) = Replay::open(&replay_path.as_ref()) else {
+        let Ok(replay) = rosu_replay::Replay::from_path(&replay_path) else {
             self.modal_text = Some("Can't open replay file".to_owned());
             return;
         };
 
         //let mut processor: OsuProcessor = Replay::open(&replay_path.as_ref()).unwrap().into();
 
-        let Some(beatmap_entry) = self.db.get_beatmap_by_hash(&replay.map_hash) else {
+        let Some(beatmap_entry) = self.db.get_beatmap_by_hash(&replay.beatmap_hash) else {
             self.modal_text = Some("Can't find a beatmap for that replay".to_owned());
             return;
         };
@@ -628,6 +629,10 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 self.spawn_beatmaps_directory_chooser();
             }
 
+            if ui.button("Save replay").clicked() {
+                self.spawn_save_replay();
+            }
+
             ui.heading("Settings");
             let resp = ui.add(
                 egui::Slider::new(&mut self.settings.frames_to_show, 0..=100)
@@ -767,7 +772,25 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 self.set_time(frame.ts);
                 self.update_replay_position_by_time();
             }
-        }
+        };
+
+        // Key editing options
+        if let Some(selected_frame) = &self.selected_frame {
+            if let Some(replay) = &mut self.replay {
+                let changed = match key_code {
+                    KeyCode::KeyZ => replay.toggle_k1(*selected_frame),
+                    KeyCode::KeyX => replay.toggle_k2(*selected_frame),
+                    KeyCode::KeyC => replay.toggle_m1(*selected_frame),
+                    KeyCode::KeyV => replay.toggle_m2(*selected_frame),
+                    _ => false,
+                };
+
+                if changed {
+                    self.sync_cursor();
+                    self.update_analyze_cursor_buffers();
+                }
+            }
+        };
 
         if key_code == KeyCode::Space {
             if self.playing {
@@ -933,6 +956,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     self.set_time(ts);
                     self.update_replay_position_by_time();
                 }
+                ReplayViewerEvents::SaveReplay(path_buf) => {
+                    if let Some(replay) = &self.replay {
+                        replay.save_replay(&path_buf);
+                    }
+                }
             },
             Err(_) => {
                 // TODO
@@ -961,6 +989,17 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
             if let Some(directory) = directory {
                 let _ = tx.send(ReplayViewerEvents::ScanBeatmaps(directory.into()));
+            }
+        });
+    }
+
+    fn spawn_save_replay(&self) {
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let file = rfd::FileDialog::new().save_file();
+
+            if let Some(file) = file {
+                let _ = tx.send(ReplayViewerEvents::SaveReplay(file));
             }
         });
     }

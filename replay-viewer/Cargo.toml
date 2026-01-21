@@ -24,6 +24,7 @@ tracy-client = { version = "0.16.5", default-features = false }
 log = "0.4.27"
 env_logger = "0.11.7"
 rfd = "0.15.3"
+rosu-replay = "0.2.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
