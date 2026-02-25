@@ -159,8 +159,15 @@ impl From<Replay> for ReplayLog {
         let mut ts = 0;
         let mut inputs = Vec::new();
 
-        for frame in value.replay_data {
+
+        for frame in value.replay_data.iter() {
             let ReplayEvent::Osu(frame) = frame else {
+                continue;
+            };
+            
+            // skip frames but account for skip
+            if frame.x == 256.0 && frame.y == -500.0 {
+                ts += frame.time_delta;
                 continue;
             };
 
