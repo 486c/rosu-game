@@ -13,6 +13,7 @@ egui = { workspace = true }
 egui-wgpu = { workspace = true }
 egui_extras = { workspace = true }
 rosu-map = { workspace = true }
+image = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true } 
 oneshot = { version = "0.1.8", default-features = false, features = ["std"] }
@@ -24,7 +25,10 @@ tracy-client = { version = "0.16.5", default-features = false }
 log = "0.4.27"
 env_logger = "0.11.7"
 rfd = "0.15.3"
-rosu-replay = "0.2.2"
+#rosu-replay = "0.2.2"
+rosu-replay = {path = "/home/lopij/wq/rosu-replay"}
+egui_plot = "0.31.0"
+plotters = "0.3.7"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"

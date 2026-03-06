@@ -6,6 +6,7 @@ mod lines_vertex;
 mod playfield;
 mod replay_log;
 mod state;
+mod ui;
 
 use app::{App, AppEvents};
 use winit::event_loop::{ControlFlow, EventLoop};

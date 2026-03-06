@@ -40,8 +40,8 @@ impl<'app> App<'app> {
             graphics: None,
             egui_state: None,
             replay_state: None,
-            left_mouse: ClickDetector::new(MouseButton::Left, 120.0),
-            right_mouse: ClickDetector::new(MouseButton::Right, 60.0),
+            left_mouse: ClickDetector::new(120.0),
+            right_mouse: ClickDetector::new(60.0),
         }
     }
 }
@@ -225,8 +225,13 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
             }
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 let _span = tracy_client::span!("app::cursor_moved");
+                let res_left = self.left_mouse.update_moved(&position);
+                let res_right = self.right_mouse.update_moved(&position);
+
                 if let Some(state) = &mut self.replay_state {
                     state.on_mouse_moved(&position);
+                    state.on_mouse_state(MouseButton::Left, res_left);
+                    state.on_mouse_state(MouseButton::Right, res_right);
                 }
             }
             winit::event::WindowEvent::MouseInput { state, button, .. } => {

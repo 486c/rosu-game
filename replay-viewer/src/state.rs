@@ -38,7 +38,7 @@ use crate::{
     click_detector::ClickResult,
     judgements_list::JudgementPoint,
     playfield::PlayfieldRenderer,
-    replay_log::{ReplayFrame, ReplayLog},
+    replay_log::{ReplayFrame, ReplayLog}, ui::{analyze::AnalyzeUi, holdtimes::HoldTimesUi},
 };
 
 enum ReplayViewerEvents {
@@ -114,6 +114,10 @@ pub struct ReplayViewerState<'rvs> {
     rx: Receiver<ReplayViewerEvents>,
 
     circle_diameter: f32,
+
+    // Other Ui elements
+    analyze_ui: AnalyzeUi
+
 }
 
 impl<'rvs> ReplayViewerState<'rvs> {
@@ -229,6 +233,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             circle_diameter: 4.0,
             selected_frame: None,
             prev_selected_frame: None,
+            analyze_ui: AnalyzeUi::new(),
         }
     }
 
@@ -271,9 +276,13 @@ impl<'rvs> ReplayViewerState<'rvs> {
             return;
         };
 
-        self.open_beatmap(beatmap_entry.path);
 
-        self.replay = Some(replay.into());
+
+        self.open_beatmap(beatmap_entry.path);
+        
+        let replay: ReplayLog = replay.into();
+        self.analyze_ui.update_replay(&replay);
+        self.replay = Some(replay);
 
         self.time.reset_time();
 
@@ -281,36 +290,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.update_replay_position_by_time();
         self.playing = false;
 
-        /*
-        if let Some(objects) = &mut self.objects {
-            processor.process_all(
-                objects,
-                &self.hit_window,
-                self.circle_diameter
-            );
-
-            let mut judgements_list: Vec<JudgementPoint> = Vec::new();
-
-            for obj in objects.iter() {
-                match &obj.kind {
-                    ObjectKind::Circle(circle) => {
-                        if let Some(result) = &circle.hit_result {
-                            if result.result != Hit::X300 {
-                                judgements_list.push(JudgementPoint {
-                                    ts: circle.start_time,
-                                    kind: crate::judgements_list::JudgementObjectKind::Circle,
-                                    hit: result.result,
-                                })
-                            } else { continue; }
-                        }
-                    },
-                    ObjectKind::Slider(_) => continue,
-                }
-            };
-
-            self.judgements_list = Some(judgements_list);
-        }
-            */
     }
 
     pub fn sync_cursor(&mut self) {
@@ -611,7 +590,10 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     };
 
                     let response = ui
-                        .add(egui::Slider::new(&mut self.slider_time, min..=max).show_value(false));
+                        .add(
+                            egui::Slider::new(&mut self.slider_time, min..=max)
+                                .show_value(false)
+                        );
 
                     if response.changed() {
                         self.set_time(self.slider_time);
@@ -628,11 +610,14 @@ impl<'rvs> ReplayViewerState<'rvs> {
             if ui.button("Export beatmaps").clicked() {
                 self.spawn_beatmaps_directory_chooser();
             }
-
-            if ui.button("Save replay").clicked() {
-                self.spawn_save_replay();
+            
+            if self.replay.is_some() {
+                if ui.button("Save replay").clicked() {
+                    self.spawn_save_replay();
+                }
             }
-
+            
+            ui.separator();
             ui.heading("Settings");
             let resp = ui.add(
                 egui::Slider::new(&mut self.settings.frames_to_show, 0..=100)
@@ -726,8 +711,14 @@ impl<'rvs> ReplayViewerState<'rvs> {
                         ui.label(format!("Is M2 Pressed: {}", frame.keys.m2));
                     });
                 }
-            }
+            };
+
+            ui.separator();
+
+            ui.heading("Analyze");
+            self.analyze_ui.render_ui(ui);
         });
+
     }
 
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {

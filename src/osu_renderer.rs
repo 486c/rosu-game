@@ -1721,6 +1721,8 @@ impl<'or> OsuRenderer<'or> {
 
                 match object.kind {
                     hit_objects::ObjectKind::Circle(_) => {
+                        let _c_span = tracy_client::span!("osu_renderer::render_objects::circle");
+
                         render_pass.set_pipeline(&self.quad_colored_pipeline);
                         
                         // hit circle itself
@@ -1752,6 +1754,8 @@ impl<'or> OsuRenderer<'or> {
                         current_circle += 1;
                     },
                     hit_objects::ObjectKind::Slider(_) => {
+                        let _s_span = tracy_client::span!("osu_renderer::render_objects::slider");
+
                         render_pass.set_pipeline(&self.slider_to_screen_render_pipeline);
                         render_pass.set_vertex_buffer(1, self.slider_to_screen_instance_buffer.slice(..));
                         render_pass.set_index_buffer(
@@ -1810,8 +1814,6 @@ impl<'or> OsuRenderer<'or> {
                                 *follow - 1 as u32..*follow as u32,
                             );
                         }
-
-
 
                         // Hit circle on top of everything
                         render_pass.set_pipeline(&self.quad_colored_pipeline);

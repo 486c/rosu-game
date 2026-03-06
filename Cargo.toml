@@ -26,7 +26,8 @@ rosu-map = { git = "https://github.com/MaxOhn/rosu-map.git" }
 egui = "0.31.1"
 egui-winit = { version = "0.31.1", default-features = false }
 egui-wgpu = "0.31.1"
-egui_extras = "0.31.1"
+egui_extras = { version = "0.31.1", features = ["image"] }
+image = "0.25.8"
 
 
 tracing = "0.1.40"
@@ -42,13 +43,13 @@ egui = { workspace = true }
 egui-winit = { workspace = true }
 egui-wgpu = { workspace = true }
 egui_extras = { workspace = true }
+image = { workspace = true }
 
 log = "0.4.20"
 bytemuck = { version = "1.14.0", features = ["zeroable_maybe_uninit", "zeroable_atomics"] }
 cgmath = { git = "https://github.com/rustgd/cgmath.git", features = ["bytemuck"] }
-image = "0.25.8"
 rosu-pp = "0.10.0"
-tracy-client = { version = "0.16.5", default-features = false }
+tracy-client = { version = "0.18.4", default-features = false }
 smallvec = "1.13.2"
 raw-window-handle = "0.6.2"
 rust-ini = "0.21.0"
@@ -85,7 +86,7 @@ test-case = "3.3.1"
 testdir = "0.9.3"
 
 [profile.release]
-debug = 2  # or 2 for more info
+#debug = 2  # or 2 for more info
 
 #[replace]
 #"egui:0.29.1" = {git = "https://github.com/486c/egui", branch = "0.29.1"}
