@@ -736,6 +736,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
                 if changed {
                     self.sync_cursor();
+                    if let Some(replay) = &self.replay {
+                        self.analyze_ui.update_replay(replay);
+                    }
                 }
             };
         });
