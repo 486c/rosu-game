@@ -12,18 +12,16 @@ use rosu::{
     camera::Camera,
     config::Config,
     graphics::Graphics,
-    hit_objects::{hit_window::HitWindow, Hit, Object, ObjectKind},
+    hit_objects::{hit_window::HitWindow, Object, ObjectKind},
     math::{calc_hitcircle_diameter, calc_playfield, calculate_preempt_fadein},
     osu_db::{OsuDatabase, DEFAULT_DB_PATH},
     osu_renderer::{OsuRenderer, QUAD_INDECIES},
-    processor::OsuProcessor,
     rgb::{mix_colors_linear, Rgb},
     skin_manager::SkinManager,
     timer::Timer,
     vertex::Vertex,
 };
 use rosu_map::Beatmap;
-use rosu_replay::Replay;
 use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -36,9 +34,8 @@ const CLICKABLE_SELECTION_RADIUS: f64 = 4.0;
 use crate::{
     analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance},
     click_detector::ClickResult,
-    judgements_list::JudgementPoint,
     playfield::PlayfieldRenderer,
-    replay_log::{ReplayFrame, ReplayLog}, ui::{analyze::AnalyzeUi, holdtimes::HoldTimesUi},
+    replay_log::{ReplayFrame, ReplayLog}, ui::analyze::AnalyzeUi,
 };
 
 enum ReplayViewerEvents {
@@ -275,8 +272,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
             self.modal_text = Some("Can't find a beatmap for that replay".to_owned());
             return;
         };
-
-
 
         self.open_beatmap(beatmap_entry.path);
         
@@ -714,9 +709,35 @@ impl<'rvs> ReplayViewerState<'rvs> {
             };
 
             ui.separator();
-
             ui.heading("Analyze");
             self.analyze_ui.render_ui(ui);
+
+            ui.separator();
+            ui.heading("Tools");
+            if ui.button("Convert m1/m2 to k1/k2").clicked() {
+                // TODO maybe move this somewhere?
+                let changed = if let Some(replay) = &mut self.replay {
+                    replay.frames
+                        .iter_mut()
+                        .for_each(|frame| {
+                            if frame.keys.m1 && !frame.keys.k1 {
+                                frame.keys.k1 = true;
+                            };
+
+                            if frame.keys.m2 && !frame.keys.k2 {
+                                frame.keys.k2 = true;
+                            };
+                        });
+
+                    true
+                } else {
+                    false
+                };
+
+                if changed {
+                    self.sync_cursor();
+                }
+            };
         });
 
     }
@@ -738,7 +759,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
         if key_code == KeyCode::ArrowLeft || key_code == KeyCode::KeyA {
             if self.replay.is_some() {
                 self.replay_frame_end_idx = self.replay_frame_end_idx.saturating_sub(1);
-
                 self.replay_frame_start_idx = self.replay_frame_start_idx.saturating_sub(1);
 
                 self.update_replay_posititon_by_frame_idx();
