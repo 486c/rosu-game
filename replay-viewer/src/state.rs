@@ -29,21 +29,21 @@ use winit::{
     keyboard::KeyCode,
 };
 
-const CLICKABLE_SELECTION_RADIUS: f64 = 4.0;
 
 use crate::{
-    analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance},
-    click_detector::ClickResult,
-    playfield::PlayfieldRenderer,
-    replay_log::{ReplayFrame, ReplayLog}, ui::analyze::AnalyzeUi,
+    analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, click_detector::ClickResult, playfield::PlayfieldRenderer, replay_log::{ReplayFrame, ReplayLog}, tools::{ToolBox, brush::BrushTool}, ui::analyze::AnalyzeUi
 };
 
-enum ReplayViewerEvents {
+pub enum ReplayViewerEvents {
     OpenReplay(PathBuf),
     ScanBeatmaps(PathBuf),
     ResetModal,
     SaveReplay(PathBuf),
+    SyncCursor,
+    UpdateAnalyzeCursorBuffers,
     UpdateReplayPositionByTime(f64),
+    SetSelectedFrame(usize),
+    SetUnselectedFrame(usize),
 }
 
 pub struct ReplayViewerSettings {
@@ -113,7 +113,9 @@ pub struct ReplayViewerState<'rvs> {
     circle_diameter: f32,
 
     // Other Ui elements
-    analyze_ui: AnalyzeUi
+    analyze_ui: AnalyzeUi,
+
+    toolbox: ToolBox,
 
 }
 
@@ -225,6 +227,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             right_mouse_holding: false,
             db: OsuDatabase::new_from_path(DEFAULT_DB_PATH).unwrap(),
             modal_text: None,
+            toolbox: ToolBox::new(tx.clone()),
             tx,
             rx,
             circle_diameter: 4.0,
@@ -439,7 +442,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             self.cursor_renderer.points_data_mut()[idx].color = new_instance.color;
         }
 
-        if let Some(idx) = self.selected_frame {
+        if let Some(idx) = self.selected_frame.take() {
             self.cursor_renderer.points_data_mut()[idx].color = [1.0, 0.0, 0.0];
         }
 
@@ -714,6 +717,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
             ui.separator();
             ui.heading("Tools");
+            self.toolbox.render_ui(ui);
+
             if ui.button("Convert m1/m2 to k1/k2").clicked() {
                 // TODO maybe move this somewhere?
                 let changed = if let Some(replay) = &mut self.replay {
@@ -741,6 +746,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     }
                 }
             };
+
+
         });
 
     }
@@ -841,6 +848,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
     pub fn on_mouse_moved(&mut self, position: &PhysicalPosition<f64>) {
         let _span = tracy_client::span!("state::on_mouse_moved");
 
+        self.toolbox.on_mouse_moved(position);
+
         if self.right_mouse_holding {
             let delta = self.mouse_pos - Vector2::new(position.x as f32, position.y as f32);
             self.camera.move_camera(delta);
@@ -856,30 +865,16 @@ impl<'rvs> ReplayViewerState<'rvs> {
         }
 
         if self.left_mouse_holding {
-            if let Some(selected_frame) = self.selected_frame {
-                if let Some(replay) = &mut self.replay {
-                    let world_pos = self
-                        .camera
-                        .screen_to_world(Vector2::new(position.x as f32, position.y as f32));
-
-                    let (px, py) = (world_pos.x as f64, world_pos.y as f64);
-                    let (cx, cy) = (
-                        replay.frames[selected_frame].pos.0,
-                        replay.frames[selected_frame].pos.1,
-                    );
-
-                    let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
-
-                    let is_in_radius = distance <= (CLICKABLE_SELECTION_RADIUS * 2.0 / 2.0) as f64;
-
-                    if is_in_radius {
-                        replay.frames[selected_frame].pos =
-                            (world_pos.x as f64, world_pos.y as f64);
-                        self.sync_cursor();
-                        self.update_analyze_cursor_buffers();
-                    }
-                }
+            if let Some(replay) = &mut self.replay {
+                self.toolbox.on_left_mouse_holding(
+                    &mut replay.frames[self.replay_frame_start_idx..self.replay_frame_end_idx],
+                    &self.camera
+                );
             }
+
+            /*
+
+            */
         }
 
         self.mouse_pos = Vector2::new(position.x as f32, position.y as f32)
@@ -887,7 +882,15 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
     // Quick click
     pub fn on_click(&mut self) {
-        let s = self.camera.screen_to_world(self.mouse_pos);
+        if let Some(replay) = &mut self.replay {
+            self.toolbox.on_click(
+                &mut replay.frames[self.replay_frame_start_idx..self.replay_frame_end_idx],
+                &self.camera
+            );
+        }
+
+        /*
+
 
         if let Some(replay) = &self.replay {
             let slice = replay
@@ -921,6 +924,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 self.update_analyze_cursor_buffers();
             };
         }
+        */
     }
 
     pub fn zoom_in(&mut self) {
@@ -970,10 +974,22 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     self.set_time(ts);
                     self.update_replay_position_by_time();
                 }
+                ReplayViewerEvents::UpdateAnalyzeCursorBuffers => {
+                    self.update_analyze_cursor_buffers();
+                }
                 ReplayViewerEvents::SaveReplay(path_buf) => {
                     if let Some(replay) = &self.replay {
                         replay.save_replay(&path_buf);
                     }
+                }
+                ReplayViewerEvents::SyncCursor => {
+                    self.sync_cursor();
+                },
+                ReplayViewerEvents::SetSelectedFrame(idx) => {
+                    self.selected_frame = Some(self.replay_frame_start_idx + idx);
+                },
+                ReplayViewerEvents::SetUnselectedFrame(idx) => {
+                    self.prev_selected_frame = Some(self.replay_frame_start_idx + idx);
                 }
             },
             Err(_) => {

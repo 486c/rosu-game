@@ -7,6 +7,7 @@ mod playfield;
 mod replay_log;
 mod state;
 mod ui;
+mod tools;
 
 use app::{App, AppEvents};
 use winit::event_loop::{ControlFlow, EventLoop};
