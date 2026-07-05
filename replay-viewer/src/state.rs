@@ -29,9 +29,13 @@ use winit::{
     keyboard::KeyCode,
 };
 
-
 use crate::{
-    analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance}, click_detector::ClickResult, playfield::PlayfieldRenderer, replay_log::{ReplayFrame, ReplayLog}, tools::{ToolBox, brush::BrushTool}, ui::analyze::AnalyzeUi
+    analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance},
+    click_detector::ClickResult,
+    playfield::PlayfieldRenderer,
+    replay_log::{ReplayFrame, ReplayLog},
+    tools::{brush::BrushTool, ToolBox},
+    ui::analyze::AnalyzeUi,
 };
 
 pub enum ReplayViewerEvents {
@@ -116,7 +120,6 @@ pub struct ReplayViewerState<'rvs> {
     analyze_ui: AnalyzeUi,
 
     toolbox: ToolBox,
-
 }
 
 impl<'rvs> ReplayViewerState<'rvs> {
@@ -277,7 +280,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         };
 
         self.open_beatmap(beatmap_entry.path);
-        
+
         let replay: ReplayLog = replay.into();
         self.analyze_ui.update_replay(&replay);
         self.replay = Some(replay);
@@ -287,7 +290,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.sync_cursor();
         self.update_replay_position_by_time();
         self.playing = false;
-
     }
 
     pub fn sync_cursor(&mut self) {
@@ -588,10 +590,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     };
 
                     let response = ui
-                        .add(
-                            egui::Slider::new(&mut self.slider_time, min..=max)
-                                .show_value(false)
-                        );
+                        .add(egui::Slider::new(&mut self.slider_time, min..=max).show_value(false));
 
                     if response.changed() {
                         self.set_time(self.slider_time);
@@ -608,13 +607,13 @@ impl<'rvs> ReplayViewerState<'rvs> {
             if ui.button("Export beatmaps").clicked() {
                 self.spawn_beatmaps_directory_chooser();
             }
-            
+
             if self.replay.is_some() {
                 if ui.button("Save replay").clicked() {
                     self.spawn_save_replay();
                 }
             }
-            
+
             ui.separator();
             ui.heading("Settings");
             let resp = ui.add(
@@ -722,17 +721,15 @@ impl<'rvs> ReplayViewerState<'rvs> {
             if ui.button("Convert m1/m2 to k1/k2").clicked() {
                 // TODO maybe move this somewhere?
                 let changed = if let Some(replay) = &mut self.replay {
-                    replay.frames
-                        .iter_mut()
-                        .for_each(|frame| {
-                            if frame.keys.m1 && !frame.keys.k1 {
-                                frame.keys.k1 = true;
-                            };
+                    replay.frames.iter_mut().for_each(|frame| {
+                        if frame.keys.m1 && !frame.keys.k1 {
+                            frame.keys.k1 = true;
+                        };
 
-                            if frame.keys.m2 && !frame.keys.k2 {
-                                frame.keys.k2 = true;
-                            };
-                        });
+                        if frame.keys.m2 && !frame.keys.k2 {
+                            frame.keys.k2 = true;
+                        };
+                    });
 
                     true
                 } else {
@@ -746,10 +743,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     }
                 }
             };
-
-
         });
-
     }
 
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
@@ -868,7 +862,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             if let Some(replay) = &mut self.replay {
                 self.toolbox.on_left_mouse_holding(
                     &mut replay.frames[self.replay_frame_start_idx..self.replay_frame_end_idx],
-                    &self.camera
+                    &self.camera,
                 );
             }
 
@@ -885,7 +879,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
         if let Some(replay) = &mut self.replay {
             self.toolbox.on_click(
                 &mut replay.frames[self.replay_frame_start_idx..self.replay_frame_end_idx],
-                &self.camera
+                &self.camera,
             );
         }
 
@@ -984,10 +978,10 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 }
                 ReplayViewerEvents::SyncCursor => {
                     self.sync_cursor();
-                },
+                }
                 ReplayViewerEvents::SetSelectedFrame(idx) => {
                     self.selected_frame = Some(self.replay_frame_start_idx + idx);
-                },
+                }
                 ReplayViewerEvents::SetUnselectedFrame(idx) => {
                     self.prev_selected_frame = Some(self.replay_frame_start_idx + idx);
                 }
