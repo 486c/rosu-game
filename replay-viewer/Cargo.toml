@@ -25,7 +25,8 @@ log = "0.4.27"
 env_logger = "0.11.7"
 rfd = "0.15.3"
 #rosu-replay = "0.2.2"
-rosu-replay = {path = "/home/lopij/wq/rosu-replay"}
+# rev on branch `lazer-fixes`
+rosu-replay = { git = "https://github.com/486c/rosu-replay", rev = "289ceadd01fccbdfded86ab425f27ed293356af9" }
 egui_plot = "0.31.0"
 plotters = "0.3.7"
 
