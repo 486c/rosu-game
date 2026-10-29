@@ -68,6 +68,15 @@ impl ToolBox {
         self.current
     }
 
+    /// Re-pressing the active tool deselects it (back to `Tools::None`).
+    pub fn select_tool(&mut self, tool: Tools) {
+        self.current = if self.current == tool {
+            Tools::None
+        } else {
+            tool
+        };
+    }
+
     pub fn screen_radius(&self) -> Option<f32> {
         match self.current {
             Tools::Brush => Some(self.brush.radius),
@@ -114,11 +123,11 @@ impl ToolBox {
     }
 
     pub fn render_ui(&mut self, ui: &mut Ui) {
-        ui.selectable_value(&mut self.current, Tools::None, "None");
         ui.selectable_value(&mut self.current, Tools::Select, "Select");
         ui.selectable_value(&mut self.current, Tools::Brush, "Brush");
         ui.selectable_value(&mut self.current, Tools::Smudge, "Smudge");
 
+        ui.label("Hotkeys: 1=Select, 2=Brush, 3=Smudge. Pressing the active tool's key again deselects it.");
         ui.label("Tools edit frames in the visible window; increase \"Show frames\" to edit more.");
 
         match self.current {

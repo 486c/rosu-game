@@ -780,6 +780,17 @@ impl<'rvs> ReplayViewerState<'rvs> {
 
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
         let _span = tracy_client::span!("state::on_pressed_down");
+
+        // 1-3 select tools, pressing the active tool's key again deselects it
+        if let Some(tool) = match key_code {
+            KeyCode::Digit1 => Some(Tools::Select),
+            KeyCode::Digit2 => Some(Tools::Brush),
+            KeyCode::Digit3 => Some(Tools::Smudge),
+            _ => None,
+        } {
+            self.toolbox.select_tool(tool);
+        }
+
         if key_code == KeyCode::ArrowRight || key_code == KeyCode::KeyD {
             self.step_frame(1);
         }
