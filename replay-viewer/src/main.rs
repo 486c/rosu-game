@@ -1,5 +1,6 @@
 mod analyze_cursor_renderer;
 mod app;
+mod edit_history;
 mod click_detector;
 mod judgements_list;
 mod lines_vertex;

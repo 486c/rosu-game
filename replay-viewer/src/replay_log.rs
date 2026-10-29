@@ -2,7 +2,7 @@ use std::{fs::File, io::Write, path::Path};
 
 use rosu_replay::{GameMode, Key, Mod, Replay, ReplayEvent, ReplayEventOsu};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct ReplayKeys {
     pub k1: bool,
     pub k2: bool,
@@ -21,7 +21,7 @@ impl Default for ReplayKeys {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct ReplayFrame {
     pub ts: f64,
     pub delta: i32,

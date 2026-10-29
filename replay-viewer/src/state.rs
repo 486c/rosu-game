@@ -27,12 +27,13 @@ use wgpu::{util::DeviceExt, BindGroup, BufferUsages, TextureView};
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::MouseButton,
-    keyboard::KeyCode,
+    keyboard::{KeyCode, ModifiersState},
 };
 
 use crate::{
     analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance},
     click_detector::ClickResult,
+    edit_history::{EditHistory, FrameChange},
     lines_vertex::LinesVertex,
     playfield::PlayfieldRenderer,
     replay_log::{ReplayFrame, ReplayLog},
@@ -117,6 +118,8 @@ pub struct ReplayViewerState<'rvs> {
     analyze_ui: AnalyzeUi,
     tool_overlay: ToolOverlayRenderer<'rvs>,
     toolbox: ToolBox,
+
+    edit_history: EditHistory,
 }
 
 impl<'rvs> ReplayViewerState<'rvs> {
@@ -234,6 +237,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             selected_frame: None,
             analyze_ui: AnalyzeUi::new(),
             tool_overlay: ToolOverlayRenderer::new(graphics.clone()),
+            edit_history: EditHistory::default(),
         }
     }
 
@@ -277,6 +281,9 @@ impl<'rvs> ReplayViewerState<'rvs> {
         };
 
         self.open_beatmap(beatmap_entry.path);
+
+        // Old indices are meaningless for a new replay.
+        self.edit_history.clear();
 
         let replay: ReplayLog = replay.into();
         self.analyze_ui.update_replay(&replay);
@@ -778,8 +785,26 @@ impl<'rvs> ReplayViewerState<'rvs> {
         });
     }
 
-    pub fn on_pressed_down(&mut self, key_code: KeyCode) {
+    pub fn on_pressed_down(&mut self, key_code: KeyCode, modifiers: ModifiersState) {
         let _span = tracy_client::span!("state::on_pressed_down");
+
+        if modifiers.control_key() {
+            match key_code {
+                KeyCode::KeyZ => {
+                    if modifiers.shift_key() {
+                        self.redo();
+                    } else {
+                        self.undo();
+                    }
+                    return;
+                }
+                KeyCode::KeyY => {
+                    self.redo();
+                    return;
+                }
+                _ => {}
+            }
+        }
 
         // 1-3 select tools, pressing the active tool's key again deselects it
         if let Some(tool) = match key_code {
@@ -819,17 +844,34 @@ impl<'rvs> ReplayViewerState<'rvs> {
             }
         };
 
-        // Key editing options
-        if let Some(selected_frame) = self.selected_frame {
-            let changed = self.replay.as_mut().map_or(false, |replay| match key_code {
-                KeyCode::KeyZ => replay.toggle_k1(selected_frame),
-                KeyCode::KeyX => replay.toggle_k2(selected_frame),
-                KeyCode::KeyC => replay.toggle_m1(selected_frame),
-                KeyCode::KeyV => replay.toggle_m2(selected_frame),
-                _ => false,
+        // Key editing options (unmodified keys only)
+        if !modifiers.control_key() && self.selected_frame.is_some() {
+            let selected_frame = self.selected_frame.unwrap();
+            let change = self.replay.as_mut().and_then(|replay| {
+                let before = replay.frames[selected_frame].clone();
+
+                let changed = match key_code {
+                    KeyCode::KeyZ => replay.toggle_k1(selected_frame),
+                    KeyCode::KeyX => replay.toggle_k2(selected_frame),
+                    KeyCode::KeyC => replay.toggle_m1(selected_frame),
+                    KeyCode::KeyV => replay.toggle_m2(selected_frame),
+                    _ => false,
+                };
+
+                if changed {
+                    let after = replay.frames[selected_frame].clone();
+                    Some(FrameChange {
+                        idx: selected_frame,
+                        before,
+                        after,
+                    })
+                } else {
+                    None
+                }
             });
 
-            if changed {
+            if let Some(change) = change {
+                self.edit_history.push(vec![change]);
                 self.sync_cursor_range(selected_frame..selected_frame + 1);
             }
         }
@@ -854,15 +896,67 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 }
             }
             ClickResult::HoldStart => match button {
-                MouseButton::Left => self.left_mouse_holding = true,
+                MouseButton::Left => {
+                    self.left_mouse_holding = true;
+                    self.begin_edit_stroke();
+                }
                 MouseButton::Right => self.right_mouse_holding = true,
                 _ => {}
             },
             ClickResult::HoldEnd => match button {
-                MouseButton::Left => self.left_mouse_holding = false,
+                MouseButton::Left => {
+                    self.left_mouse_holding = false;
+                    self.end_edit_stroke();
+                }
                 MouseButton::Right => self.right_mouse_holding = false,
                 _ => {}
             },
+        }
+    }
+
+    fn begin_edit_stroke(&mut self) {
+        let Some(replay) = &self.replay else {
+            return;
+        };
+
+        self.edit_history.begin_stroke(
+            &replay.frames,
+            self.replay_frame_start_idx,
+            self.replay_frame_end_idx,
+        );
+    }
+
+    fn end_edit_stroke(&mut self) {
+        let Some(replay) = &self.replay else {
+            return;
+        };
+
+        self.edit_history.end_stroke(&replay.frames);
+    }
+
+    pub fn undo(&mut self) {
+        let range = {
+            let Some(replay) = self.replay.as_mut() else {
+                return;
+            };
+            self.edit_history.undo(&mut replay.frames)
+        };
+
+        if let Some((min, max)) = range {
+            self.sync_cursor_range(min..max + 1);
+        }
+    }
+
+    pub fn redo(&mut self) {
+        let range = {
+            let Some(replay) = self.replay.as_mut() else {
+                return;
+            };
+            self.edit_history.redo(&mut replay.frames)
+        };
+
+        if let Some((min, max)) = range {
+            self.sync_cursor_range(min..max + 1);
         }
     }
 

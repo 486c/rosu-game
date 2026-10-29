@@ -29,6 +29,9 @@ pub struct App<'app> {
     // Mouse buttons state,
     left_mouse: ClickDetector,
     right_mouse: ClickDetector,
+
+    // Last reported keyboard modifiers (winit sends them as separate events)
+    modifiers: winit::keyboard::ModifiersState,
 }
 
 impl<'app> App<'app> {
@@ -41,6 +44,7 @@ impl<'app> App<'app> {
             replay_state: None,
             left_mouse: ClickDetector::new(120.0),
             right_mouse: ClickDetector::new(60.0),
+            modifiers: winit::keyboard::ModifiersState::default(),
         }
     }
 
@@ -88,6 +92,9 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         }
 
         match event {
+            winit::event::WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+            }
             winit::event::WindowEvent::CloseRequested => {
                 self.shutdown();
                 event_loop.exit();
@@ -213,7 +220,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                         winit::keyboard::PhysicalKey::Code(key_code) => {
                             match event.state {
                                 winit::event::ElementState::Pressed => {
-                                    state.on_pressed_down(key_code);
+                                    state.on_pressed_down(key_code, self.modifiers);
                                 }
                                 winit::event::ElementState::Released => {
                                     //state.on_pressed_release(key_code);
