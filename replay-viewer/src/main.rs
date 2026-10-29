@@ -30,4 +30,10 @@ fn main() {
 
     let mut app = App::new(proxy);
     event_loop.run_app(&mut app).unwrap();
+
+    // All wgpu state is already dropped (App::shutdown). File dialog /
+    // beatmap scan threads may still be blocked inside foreign (GTK/portal)
+    // code; running Rust teardown alongside them races it and aborts with
+    // SIGABRT/SIGSEGV. Skipping destructors here avoids that race entirely.
+    std::process::exit(0);
 }

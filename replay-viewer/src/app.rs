@@ -44,6 +44,21 @@ impl<'app> App<'app> {
             right_mouse: ClickDetector::new(60.0),
         }
     }
+
+    fn shutdown(&mut self) {
+        // Drop everything that references the GPU first, in case anything
+        // still tries to use it during teardown.
+        self.egui_state = None;
+        self.replay_state = None;
+
+        if let Some(graphics) = &self.graphics {
+            // Block until all in-flight frames finished, otherwise the
+            // swapchain is destroyed while the GPU still presents from it.
+            let _ = graphics.device.poll(wgpu::Maintain::Wait);
+        }
+
+        self.graphics = None;
+    }
 }
 
 impl<'app> ApplicationHandler<AppEvents> for App<'app> {
@@ -75,7 +90,9 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
 
         match event {
             winit::event::WindowEvent::CloseRequested => {
+                self.shutdown();
                 event_loop.exit();
+                return;
             }
             winit::event::WindowEvent::Resized(physical_size) => {
                 // If graphics is still uninitialized
@@ -296,5 +313,10 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
                 self.graphics = Some(graphics);
             }
         }
+    }
+
+    fn exiting(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        // Covers exits not going through CloseRequested.
+        self.shutdown();
     }
 }
