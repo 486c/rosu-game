@@ -4,11 +4,22 @@ on:
   release:
     types: ["published"]
   push:
-    branches: ["master", "main"]
+    branches:
+      - master
+      - main
+      - dev-inprogress
   pull_request:
     types: [ opened, reopened, edited, synchronize ]
+    branches:
+      - master
+      - main
+      - dev-inprogress
     paths-ignore:
       - '*.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-replay-viewer:
