@@ -1,6 +1,5 @@
 use std::{sync::Arc, time::Instant};
 
-use osu_replay_parser::replay;
 use rosu::{
     egui_state::EguiState,
     graphics::{Graphics, GraphicsInitialized},
