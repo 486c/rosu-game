@@ -62,6 +62,10 @@ pollster = "0.3.0"
 osu-replay-parser = { git = "https://github.com/486c/osr-parser", branch = "wasm" }
 md5 = "0.7.0"
 rfd = "0.15.4"
+soloud = "1.1.1"
+
+# Linux only deps (soloud alsa backend links libasound, absent on Windows)
+[target.'cfg(not(target_os = "windows"))'.dependencies]
 soloud = { version = "1.1.1", features = ["alsa"] }
 
 # WASM only deps
