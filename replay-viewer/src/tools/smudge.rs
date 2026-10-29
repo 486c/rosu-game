@@ -1,31 +1,32 @@
-use std::sync::mpsc::Sender;
-
 use cgmath::{InnerSpace, Vector2};
 use rosu::camera::Camera;
 use winit::dpi::PhysicalPosition;
 
-use crate::{replay_log::ReplayFrame, state::ReplayViewerEvents};
+use crate::{replay_log::ReplayFrame, tools::ToolOutcome};
 
+/// Smudge: drags nearby points along with the cursor movement.
+///
+/// The brush delta used to be measured in screen pixels but applied
+/// directly in world units, so the effect scaled wrongly with zoom; the
+/// delta is now converted to world space via the camera scale.
 pub struct SmudgeTool {
-    state_tx: Sender<ReplayViewerEvents>,
     position: Vector2<f32>,
     prev_position: Vector2<f32>,
 
-    radius: f32,
-    falloff: f32,
+    /// Screen pixels.
+    pub radius: f32,
+    pub strength: f32,
 }
 
 impl SmudgeTool {
-    pub fn new(state_tx: Sender<ReplayViewerEvents>) -> Self {
+    pub fn new() -> Self {
         Self {
-            state_tx,
             position: (0.0, 0.0).into(),
-            radius: 20.0,
-            falloff: 1.2,
-            prev_position: (0.0, 0.0).into(), 
+            prev_position: (0.0, 0.0).into(),
+            radius: 40.0,
+            strength: 1.0,
         }
     }
-
 
     pub fn on_mouse_moved(&mut self, position: &PhysicalPosition<f64>) {
         let new_pos = Vector2::new(position.x as f32, position.y as f32);
@@ -33,51 +34,60 @@ impl SmudgeTool {
         self.position = new_pos;
     }
 
-
     pub fn on_left_mouse_holding(
-        &mut self, 
-        visible_frames: &mut [ReplayFrame],
+        &mut self,
+        frames: &mut [ReplayFrame],
         camera: &Camera,
-    ) {
+    ) -> ToolOutcome {
         let brush_delta = self.position - self.prev_position;
         let brush_speed = brush_delta.magnitude();
 
         if brush_speed < 0.001 {
-            return;
-        };
+            return ToolOutcome::none();
+        }
 
-        let brush_direction = brush_delta.normalize();
+        let scale = camera.scale.max(0.001);
 
-        for frame in visible_frames {
-            let smudge_pos = camera.screen_to_world(
-                self.position
-            );
+        // Screen px -> world units.
+        let world_delta = brush_delta / scale;
+        let smudge_pos = camera.screen_to_world(self.position);
+        let radius = (self.radius / scale).max(1.0);
 
-            let mut frame_pos = 
-                Vector2::new(frame.pos.0 as f32, frame.pos.1 as f32);
+        let direction = world_delta.normalize();
+        let move_amount = self.strength * world_delta.magnitude();
+
+        let mut changed = false;
+
+        for frame in frames {
+            let mut frame_pos = Vector2::new(frame.pos.0 as f32, frame.pos.1 as f32);
 
             let to_point = frame_pos - smudge_pos;
             let distance = to_point.magnitude();
 
-            if distance < self.radius {
-                let influence = self.calculate_influence(distance);
+            if distance < radius {
+                let influence = self.calculate_influence(distance, radius);
+                let displacement = direction * (move_amount * influence);
 
-                let move_amount = 1.2 * influence * brush_speed;
-                let displacement = brush_direction * move_amount;
                 frame_pos += displacement;
 
                 frame.pos.0 = frame_pos.x as f64;
                 frame.pos.1 = frame_pos.y as f64;
-                let _ = self.state_tx.send(ReplayViewerEvents::SyncCursor);
+                changed = true;
             }
+        }
+
+        if changed {
+            ToolOutcome::changed()
+        } else {
+            ToolOutcome::none()
         }
     }
 
-    fn calculate_influence(&self, distance: f32) -> f32 {
-        let t = (distance / self.radius).min(1.0);
-        
+    fn calculate_influence(&self, distance: f32, radius: f32) -> f32 {
+        let t = (distance / radius).clamp(0.0, 1.0);
+
         // Smooth falloff that peaks at the center and falls off to zero at edge
         // Using (1 - t^falloff) for natural smudge feel
-        (1.0 - t.powf(self.falloff)).max(0.0)
+        (1.0 - t * t).max(0.0)
     }
 }

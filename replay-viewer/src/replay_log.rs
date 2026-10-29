@@ -145,6 +145,7 @@ impl ReplayLog {
             replay_data,
             replay_id: 0,
             rng_seed: None,
+            lazer_score_info: None, // TODO: don't forget to pass lazer data
         };
 
         let buffer = replay.pack().unwrap();

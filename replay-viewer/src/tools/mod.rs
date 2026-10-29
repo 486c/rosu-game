@@ -1,16 +1,17 @@
-use std::sync::mpsc::Sender;
-
 use egui::Ui;
 use rosu::camera::Camera;
 use winit::dpi::PhysicalPosition;
 
-use crate::{replay_log::ReplayFrame, state::ReplayViewerEvents, tools::{brush::BrushTool, select::SelectTool, smudge::SmudgeTool}};
+use crate::{
+    replay_log::ReplayFrame,
+    tools::{brush::BrushTool, select::SelectTool, smudge::SmudgeTool},
+};
 
 pub mod brush;
 pub mod select;
 pub mod smudge;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum Tools {
     Select,
     Brush,
@@ -18,9 +19,39 @@ pub enum Tools {
     None
 }
 
-pub struct ToolBox {
-    state_tx: Sender<ReplayViewerEvents>,
+/// Selection change a tool wants to report back to the state.
+/// The index is absolute (into `ReplayLog::frames`).
+#[derive(Debug, Clone, Copy)]
+pub enum SelectionChange {
+    Selected(usize),
+    Deselected,
+}
 
+/// What a tool did during one input event. Returned synchronously so the
+/// state can immediately update selection and re-upload only the edited
+/// frames — the old event-channel round-trip processed a single event per
+/// rendered frame and made edits lag behind.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToolOutcome {
+    /// Some frames were edited and need a cursor data re-upload.
+    pub changed: bool,
+    pub selection: Option<SelectionChange>,
+}
+
+impl ToolOutcome {
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    pub fn changed() -> Self {
+        Self {
+            changed: true,
+            selection: None,
+        }
+    }
+}
+
+pub struct ToolBox {
     current: Tools,
     brush: BrushTool,
     select: SelectTool,
@@ -28,15 +59,12 @@ pub struct ToolBox {
 }
 
 impl ToolBox {
-    pub fn new(
-        state_tx: Sender<ReplayViewerEvents>,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
             current: Tools::None,
-            brush: BrushTool::new(state_tx.clone()),
-            select: SelectTool::new(state_tx.clone()),
-            smudge: SmudgeTool::new(state_tx.clone()),
-            state_tx,
+            brush: BrushTool::new(),
+            select: SelectTool::new(),
+            smudge: SmudgeTool::new(),
         }
     }
 
@@ -49,30 +77,33 @@ impl ToolBox {
         };
     }
 
+    /// `frames` is the visible replay window; `frames_offset` is the absolute
+    /// index of `frames[0]` in `ReplayLog::frames` (tools must store absolute
+    /// indices, the window slides as time moves).
     pub fn on_left_mouse_holding(
-        &mut self, 
-        visible_frames: &mut [ReplayFrame],
+        &mut self,
+        frames: &mut [ReplayFrame],
+        frames_offset: usize,
         camera: &Camera,
-    ) {
+    ) -> ToolOutcome {
         match self.current {
-            Tools::Select => self.select.on_left_mouse_holding(visible_frames, camera),
-            Tools::Brush => self.brush.on_left_mouse_holding(visible_frames, camera),
-            Tools::Smudge => self.smudge.on_left_mouse_holding(visible_frames, camera),
-            Tools::None => {},
-        };
+            Tools::Select => self.select.on_left_mouse_holding(frames, frames_offset, camera),
+            Tools::Brush => self.brush.on_left_mouse_holding(frames, camera),
+            Tools::Smudge => self.smudge.on_left_mouse_holding(frames, camera),
+            Tools::None => ToolOutcome::none(),
+        }
     }
 
     pub fn on_click(
-        &mut self, 
-        visible_frames: &mut [ReplayFrame],
+        &mut self,
+        frames: &mut [ReplayFrame],
+        frames_offset: usize,
         camera: &Camera,
-    ) {
+    ) -> ToolOutcome {
         match self.current {
-            Tools::Select => self.select.on_click(visible_frames, camera),
-            Tools::Brush => {}
-            Tools::Smudge => {}
-            Tools::None => {},
-        };
+            Tools::Select => self.select.on_click(frames, frames_offset, camera),
+            Tools::Brush | Tools::Smudge | Tools::None => ToolOutcome::none(),
+        }
     }
 
     pub fn render_ui(&mut self, ui: &mut Ui) {
@@ -80,5 +111,33 @@ impl ToolBox {
         ui.selectable_value(&mut self.current, Tools::Select, "Select");
         ui.selectable_value(&mut self.current, Tools::Brush, "Brush");
         ui.selectable_value(&mut self.current, Tools::Smudge, "Smudge");
+
+        ui.label("Tools edit frames in the visible window; increase \"Show frames\" to edit more.");
+
+        match self.current {
+            Tools::Brush => {
+                ui.label(format!("Radius: {:.0} px", self.brush.radius));
+                ui.add(
+                    egui::Slider::new(&mut self.brush.radius, 5.0..=300.0).text("Brush radius"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.brush.strength, 0.1..=10.0).text("Brush strength"),
+                );
+            }
+            Tools::Smudge => {
+                ui.label(format!("Radius: {:.0} px", self.smudge.radius));
+                ui.add(
+                    egui::Slider::new(&mut self.smudge.radius, 5.0..=300.0).text("Smudge radius"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.smudge.strength, 0.1..=10.0)
+                        .text("Smudge strength"),
+                );
+            }
+            Tools::Select => {
+                ui.label("Click a point to select it, then hold to drag it. Click empty space to deselect.");
+            }
+            Tools::None => {}
+        }
     }
 }

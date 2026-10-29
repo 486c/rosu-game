@@ -1,4 +1,5 @@
 use std::{
+    ops::Range,
     path::{Path, PathBuf},
     sync::{
         mpsc::{Receiver, Sender},
@@ -6,7 +7,7 @@ use std::{
     },
 };
 
-use cgmath::Vector2;
+use cgmath::{Vector2, Vector3};
 use egui::Modal;
 use rosu::{
     camera::Camera,
@@ -32,9 +33,10 @@ use winit::{
 use crate::{
     analyze_cursor_renderer::{AnalyzeCursorRenderer, PointsInstance},
     click_detector::ClickResult,
+    lines_vertex::LinesVertex,
     playfield::PlayfieldRenderer,
     replay_log::{ReplayFrame, ReplayLog},
-    tools::{brush::BrushTool, ToolBox},
+    tools::{SelectionChange, ToolBox, ToolOutcome},
     ui::analyze::AnalyzeUi,
 };
 
@@ -43,11 +45,6 @@ pub enum ReplayViewerEvents {
     ScanBeatmaps(PathBuf),
     ResetModal,
     SaveReplay(PathBuf),
-    SyncCursor,
-    UpdateAnalyzeCursorBuffers,
-    UpdateReplayPositionByTime(f64),
-    SetSelectedFrame(usize),
-    SetUnselectedFrame(usize),
 }
 
 pub struct ReplayViewerSettings {
@@ -89,7 +86,6 @@ pub struct ReplayViewerState<'rvs> {
     quad_index_buffer: wgpu::Buffer,
 
     selected_frame: Option<usize>,
-    prev_selected_frame: Option<usize>,
     replay_frame_end_idx: usize,
     replay_frame_start_idx: usize,
 
@@ -230,12 +226,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
             right_mouse_holding: false,
             db: OsuDatabase::new_from_path(DEFAULT_DB_PATH).unwrap(),
             modal_text: None,
-            toolbox: ToolBox::new(tx.clone()),
+            toolbox: ToolBox::new(),
             tx,
             rx,
             circle_diameter: 4.0,
             selected_frame: None,
-            prev_selected_frame: None,
             analyze_ui: AnalyzeUi::new(),
         }
     }
@@ -292,19 +287,58 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.playing = false;
     }
 
+    /// Rebuilds and re-uploads the whole cursor data (points + lines).
+    /// Only needed when something affects all frames (colors, key
+    /// conversion, opening a replay). For single-frame edits use
+    /// `sync_cursor_range` instead.
     pub fn sync_cursor(&mut self) {
         let _span = tracy_client::span!("state::sync_cursor");
         let Some(replay) = &self.replay else {
             return;
         };
 
-        let iter = replay
+        let points: Vec<PointsInstance> = replay
             .frames
             .iter()
-            .map(|f| Self::choose_frame_colors(&f, &self.settings));
+            .map(|f| Self::choose_frame_colors(f, &self.settings))
+            .collect();
 
-        self.cursor_renderer.clear_cursor_data();
-        self.cursor_renderer.append_cursor_from_slice(iter);
+        let lines: Vec<LinesVertex> = points
+            .iter()
+            .map(|p| LinesVertex {
+                pos: Vector3::new(p.pos[0], p.pos[1], 1.0),
+                alpha: 1.0,
+            })
+            .collect();
+
+        self.cursor_renderer.set_data(points, lines);
+    }
+
+    /// Recomputes and re-uploads cursor data for a range of frames only.
+    /// Used by tools and key edits so a one-frame change does not trigger
+    /// a full-replay GPU upload.
+    fn sync_cursor_range(&mut self, range: Range<usize>) {
+        if range.is_empty() {
+            return;
+        }
+
+        let Some(replay) = &self.replay else {
+            return;
+        };
+
+        let mut points = Vec::with_capacity(range.len());
+        let mut lines = Vec::with_capacity(range.len());
+
+        for i in range.clone() {
+            let p = Self::choose_frame_colors(&replay.frames[i], &self.settings);
+            lines.push(LinesVertex {
+                pos: Vector3::new(p.pos[0], p.pos[1], 1.0),
+                alpha: 1.0,
+            });
+            points.push(p);
+        }
+
+        self.cursor_renderer.update_range(range.start, &points, &lines);
     }
 
     pub fn on_resize(&mut self, new_size: &PhysicalSize<u32>) {
@@ -333,6 +367,21 @@ impl<'rvs> ReplayViewerState<'rvs> {
         if self.objects.is_none() || self.replay.is_none() {
             return;
         }
+
+        // Playback: advance time and re-derive the visible frame window
+        // BEFORE recording anything, so rendering uses up-to-date indices.
+        if !self.time.is_paused() {
+            self.slider_time = self.time.update();
+            self.update_replay_position_by_time();
+        }
+
+        // Visible window + selection live in a tiny uniform now, so no
+        // per-frame buffer uploads happen while scrubbing or playing.
+        self.cursor_renderer.set_window(
+            self.replay_frame_start_idx,
+            self.replay_frame_end_idx,
+            self.selected_frame,
+        );
 
         self.render_gameplay_objects(view);
 
@@ -372,6 +421,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             // Lines
             render_pass.set_pipeline(&self.cursor_renderer.lines_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.cursor_renderer.window_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.cursor_renderer.lines_vertex_buffer.slice(..));
 
             render_pass.draw(
@@ -382,6 +432,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             // Points
             render_pass.set_pipeline(&self.cursor_renderer.points_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.cursor_renderer.window_bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.cursor_renderer.points_instance_buffer.slice(..));
@@ -399,11 +450,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
         let span = tracy_client::span!("state::render::queue_submit");
         self.graphics.queue.submit([encoder.finish()]);
         drop(span);
-
-        if !self.time.is_paused() {
-            self.slider_time = self.time.update();
-            self.update_replay_position_by_time();
-        }
     }
 
     fn update_frame_point_size(&mut self) {
@@ -423,77 +469,55 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 });
     }
 
-    fn update_analyze_cursor_buffers(&mut self) {
-        let Some(replay) = &self.replay else {
-            return;
-        };
-
-        let total = self
-            .replay_frame_end_idx
-            .saturating_sub(self.replay_frame_start_idx);
-
-        if total == 0 {
-            return;
-        };
-
-        let mut alpha = 0.0;
-        let step = 1.0 / total as f32;
-
-        if let Some(idx) = self.prev_selected_frame {
-            let new_instance = Self::choose_frame_colors(&replay.frames[idx], &self.settings);
-            self.cursor_renderer.points_data_mut()[idx].color = new_instance.color;
-        }
-
-        if let Some(idx) = self.selected_frame.take() {
-            self.cursor_renderer.points_data_mut()[idx].color = [1.0, 0.0, 0.0];
-        }
-
-        for i in self.replay_frame_start_idx..=self.replay_frame_end_idx {
-            self.cursor_renderer.points_data_mut()[i].alpha = alpha;
-            self.cursor_renderer.lines_vertex_data_mut()[i].alpha = alpha;
-            alpha += step;
-        }
-
-        self.cursor_renderer.write_buffers();
-    }
-
-    /// Calculates and updates data and gpu buffers based
-    /// on current frame indexes
-    fn update_replay_posititon_by_frame_idx(&mut self) {
-        let Some(replay) = &self.replay else {
-            return;
-        };
-
-        let time = replay.frames[self.replay_frame_end_idx].ts;
-
-        self.set_time(time);
-        self.update_replay_position_by_time();
-        self.update_analyze_cursor_buffers();
-    }
-
-    /// Calculates and updates data and gpu buffers based
-    /// on current time
+    /// Calculates and updates the visible frame window based on current time.
+    /// Binary search instead of a linear reverse scan: replays can hold
+    /// tens of thousands of frames and this runs every rendered frame.
     fn update_replay_position_by_time(&mut self) {
         let _span = tracy_client::span!("state::update_replay_position");
         let Some(replay) = &self.replay else {
             return;
         };
 
-        // Two values below used only for rendering
-        self.replay_frame_end_idx = replay
-            .frames
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_i, frame)| frame.ts <= self.time.get_time())
-            .map(|(i, _frame)| i)
-            .unwrap_or(0);
+        // Two values below used only for rendering.
+        // NOTE: this intentionally collapses frames sharing a timestamp
+        // (osu writes 0-delta frames on key events). Frame-by-frame
+        // stepping goes through `step_frame`, which never re-derives the
+        // index from time — otherwise it would get stuck inside a
+        // duplicate-timestamp group.
+        let time = self.time.get_time();
+        let end = replay.frames.partition_point(|frame| frame.ts <= time);
 
+        self.replay_frame_end_idx = end.saturating_sub(1);
         self.replay_frame_start_idx = self
             .replay_frame_end_idx
             .saturating_sub(self.settings.frames_to_show);
+    }
 
-        self.update_analyze_cursor_buffers();
+    /// Moves the current frame by `delta` steps. The frame index is the
+    /// source of truth here: we set the time from the frame, but never
+    /// re-derive the index from the time. Re-deriving would collapse
+    /// duplicate timestamps (osu key frames share one millisecond) and
+    /// make A/D stepping stuck.
+    pub fn step_frame(&mut self, delta: i64) {
+        let Some(replay) = &self.replay else {
+            return;
+        };
+
+        if replay.frames.is_empty() {
+            return;
+        }
+
+        let new_end = (self.replay_frame_end_idx as i64 + delta)
+            .clamp(0, replay.frames.len() as i64 - 1) as usize;
+
+        if new_end == self.replay_frame_end_idx {
+            return;
+        }
+
+        self.replay_frame_end_idx = new_end;
+        self.replay_frame_start_idx = new_end.saturating_sub(self.settings.frames_to_show);
+
+        self.set_time(replay.frames[new_end].ts);
     }
 
     fn render_gameplay_objects(&mut self, view: &TextureView) {
@@ -749,24 +773,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
     pub fn on_pressed_down(&mut self, key_code: KeyCode) {
         let _span = tracy_client::span!("state::on_pressed_down");
         if key_code == KeyCode::ArrowRight || key_code == KeyCode::KeyD {
-            if let Some(replay) = &self.replay {
-                self.replay_frame_end_idx =
-                    (self.replay_frame_end_idx + 1).min(replay.frames.len() - 1);
-
-                self.replay_frame_start_idx =
-                    (self.replay_frame_start_idx + 1).min(replay.frames.len() - 1);
-
-                self.update_replay_posititon_by_frame_idx();
-            };
+            self.step_frame(1);
         }
 
         if key_code == KeyCode::ArrowLeft || key_code == KeyCode::KeyA {
-            if self.replay.is_some() {
-                self.replay_frame_end_idx = self.replay_frame_end_idx.saturating_sub(1);
-                self.replay_frame_start_idx = self.replay_frame_start_idx.saturating_sub(1);
-
-                self.update_replay_posititon_by_frame_idx();
-            };
+            self.step_frame(-1);
         }
 
         if key_code == KeyCode::KeyZ && self.selected_frame.is_none() {
@@ -790,22 +801,20 @@ impl<'rvs> ReplayViewerState<'rvs> {
         };
 
         // Key editing options
-        if let Some(selected_frame) = &self.selected_frame {
-            if let Some(replay) = &mut self.replay {
-                let changed = match key_code {
-                    KeyCode::KeyZ => replay.toggle_k1(*selected_frame),
-                    KeyCode::KeyX => replay.toggle_k2(*selected_frame),
-                    KeyCode::KeyC => replay.toggle_m1(*selected_frame),
-                    KeyCode::KeyV => replay.toggle_m2(*selected_frame),
-                    _ => false,
-                };
+        if let Some(selected_frame) = self.selected_frame {
+            let changed = self.replay.as_mut().map_or(false, |replay| match key_code {
+                KeyCode::KeyZ => replay.toggle_k1(selected_frame),
+                KeyCode::KeyX => replay.toggle_k2(selected_frame),
+                KeyCode::KeyC => replay.toggle_m1(selected_frame),
+                KeyCode::KeyV => replay.toggle_m2(selected_frame),
+                _ => false,
+            });
 
-                if changed {
-                    self.sync_cursor();
-                    self.update_analyze_cursor_buffers();
-                }
+            if changed {
+                // Only the edited frame's color changed — upload just it.
+                self.sync_cursor_range(selected_frame..selected_frame + 1);
             }
-        };
+        }
 
         if key_code == KeyCode::Space {
             if self.playing {
@@ -859,66 +868,56 @@ impl<'rvs> ReplayViewerState<'rvs> {
         }
 
         if self.left_mouse_holding {
-            if let Some(replay) = &mut self.replay {
-                self.toolbox.on_left_mouse_holding(
-                    &mut replay.frames[self.replay_frame_start_idx..self.replay_frame_end_idx],
-                    &self.camera,
-                );
+            if self.replay.is_some() {
+                let start = self.replay_frame_start_idx;
+                let end = self.replay_frame_end_idx;
+
+                let outcome = {
+                    let replay = self.replay.as_mut().unwrap();
+                    self.toolbox.on_left_mouse_holding(
+                        &mut replay.frames[start..end],
+                        start,
+                        &self.camera,
+                    )
+                };
+
+                self.apply_tool_outcome(outcome, start, end);
             }
-
-            /*
-
-            */
         }
 
         self.mouse_pos = Vector2::new(position.x as f32, position.y as f32)
     }
 
+    /// Applies what a tool did: updates selection and, when frames were
+    /// edited, re-uploads only the edited window (instead of round-tripping
+    /// through the event channel, which used to process one event per frame).
+    fn apply_tool_outcome(&mut self, outcome: ToolOutcome, start: usize, end: usize) {
+        if let Some(selection) = outcome.selection {
+            match selection {
+                SelectionChange::Selected(idx) => self.selected_frame = Some(idx),
+                SelectionChange::Deselected => self.selected_frame = None,
+            }
+        }
+
+        if outcome.changed {
+            self.sync_cursor_range(start..end);
+        }
+    }
+
     // Quick click
     pub fn on_click(&mut self) {
-        if let Some(replay) = &mut self.replay {
-            self.toolbox.on_click(
-                &mut replay.frames[self.replay_frame_start_idx..self.replay_frame_end_idx],
-                &self.camera,
-            );
-        }
+        if self.replay.is_some() {
+            let start = self.replay_frame_start_idx;
+            let end = self.replay_frame_end_idx;
 
-        /*
-
-
-        if let Some(replay) = &self.replay {
-            let slice = replay
-                .frames
-                .get(self.replay_frame_start_idx..=self.replay_frame_end_idx);
-
-            if let Some(slice) = slice {
-                for (i, frame) in slice.iter().enumerate() {
-                    let (px, py) = (s.x as f64, s.y as f64);
-                    let (cx, cy) = (frame.pos.0, frame.pos.1);
-
-                    let distance = ((px - cx).powf(2.0) + (py - cy).powf(2.0)).sqrt();
-
-                    if !(distance <= (CLICKABLE_SELECTION_RADIUS / 2.0) as f64) {
-                        continue;
-                    };
-
-                    let selected_index = i + self.replay_frame_start_idx;
-
-                    if let Some(prev_selected) = self.selected_frame {
-                        self.prev_selected_frame = Some(prev_selected)
-                    };
-
-                    self.selected_frame = Some(selected_index);
-                    self.update_analyze_cursor_buffers();
-
-                    return;
-                }
-
-                self.prev_selected_frame = self.selected_frame.take();
-                self.update_analyze_cursor_buffers();
+            let outcome = {
+                let replay = self.replay.as_mut().unwrap();
+                self.toolbox
+                    .on_click(&mut replay.frames[start..end], start, &self.camera)
             };
+
+            self.apply_tool_outcome(outcome, start, end);
         }
-        */
     }
 
     pub fn zoom_in(&mut self) {
@@ -954,8 +953,10 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn handle_events(&mut self) {
-        match self.rx.try_recv() {
-            Ok(event) => match event {
+        // Drain ALL pending events: previously only one event was consumed
+        // per rendered frame, which made queued tool events lag behind.
+        while let Ok(event) = self.rx.try_recv() {
+            match event {
                 ReplayViewerEvents::OpenReplay(path_buf) => {
                     self.open_replay(&path_buf);
                 }
@@ -964,31 +965,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
                     let (_tx, rx) = oneshot::channel();
                     self.db.scan_beatmaps(path_buf, rx);
                 }
-                ReplayViewerEvents::UpdateReplayPositionByTime(ts) => {
-                    self.set_time(ts);
-                    self.update_replay_position_by_time();
-                }
-                ReplayViewerEvents::UpdateAnalyzeCursorBuffers => {
-                    self.update_analyze_cursor_buffers();
-                }
                 ReplayViewerEvents::SaveReplay(path_buf) => {
                     if let Some(replay) = &self.replay {
                         replay.save_replay(&path_buf);
                     }
                 }
-                ReplayViewerEvents::SyncCursor => {
-                    self.sync_cursor();
-                }
-                ReplayViewerEvents::SetSelectedFrame(idx) => {
-                    self.selected_frame = Some(self.replay_frame_start_idx + idx);
-                }
-                ReplayViewerEvents::SetUnselectedFrame(idx) => {
-                    self.prev_selected_frame = Some(self.replay_frame_start_idx + idx);
-                }
-            },
-            Err(_) => {
-                // TODO
-                //println!("e")
             }
         }
     }
@@ -1029,39 +1010,38 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     fn choose_frame_colors(f: &ReplayFrame, settings: &ReplayViewerSettings) -> PointsInstance {
-        let mut initial_color = None;
+        // Mix all pressed keys' colors together. (The fallback used to use
+        // k1's color for other keys — fixed to use each key's own color.)
+        let mut mixed: Option<Rgb> = None;
+
+        macro_rules! mix_in {
+            ($color:expr) => {
+                mixed = Some(match mixed {
+                    Some(prev) => mix_colors_linear(&prev, &Rgb::from($color), 0.5),
+                    None => Rgb::from($color),
+                });
+            };
+        }
 
         if f.keys.k1 {
-            initial_color = match initial_color {
-                Some(c) => Some(mix_colors_linear(&c, &Rgb::from(settings.k1_color), 0.5)),
-                None => Some(Rgb::from(settings.k1_color)),
-            };
+            mix_in!(settings.k1_color);
         }
 
         if f.keys.k2 {
-            initial_color = match initial_color {
-                Some(c) => Some(mix_colors_linear(&c, &Rgb::from(settings.k2_color), 0.5)),
-                None => Some(Rgb::from(settings.k1_color)),
-            };
+            mix_in!(settings.k2_color);
         }
 
         if f.keys.m1 {
-            initial_color = match initial_color {
-                Some(c) => Some(mix_colors_linear(&c, &Rgb::from(settings.m1_color), 0.5)),
-                None => Some(Rgb::from(settings.k1_color)),
-            };
+            mix_in!(settings.m1_color);
         }
 
         if f.keys.m2 {
-            initial_color = match initial_color {
-                Some(c) => Some(mix_colors_linear(&c, &Rgb::from(settings.m2_color), 0.5)),
-                None => Some(Rgb::from(settings.k1_color)),
-            };
+            mix_in!(settings.m2_color);
         }
 
         PointsInstance {
-            pos: [f.pos.0 as f32, f.pos.1 as f32, 0.0],
-            color: initial_color
+            pos: [f.pos.0 as f32, f.pos.1 as f32, 1.0],
+            color: mixed
                 .unwrap_or(Rgb::new(91, 92, 97))
                 .to_gpu_values(),
             alpha: 1.0,

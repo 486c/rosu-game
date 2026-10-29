@@ -1,31 +1,30 @@
-use std::sync::mpsc::Sender;
-
 use cgmath::{InnerSpace, Vector2};
 use rosu::camera::Camera;
 use winit::dpi::PhysicalPosition;
 
-use crate::{replay_log::ReplayFrame, state::ReplayViewerEvents};
+use crate::{replay_log::ReplayFrame, tools::ToolOutcome};
 
-/// Basic outward pushing brush
+/// Basic outward pushing brush.
+///
+/// The brush radius is defined in **screen pixels** and converted to world
+/// units with the camera scale, so the brush feels the same size at any
+/// zoom level. Frame positions are osu world coordinates (512x400 units),
+/// which is why pushing used to look tiny/erratic when the radius was
+/// treated as a world-space constant.
 pub struct BrushTool {
-    state_tx: Sender<ReplayViewerEvents>,
-
-    active: bool,
     position: Vector2<f32>,
-    radius: f32,
-    strength: f32,
-    falloff: f32,
+    /// Screen pixels.
+    pub radius: f32,
+    /// World units per "full influence" push per mouse-move event.
+    pub strength: f32,
 }
 
 impl BrushTool {
-    pub fn new(state_tx: Sender<ReplayViewerEvents>) -> Self {
+    pub fn new() -> Self {
         Self {
-            active: true,
             position: (0.0, 0.0).into(),
-            radius: 20.0,
-            strength: 1.2,
-            falloff: 1.2,
-            state_tx,
+            radius: 40.0,
+            strength: 1.5,
         }
     }
 
@@ -34,44 +33,46 @@ impl BrushTool {
     }
 
     pub fn on_left_mouse_holding(
-        &mut self, 
-        visible_frames: &mut [ReplayFrame],
+        &mut self,
+        frames: &mut [ReplayFrame],
         camera: &Camera,
-    ) {
-        if !self.active {
-            return;
-        }
-        
-        let mut changed = false;
-        for frame in visible_frames {
-            let brush_world_pos = camera.screen_to_world(Vector2::new(
-                self.position.x, self.position.y
-            ));
+    ) -> ToolOutcome {
+        let brush_world_pos = camera.screen_to_world(self.position);
 
+        // Screen px -> world units.
+        let radius = (self.radius / camera.scale.max(0.001)).max(1.0);
+
+        let mut changed = false;
+
+        for frame in frames {
             let frame_pos = Vector2::new(frame.pos.0 as f32, frame.pos.1 as f32);
 
             let to_point = frame_pos - brush_world_pos;
             let distance = to_point.magnitude();
 
-            if distance < self.radius && distance > 0.0 {
+            if distance < radius && distance > f32::EPSILON {
                 let direction = to_point.normalize();
-                let influence = self.calculate_influence(distance);
-                let push_vector = direction * 1.0 * influence;
+                let influence = self.calculate_influence(distance, radius);
+
+                // `strength` was previously declared but never used (the push
+                // was hardcoded to 1.0 unit per event).
+                let push_vector = direction * (self.strength * influence);
+
                 frame.pos.0 += push_vector.x as f64;
                 frame.pos.1 += push_vector.y as f64;
                 changed = true;
             }
-        };
+        }
 
         if changed {
-            let _ = self.state_tx.send(ReplayViewerEvents::SyncCursor);
+            ToolOutcome::changed()
+        } else {
+            ToolOutcome::none()
         }
     }
 
-    fn calculate_influence(&self, distance: f32) -> f32 {
-        let t = distance / self.radius;
-        
-        let t = t.min(1.0).max(0.0);
+    fn calculate_influence(&self, distance: f32, radius: f32) -> f32 {
+        let t = (distance / radius).clamp(0.0, 1.0);
         1.0 - (3.0 * t * t - 2.0 * t * t * t)
     }
 }
