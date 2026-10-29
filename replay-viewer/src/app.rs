@@ -292,7 +292,7 @@ impl<'app> ApplicationHandler<AppEvents> for App<'app> {
         match event {
             AppEvents::GraphicsInitialized(graphics) => {
                 self.egui_state = Some(EguiState::new(&graphics, self.window.as_ref().unwrap()));
-                self.replay_state = Some(ReplayViewerState::new(graphics.clone()));
+                self.replay_state = Some(ReplayViewerState::new(&graphics));
                 self.graphics = Some(graphics);
             }
         }

@@ -36,7 +36,8 @@ use crate::{
     lines_vertex::LinesVertex,
     playfield::PlayfieldRenderer,
     replay_log::{ReplayFrame, ReplayLog},
-    tools::{SelectionChange, ToolBox, ToolOutcome},
+    tool_overlay::{OverlayInstance, ToolOverlayRenderer},
+    tools::{SelectionChange, ToolBox, ToolOutcome, Tools},
     ui::analyze::AnalyzeUi,
 };
 
@@ -114,12 +115,12 @@ pub struct ReplayViewerState<'rvs> {
 
     // Other Ui elements
     analyze_ui: AnalyzeUi,
-
+    tool_overlay: ToolOverlayRenderer<'rvs>,
     toolbox: ToolBox,
 }
 
 impl<'rvs> ReplayViewerState<'rvs> {
-    pub fn new(graphics: Arc<Graphics<'rvs>>) -> Self {
+    pub fn new(graphics: &Arc<Graphics<'rvs>>) -> Self {
         let (graphics_width, graphics_height) = graphics.get_surface_size();
         let camera = Camera::new(
             &graphics,
@@ -195,7 +196,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             cursor_renderer: AnalyzeCursorRenderer::new(graphics.clone()),
             playfield_renderer: PlayfieldRenderer::new(graphics.clone()),
             osu_renderer: OsuRenderer::new(graphics.clone(), config.clone(), skin_manager.clone()),
-            graphics,
+            graphics: graphics.clone(),
             camera_bind_group,
             camera_buffer,
             quad_vertex_buffer,
@@ -232,6 +233,7 @@ impl<'rvs> ReplayViewerState<'rvs> {
             circle_diameter: 4.0,
             selected_frame: None,
             analyze_ui: AnalyzeUi::new(),
+            tool_overlay: ToolOverlayRenderer::new(graphics.clone()),
         }
     }
 
@@ -287,10 +289,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.playing = false;
     }
 
-    /// Rebuilds and re-uploads the whole cursor data (points + lines).
-    /// Only needed when something affects all frames (colors, key
-    /// conversion, opening a replay). For single-frame edits use
-    /// `sync_cursor_range` instead.
     pub fn sync_cursor(&mut self) {
         let _span = tracy_client::span!("state::sync_cursor");
         let Some(replay) = &self.replay else {
@@ -314,9 +312,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.cursor_renderer.set_data(points, lines);
     }
 
-    /// Recomputes and re-uploads cursor data for a range of frames only.
-    /// Used by tools and key edits so a one-frame change does not trigger
-    /// a full-replay GPU upload.
     fn sync_cursor_range(&mut self, range: Range<usize>) {
         if range.is_empty() {
             return;
@@ -368,15 +363,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
             return;
         }
 
-        // Playback: advance time and re-derive the visible frame window
-        // BEFORE recording anything, so rendering uses up-to-date indices.
         if !self.time.is_paused() {
             self.slider_time = self.time.update();
             self.update_replay_position_by_time();
         }
 
-        // Visible window + selection live in a tiny uniform now, so no
-        // per-frame buffer uploads happen while scrubbing or playing.
         self.cursor_renderer.set_window(
             self.replay_frame_start_idx,
             self.replay_frame_end_idx,
@@ -445,6 +436,11 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 0,
                 self.replay_frame_start_idx as u32..self.replay_frame_end_idx as u32,
             );
+
+            if let Some(instance) = self.tool_overlay_instance() {
+                self.tool_overlay.set_instance(&instance);
+                self.tool_overlay.draw(&mut render_pass, &self.camera_bind_group);
+            }
         }
 
         let span = tracy_client::span!("state::render::queue_submit");
@@ -469,21 +465,15 @@ impl<'rvs> ReplayViewerState<'rvs> {
                 });
     }
 
-    /// Calculates and updates the visible frame window based on current time.
-    /// Binary search instead of a linear reverse scan: replays can hold
-    /// tens of thousands of frames and this runs every rendered frame.
     fn update_replay_position_by_time(&mut self) {
         let _span = tracy_client::span!("state::update_replay_position");
         let Some(replay) = &self.replay else {
             return;
         };
 
-        // Two values below used only for rendering.
         // NOTE: this intentionally collapses frames sharing a timestamp
-        // (osu writes 0-delta frames on key events). Frame-by-frame
-        // stepping goes through `step_frame`, which never re-derives the
-        // index from time — otherwise it would get stuck inside a
-        // duplicate-timestamp group.
+        // (osu writes 0-delta frames on key events); stepping goes through
+        // `step_frame`, which never re-derives the index from time.
         let time = self.time.get_time();
         let end = replay.frames.partition_point(|frame| frame.ts <= time);
 
@@ -493,11 +483,8 @@ impl<'rvs> ReplayViewerState<'rvs> {
             .saturating_sub(self.settings.frames_to_show);
     }
 
-    /// Moves the current frame by `delta` steps. The frame index is the
-    /// source of truth here: we set the time from the frame, but never
-    /// re-derive the index from the time. Re-deriving would collapse
-    /// duplicate timestamps (osu key frames share one millisecond) and
-    /// make A/D stepping stuck.
+    /// Frame index is the source of truth: re-deriving it from the time
+    /// would collapse duplicate timestamps and get A/D stepping stuck.
     pub fn step_frame(&mut self, delta: i64) {
         let Some(replay) = &self.replay else {
             return;
@@ -518,6 +505,27 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.replay_frame_start_idx = new_end.saturating_sub(self.settings.frames_to_show);
 
         self.set_time(replay.frames[new_end].ts);
+    }
+
+    /// Ring showing the active tool's area of effect, if any.
+    fn tool_overlay_instance(&self) -> Option<OverlayInstance> {
+        let screen_radius = self.toolbox.screen_radius()?;
+
+        let color = match self.toolbox.current() {
+            Tools::Brush => [1.0, 1.0, 1.0],
+            Tools::Smudge => [0.4, 1.0, 0.5],
+            _ => return None,
+        };
+
+        let world_pos = self.camera.screen_to_world(self.mouse_pos);
+        let world_radius = screen_radius / self.camera.scale.max(0.001);
+
+        Some(OverlayInstance {
+            pos: [world_pos.x, world_pos.y, 0.0],
+            color,
+            alpha: 0.9,
+            scale: world_radius,
+        })
     }
 
     fn render_gameplay_objects(&mut self, view: &TextureView) {
@@ -811,7 +819,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
             });
 
             if changed {
-                // Only the edited frame's color changed — upload just it.
                 self.sync_cursor_range(selected_frame..selected_frame + 1);
             }
         }
@@ -888,9 +895,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
         self.mouse_pos = Vector2::new(position.x as f32, position.y as f32)
     }
 
-    /// Applies what a tool did: updates selection and, when frames were
-    /// edited, re-uploads only the edited window (instead of round-tripping
-    /// through the event channel, which used to process one event per frame).
     fn apply_tool_outcome(&mut self, outcome: ToolOutcome, start: usize, end: usize) {
         if let Some(selection) = outcome.selection {
             match selection {
@@ -953,8 +957,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     pub fn handle_events(&mut self) {
-        // Drain ALL pending events: previously only one event was consumed
-        // per rendered frame, which made queued tool events lag behind.
         while let Ok(event) = self.rx.try_recv() {
             match event {
                 ReplayViewerEvents::OpenReplay(path_buf) => {
@@ -1010,8 +1012,6 @@ impl<'rvs> ReplayViewerState<'rvs> {
     }
 
     fn choose_frame_colors(f: &ReplayFrame, settings: &ReplayViewerSettings) -> PointsInstance {
-        // Mix all pressed keys' colors together. (The fallback used to use
-        // k1's color for other keys — fixed to use each key's own color.)
         let mut mixed: Option<Rgb> = None;
 
         macro_rules! mix_in {

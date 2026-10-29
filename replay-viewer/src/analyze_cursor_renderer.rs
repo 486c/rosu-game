@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use cgmath::Vector3;
-use rosu::{graphics::Graphics, rgb::Rgb, vertex::Vertex};
+
+use rosu::{graphics::Graphics, vertex::Vertex};
 use wgpu::{util::DeviceExt, Buffer, BufferUsages, RenderPipeline};
 
 use crate::lines_vertex::LinesVertex;
@@ -26,19 +26,6 @@ impl PointsInstance {
             4 => Float32,
             5 => Float32,
         ];
-
-    pub fn new(
-        x: f32, y: f32, z: f32, alpha: f32, scale: f32, color: &Rgb
-    ) -> Self {
-        let mat = Vector3::new(x, y, z);
-
-        Self {
-            pos: mat.into(),
-            alpha,
-            scale,
-            color: color.to_gpu_values(),
-        }
-    }
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -83,9 +70,6 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
     pub fn new(graphics: Arc<Graphics<'acr>>) -> Self {
         let surface_config = graphics.get_surface_config();
 
-        // NOTE: the lines buffer uses `LinesVertex`; the points buffer uses
-        // `PointsInstance` instances over the point-quad vertices provided
-        // by `state`.
         let point_shader = graphics
             .device
             .create_shader_module(wgpu::include_wgsl!("shaders/point.wgsl"));
@@ -317,8 +301,8 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
             (new_cap * std::mem::size_of::<PointsInstance>()) as u64,
         );
 
-        // Dropping the old buffer is safe: wgpu keeps the GPU memory alive
-        // until in-flight commands that referenced it complete.
+        // Dropping the old buffer is safe: wgpu keeps GPU memory alive
+        // until in-flight commands referencing it complete.
         self.points_instance_buffer = buffer;
         self.points_capacity = new_cap;
     }
@@ -362,7 +346,6 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
     }
 
     /// Re-upload a sub-range of cursor data (`start` = absolute frame index).
-    /// Buffers must already contain at least `start + len` elements.
     pub fn update_range(
         &mut self,
         start: usize,
@@ -385,8 +368,7 @@ impl<'acr> AnalyzeCursorRenderer<'acr> {
         );
     }
 
-    /// Update the visible-window uniform. Called once per rendered frame;
-    /// a 16-byte write instead of re-uploading the whole replay.
+    /// Update the visible-window uniform (written once per rendered frame).
     pub fn set_window(&self, start: usize, end: usize, selected: Option<usize>) {
         let uniform = WindowUniform {
             start: start as u32,

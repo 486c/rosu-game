@@ -5,15 +5,10 @@ use winit::dpi::PhysicalPosition;
 use crate::{replay_log::ReplayFrame, tools::ToolOutcome};
 
 /// Smudge: drags nearby points along with the cursor movement.
-///
-/// The brush delta used to be measured in screen pixels but applied
-/// directly in world units, so the effect scaled wrongly with zoom; the
-/// delta is now converted to world space via the camera scale.
 pub struct SmudgeTool {
     position: Vector2<f32>,
     prev_position: Vector2<f32>,
 
-    /// Screen pixels.
     pub radius: f32,
     pub strength: f32,
 }

@@ -19,18 +19,14 @@ pub enum Tools {
     None
 }
 
-/// Selection change a tool wants to report back to the state.
-/// The index is absolute (into `ReplayLog::frames`).
+/// Selection change a tool reports back to the state; the index is
+/// absolute (into `ReplayLog::frames`).
 #[derive(Debug, Clone, Copy)]
 pub enum SelectionChange {
     Selected(usize),
     Deselected,
 }
 
-/// What a tool did during one input event. Returned synchronously so the
-/// state can immediately update selection and re-upload only the edited
-/// frames — the old event-channel round-trip processed a single event per
-/// rendered frame and made edits lag behind.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ToolOutcome {
     /// Some frames were edited and need a cursor data re-upload.
@@ -68,6 +64,18 @@ impl ToolBox {
         }
     }
 
+    pub fn current(&self) -> Tools {
+        self.current
+    }
+
+    pub fn screen_radius(&self) -> Option<f32> {
+        match self.current {
+            Tools::Brush => Some(self.brush.radius),
+            Tools::Smudge => Some(self.smudge.radius),
+            _ => None,
+        }
+    }
+
     pub fn on_mouse_moved(&mut self, position: &PhysicalPosition<f64>) {
         match self.current {
             Tools::Select => self.select.on_mouse_moved(position),
@@ -77,9 +85,8 @@ impl ToolBox {
         };
     }
 
-    /// `frames` is the visible replay window; `frames_offset` is the absolute
-    /// index of `frames[0]` in `ReplayLog::frames` (tools must store absolute
-    /// indices, the window slides as time moves).
+    /// `frames_offset` is the absolute index of `frames[0]` in
+    /// `ReplayLog::frames`.
     pub fn on_left_mouse_holding(
         &mut self,
         frames: &mut [ReplayFrame],

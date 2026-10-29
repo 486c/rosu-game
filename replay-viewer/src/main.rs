@@ -6,6 +6,7 @@ mod lines_vertex;
 mod playfield;
 mod replay_log;
 mod state;
+mod tool_overlay;
 mod ui;
 mod tools;
 

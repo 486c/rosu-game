@@ -7,10 +7,8 @@ struct CameraUniform {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
-/// Visible replay-frame window, updated once per rendered frame.
+/// Visible replay-frame window.
 /// `selected` is NO_SELECTED_FRAME (0xFFFFFFFF) when nothing is selected.
-/// Fade alpha is computed on the GPU from the instance index, so the
-/// CPU never has to touch the big instance buffers while scrubbing.
 struct WindowUniform {
     start: u32,
     end: u32,

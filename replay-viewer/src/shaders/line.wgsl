@@ -7,9 +7,7 @@ struct CameraUniform {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
-/// Visible replay-frame window, updated once per rendered frame.
-/// Fade alpha is computed on the GPU from the vertex index, so the
-/// CPU never has to touch the big vertex buffers while scrubbing.
+/// Visible replay-frame window.
 struct WindowUniform {
     start: u32,
     end: u32,
