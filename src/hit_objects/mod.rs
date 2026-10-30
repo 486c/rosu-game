@@ -1,6 +1,7 @@
 pub mod circle;
 pub mod slider;
 pub mod hit_window;
+pub mod stacking;
 
 use cgmath::Vector2;
 use hit_window::HitWindow;
@@ -9,7 +10,7 @@ use rosu_map::Beatmap;
 use slider::{Slider, Tick};
 use circle::Circle;
 
-use crate::math::{calc_opposite_direction_degree, calc_progress};
+use crate::{hit_objects::stacking::apply_stacking, math::{calc_hitcircle_diameter, calc_opposite_direction_degree, calc_progress, calculate_preempt_fadein}};
 
 // In ms
 pub const SLIDER_FADEOUT_TIME: f64 = 80.0;
@@ -49,7 +50,17 @@ pub struct Object {
     pub start_time: f64,
     pub kind: ObjectKind,
     pub color: usize,
+
+    /// Amount of objects stacked below this one. `0` means the object sits at
+    /// its original position, a positive value moves it up-left and a
+    /// negative one down-right (matching osu!stable).
+    ///
+    /// The offset is already applied to the object's position by
+    /// [`Object::from_rosu`], this is kept for debugging/tests.
+    pub stack_count: i32,
 }
+
+
 
 impl Object {
     pub fn is_visible(&self, time: f64, preempt: f32, hit_window: &HitWindow) -> bool {
@@ -63,6 +74,15 @@ impl Object {
         match &self.kind {
             ObjectKind::Circle(circle) => circle.is_judgements_visible(time, preempt),
             ObjectKind::Slider(_) => false,
+        }
+    }
+
+    /// Time at which the object stops being hittable / stops occupying the
+    /// field. Circles end where they start, sliders at their actual end.
+    pub fn end_time(&self) -> f64 {
+        match &self.kind {
+            ObjectKind::Circle(_) => self.start_time,
+            ObjectKind::Slider(slider) => slider.end_time(),
         }
     }
 
@@ -209,6 +229,7 @@ impl Object {
                     objects.push(Self {
                         start_time: value.start_time,
                         color: color_index,
+                        stack_count: 0,
                         kind: ObjectKind::Slider(Slider {
                             repeats: slider.span_count(),
                             start_time: value.start_time,
@@ -226,6 +247,7 @@ impl Object {
                 rosu_map::section::hit_objects::HitObjectKind::Circle(circle) => objects.push(Self {
                     start_time: value.start_time,
                     color: color_index,
+                    stack_count: 0,
                     kind: ObjectKind::Circle(Circle {
                         start_time: value.start_time,
                         pos: circle.pos,
@@ -236,6 +258,15 @@ impl Object {
             };
         };
 
+        // osu!stable stacking ("stack leniency")
+        //
+        // `StackOffset = HitObjectRadius / 10` with the radius in osu!pixels.
+        let (preempt, _) = calculate_preempt_fadein(map.approach_rate);
+        let hit_object_radius = calc_hitcircle_diameter(map.circle_size) / 2.0;
+        let stack_offset = hit_object_radius / 10.0;
+
+        apply_stacking(&mut objects, f64::from(preempt), map.stack_leniency, stack_offset);
+
         objects
     }
 }
@@ -244,3 +275,4 @@ pub enum ObjectKind {
     Circle(Circle),
     Slider(Slider),
 }
+

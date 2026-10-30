@@ -642,3 +642,42 @@ fn test_stacks_one_key_hold(replay: &str, beatmap: &str, expected: Expected) {
         expected
     );
 }
+
+#[case(
+    "stacking_just_circles.osr", 
+    "stacking_just_circles.osu",
+    Expected {
+        x300: 10,
+        x100: 15,
+        x50: 6,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "big circles only stack"
+)]
+#[case(
+    "stacking_circles_after_slider_end.osr", 
+    "stacking_circles_after_slider_end.osu",
+    Expected {
+        x300: 26,
+        x100: 3,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 0,
+    };
+    "circles stack after slider end"
+)]
+fn test_stacking(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
