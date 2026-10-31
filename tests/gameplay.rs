@@ -78,7 +78,7 @@ fn test_gameplay<T: AsRef<Path>>(replay_file: T, beatmap: T, expected: Expected)
                                 rosu::hit_objects::Hit::X300 => out.x300 += 1,
                                 rosu::hit_objects::Hit::X100 => out.x100 += 1,
                                 rosu::hit_objects::Hit::X50 => out.x50 += 1,
-                                rosu::hit_objects::Hit::MISS => {}, //out.xmiss += 1,
+                                rosu::hit_objects::Hit::MISS => out.xmiss += 1, //out.xmiss += 1,
                             }
                         },
                         _ => { panic!("super bad") }
@@ -587,7 +587,7 @@ fn test_slider_with_ticks_and_reverse(replay: &str, beatmap: &str, expected: Exp
         x50: 1,
         xkatu: 0,
         xgeki: 0,
-        xmiss: 0,
+        xmiss: 2,
     };
     "getta banban hard diff, 236 x300 6 x100 x50 an A"
 )]
@@ -600,7 +600,7 @@ fn test_slider_with_ticks_and_reverse(replay: &str, beatmap: &str, expected: Exp
         x50: 1,
         xkatu: 0,
         xgeki: 0,
-        xmiss: 0,
+        xmiss: 7,
     };
     "gin no kaze, an A"
 )]
@@ -670,6 +670,58 @@ fn test_stacks_one_key_hold(replay: &str, beatmap: &str, expected: Expected) {
     "circles stack after slider end"
 )]
 fn test_stacking(replay: &str, beatmap: &str, expected: Expected) {
+    let base = get_gameplay_tests_path();
+
+    let replay_file = base.join(replay);
+    let beatmap_file = base.join(beatmap);
+
+    test_gameplay(
+        replay_file, 
+        beatmap_file, 
+        expected
+    );
+}
+
+#[case(
+    "force_miss1.osr", 
+    "force_miss2.osu",
+    Expected {
+        x300: 0,
+        x100: 0,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 6,
+    };
+    "miss every"
+)]
+#[case(
+    "force_miss3.osr", 
+    "force_miss2.osu",
+    Expected {
+        x300: 3,
+        x100: 1,
+        x50: 0,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 2,
+    };
+    "mixed"
+)]
+#[case(
+    "force_miss4.osr", 
+    "force_miss_100_circles.osu",
+    Expected {
+        x300: 25,
+        x100: 8,
+        x50: 2,
+        xkatu: 0,
+        xgeki: 0,
+        xmiss: 65,
+    };
+    "hundred circles mixed"
+)]
+fn test_force_miss(replay: &str, beatmap: &str, expected: Expected) {
     let base = get_gameplay_tests_path();
 
     let replay_file = base.join(replay);

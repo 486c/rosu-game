@@ -40,6 +40,15 @@ impl Circle {
             return false;
         }
 
+        // Force miss
+        if input.ts > self.start_time + hit_window.x50.round() {
+            self.hit_result = Some(CircleHitResult {
+                at: input.ts,
+                pos: input.pos,
+                result: Hit::MISS,
+            });
+        }
+
         if !input.keys.is_keys_hit() {
             return false;
         }
